@@ -1,14 +1,37 @@
 // 版权声明：肖沐樑  QQ：3387432690
-// 完成时间：2026，09，18
+// 完成时间：2026，09，20
 // 服务端适配器（Electron 主进程 / Node 使用）：调用百度 Web 服务 API，
 // 启用批量距离矩阵 routematrix，主进程自定义 Referer 头绕过 AK 校验、隐藏密钥。
-// 仅在桌面端加载，不进入 Web 前端打包。
+// 浏览器端同样复用本模块：api 传相对路径 /bmapapi，AK 由 Vite 中间件在服务端注入。
+//
+// 注意：浏览器里没有 process 对象，早期版本直接读 process.env 会抛 ReferenceError，
+// 被上层的容错 catch 吞掉后表现为「静默降级」，排查成本很高。这里统一用安全读取。
+function duHuanJing(ming) {
+  if (typeof process === 'undefined' || !process.env) return '';
+  return process.env[ming] || '';
+}
 
 async function baiDuGet(api, path, params) {
-  const u = new URL(api + path);
-  for (const k of Object.keys(params)) u.searchParams.set(k, params[k]);
-  const resp = await fetch(u.toString(), { headers: { Referer: params._referer || 'http://localhost' } });
-  const json = await resp.json();
+  // 支持相对 api（浏览器经 Vite/nginx 代理调用，AK 由服务端注入，前端不持有密钥）
+  const qs = new URLSearchParams();
+  for (const k of Object.keys(params)) {
+    if (k === '_referer') continue;
+    if (k === 'ak' && !params[k]) continue; // 空 AK 交由代理服务端注入
+    qs.set(k, params[k]);
+  }
+  // 百度 Web 服务 API 部分接口默认吐 XML（place/v2/search 就是），不显式要 json 的话
+  // 响应体是 <PlaceSearchResponse>…，resp.json() 会直接抛解析错，白白浪费一次请求
+  if (!qs.has('output')) qs.set('output', 'json');
+  const tou = params._referer ? { Referer: params._referer } : undefined;
+  const resp = await fetch(`${api}${path}?${qs.toString()}`, { headers: tou });
+  const wenBen = await resp.text();
+  let json;
+  try {
+    json = JSON.parse(wenBen);
+  } catch {
+    // 把返回体片段带出来，避免只看到「Unexpected token <」这种没法定位的错误
+    throw new Error(`baidu 非 JSON 响应（HTTP ${resp.status}）：${wenBen.slice(0, 80)}`);
+  }
   if (json.status !== 0) throw new Error('baidu:' + json.status + ' ' + (json.message || ''));
   return json;
 }
@@ -22,7 +45,7 @@ function jieXiLuXian(pathStr) {
 }
 
 export function chuangJianBmapServer(cfg = {}) {
-  const ak = cfg.ak || process.env.BAIDU_SERVER_AK || '';
+  const ak = cfg.ak || duHuanJing('BAIDU_SERVER_AK');
   const api = cfg.api || 'https://api.map.baidu.com';
   const referer = cfg.referer || 'http://localhost';
 
@@ -30,8 +53,9 @@ export function chuangJianBmapServer(cfg = {}) {
     async walkingRoute(origin, dest) {
       const json = await baiDuGet(api, '/direction/v2/walking', {
         ak,
-        origin: `${origin.lng},${origin.lat}`,
-        destination: `${dest.lng},${dest.lat}`,
+        // direction/v2 要求纬度在前（lat,lng）
+        origin: `${origin.lat},${origin.lng}`,
+        destination: `${dest.lat},${dest.lng}`,
         _referer: referer,
       });
       const r = json.result.routes[0];
@@ -43,14 +67,23 @@ export function chuangJianBmapServer(cfg = {}) {
     },
 
     async routeMatrix(origins, dests) {
-      const json = await baiDuGet(api, '/routematrix/v1/walking', {
+      // 批量算路 RouteMatrix v2：扁平数组按行优先返回，duration/distance 为 {text, value} 对象
+      const json = await baiDuGet(api, '/routematrix/v2/walking', {
         ak,
-        origins: origins.map((o) => `${o.lng},${o.lat}`).join('|'),
-        destinations: dests.map((d) => `${d.lng},${d.lat}`).join('|'),
+        origins: origins.map((o) => `${o.lat},${o.lng}`).join('|'),
+        destinations: dests.map((d) => `${d.lat},${d.lng}`).join('|'),
         _referer: referer,
       });
-      return json.result.map((row) =>
-        row.map((e) => ({ durationSec: e.duration, distanceM: e.distance }))
+      const ge = json.result || [];
+      const lie = Math.max(1, dests.length);
+      return origins.map((_, i) =>
+        dests.map((_, j) => {
+          const e = ge[i * lie + j] || {};
+          return {
+            durationSec: e.duration?.value ?? Infinity,
+            distanceM: e.distance?.value ?? Infinity,
+          };
+        })
       );
     },
 

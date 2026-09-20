@@ -111,17 +111,59 @@ body {
   background: #fff4e5; color: #b35c00; border: 1px solid #ffd8a8; border-radius: 10px;
   padding: 8px 14px; font-size: 13px; box-shadow: var(--shadow);
 }
+.buxing-tip {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 25;
+  display: inline-flex; align-items: center; gap: 10px; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.95); border: 1px solid #cddcf7; border-radius: 999px;
+  padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--text); box-shadow: var(--shadow);
+}
+.buxing-tip.ok { border-color: var(--brand-2); color: var(--brand); }
+.buxing-tip.fail { border-color: #ffd8a8; color: #b35c00; }
+
+/* 地图选点确认气泡：单击地图只落「待确认点」，点气泡里的确认按钮才真正搬走体检中心 */
+.pick-bubble {
+  position: absolute; left: 0; top: 0; z-index: 30;
+  min-width: 196px; padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.98); border: 1px solid #e3e8ef; border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(16, 32, 64, 0.18); font-size: 12px; color: var(--text);
+}
+.pick-bubble::after {
+  content: ''; position: absolute; left: 50%; bottom: -7px; width: 12px; height: 12px; margin-left: -6px;
+  background: rgba(255, 255, 255, 0.98); border-right: 1px solid #e3e8ef; border-bottom: 1px solid #e3e8ef;
+  transform: rotate(45deg);
+}
+.pick-bubble-t { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #b35c00; }
+.pick-bubble-c { font-size: 11px; color: var(--muted); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.pick-bubble-b { display: flex; gap: 8px; }
+.pick-bubble-b button {
+  flex: 1; border: 1px solid var(--line); background: #f7f9fc; color: var(--text);
+  border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s;
+}
+.pick-bubble-b .pick-ok { background: var(--brand); border-color: var(--brand); color: #fff; }
+.pick-bubble-b .pick-ok:hover { filter: brightness(1.08); }
+.pick-bubble-b .pick-no:hover { background: #eef1f6; }
 
 /* ===== 浮层卡片 ===== */
 .float-card {
   position: absolute; z-index: 20; background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(14px); border: 1px solid rgba(228, 232, 239, 0.9); border-radius: 16px;
   box-shadow: 0 12px 40px rgba(16, 32, 64, 0.14), 0 1px 3px rgba(16, 32, 64, 0.06); padding: 16px;
+  transition: transform 0.55s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.4s ease, visibility 0.55s;
+  will-change: transform;
 }
 .left-bottom { left: 16px; bottom: 16px; width: 420px; max-height: calc(100% - var(--header-h) - 32px); overflow-y: auto; }
 .right-panel {
   right: 16px; top: calc(var(--header-h) + 16px); width: 360px;
   max-height: calc(100% - var(--header-h) - 32px); overflow-y: auto;
+}
+/* 面板显隐动画：从屏幕外侧带弹性过冲滑入，滑出时顺势收敛 */
+.left-bottom.hidden {
+  transform: translateX(calc(-100% - 32px)) translateY(24px) scale(0.96);
+  opacity: 0; visibility: hidden; pointer-events: none;
+}
+.right-panel.hidden {
+  transform: translateX(calc(100% + 32px)) translateY(-24px) scale(0.96);
+  opacity: 0; visibility: hidden; pointer-events: none;
 }
 
 /* 面板标题与静态分区 */
@@ -140,7 +182,11 @@ body {
   font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 9px;
 }
 .sec-title::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: var(--brand-2); flex: 0 0 auto; }
-.float-card.hidden { display: none; }
+/* 定位状态小标签（跟在「定位周边推荐」标题后面，提示本机定位已拿到） */
+.sec-title .sec-tag {
+  font-size: 11px; font-weight: 600; color: #1f6feb;
+  background: rgba(47, 134, 247, 0.1); border-radius: 999px; padding: 1px 7px;
+}
 
 .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
 .divider { height: 1px; background: var(--line); margin: 12px 0; }
@@ -180,6 +226,8 @@ body {
   border-color: var(--c, #cddcf7);
   box-shadow: 0 2px 10px color-mix(in srgb, var(--c, #2f9bff) 18%, transparent);
 }
+.layer-item .tubiao { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.layer-item .tubiao svg { display: block; }
 
 /* 参数行 */
 .param-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 9px; }

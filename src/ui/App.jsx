@@ -1,8 +1,9 @@
 // 版权声明：肖沐樑  QQ：3387432690
-// 完成时间：2026，09，18
+// 完成时间：2026，09，20
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { yunXingTijian } from '../core/pipeline.js';
 import { chuangJianBmapWeb } from '../adapters/bmapWeb.js';
+import { chuangJianBmapServer } from '../adapters/bmapServer.js';
 import { chuangJianOsm } from '../adapters/osm.js';
 import { MapCanvas } from './MapCanvas.jsx';
 import { BaoGao } from './BaoGao.jsx';
@@ -12,7 +13,7 @@ import { loadBmap } from './loadBmap.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 import { MorphIcon } from 'morphicons/react';
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin, Map } from 'lucide';
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin, Map, Cross, GraduationCap, ShoppingCart, Armchair, Bus, Trees } from 'lucide';
 
 const COLOR = {
   yiliao: '#ff6b6b',
@@ -23,6 +24,23 @@ const COLOR = {
   xiuxian: '#e64980',
 };
 const MING = { yiliao: '医疗', jiaoyu: '教育', gouwu: '购物', yanglao: '养老', jiaotong: '交通', xiuxian: '休闲' };
+
+// 六类设施图例：语义图标（lucide），颜色跟随类别色，关闭时置灰
+const SHE_SHI_TU = {
+  yiliao: Cross,
+  jiaoyu: GraduationCap,
+  gouwu: ShoppingCart,
+  yanglao: Armchair,
+  jiaotong: Bus,
+  xiuxian: Trees,
+};
+function SheShiTubiao({ f, yanSe, on = true }) {
+  return (
+    <span className="tubiao" style={{ color: on ? yanSe : '#b6bfc9' }}>
+      <MorphIcon icon={SHE_SHI_TU[f]} size={15} spring="snappy" />
+    </span>
+  );
+}
 
 // 初始默认中心点（仅作首屏兜底坐标，界面上已不展示样例社区；真实中心点由浏览器定位/地图点选/搜索产生）
 const YANGLI = [
@@ -60,11 +78,17 @@ export function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [souSuoWenBen, setSouSuoWenBen] = useState('');
   const [zhouBian, setZhouBian] = useState([]); // 定位周边推荐点
+  // 浏览器定位状态：loading=正在定位 / ok=已拿到设备位置 / fail=没拿到（此时中心点仍是兜底默认坐标，不是用户真实位置）
+  const [dingWeiTai, setDingWeiTai] = useState('loading');
+  const [dingWeiYin, setDingWeiYin] = useState(''); // 定位失败原因（说人话，不直接把浏览器英文报错甩给用户）
   // 底图引擎：baidu=百度地图（官方 BMap GL SDK 渲染，默认使用），
   // tile=高德/OSM 瓦片（AK 被风控拦截时的兜底，MapCanvas 内 3 秒未就绪会自动切换）
   const [ditu, setDitu] = useState('baidu');
   const [xianshi, setXianshi] = useState(() => Object.fromEntries(Object.keys(COLOR).map((k) => [k, true])));
   const runningRef = useRef(false);
+  const providerRef = useRef(null); // 当前体检数据源，供「点击设施查步行路线」复用
+  // 步行路线展示：{ uid, dian, zhuangTai: 'loading'|'ok'|'fail', polyline?, distanceM?, durationSec? }
+  const [buXing, setBuXingLuXian] = useState(null);
   const jiaoHuRef = useRef(false); // 用户是否已在地图上操作过（手动点选中心）
   // 面板整块显隐（true=显示），由顶栏开关控制
   const [kai, setKai] = useState({ zuo: true, you: true });
@@ -84,15 +108,18 @@ export function App() {
     try {
       if (mode === 'server' && isElectron) provider = chuangJianIpc();
       else if (mode === 'osm') provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
-      else {
-        // 百度地图模式：JS API 未就绪时降级为 OSM 真实路网（不再使用模拟数据）
-        await loadBmap().catch(() => null);
-        provider =
-          typeof window !== 'undefined' && window.BMapGL ? chuangJianBmapWeb() : chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
+      else if (mode === 'bmap') {
+        // 双 AK 架构：数据层走服务端 AK（Web 服务 API 经 /bmapapi 代理，AK 由服务端注入），
+        // 支持批量距离矩阵；REST 异常时由下方 catch 降级 OSM
+        provider = chuangJianBmapServer({ api: '/bmapapi' });
+      } else {
+        provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
       }
     } catch {
       provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
     }
+    providerRef.current = provider;
+    setBuXingLuXian(null); // 新一轮体检开始，清除上一条步行路线
     const canshu = { zhongXin: c, mubiaoMiao: mubiaoFen * 60, dangwei, banJingMi: 1500 };
     // 按数据源设定请求节奏：OSM 算路在本地完成不受限；浏览器端 AK 配额最紧；服务端 AK（批量矩阵）可放开
     const jieZou =
@@ -101,7 +128,7 @@ export function App() {
         : mode === 'server'
         ? { qps: 5, bingfa: 6 }
         : mode === 'bmap'
-        ? { qps: 2, bingfa: 2 }
+        ? { qps: 5, bingfa: 6 } // 服务端 AK 配额更宽裕，节奏相应放开
         : { qps: 8, bingfa: 8 };
     try {
       let rep;
@@ -116,6 +143,7 @@ export function App() {
         // 自动切换到 OSM 真实路网继续体检，保证演示不中断
         if (mode !== 'bmap') throw e;
         const osm = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
+        providerRef.current = osm; // 降级后路线查询跟随可用数据源
         rep = await yunXingTijian(osm, canshu, {
           jinDu: (p) => setProgress(p),
           peiZhi,
@@ -209,27 +237,46 @@ export function App() {
   }
 
   function dingWei(ziDong = false) {
+    setDingWeiTai('loading');
+    setDingWeiYin('');
     if (!navigator.geolocation) {
+      setDingWeiTai('fail');
+      setDingWeiYin('当前浏览器不支持定位');
       if (!ziDong) alert('当前浏览器不支持定位');
       return;
     }
     if (!window.isSecureContext) {
+      setDingWeiTai('fail');
+      setDingWeiYin('非 HTTPS / localhost 环境，浏览器不允许定位');
       if (!ziDong) alert('定位需要 HTTPS 或 localhost 环境，请改用 http://localhost:5173 访问');
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         // 自动定位是异步的，若用户已先在地图上选好了位置，就不要再用定位结果覆盖他
-        if (ziDong && jiaoHuRef.current) return;
+        if (ziDong && jiaoHuRef.current) {
+          setDingWeiTai('ok'); // 用户自己选过点了，自动定位结果按「已定位」结束，不再提示
+          return;
+        }
         // 应用内部统一使用 WGS-84（OSM 与 GPS 原生坐标系），渲染时按底图再转换
         const c = { lng: pos.coords.longitude, lat: pos.coords.latitude };
         setCenter(c);
         setCurName('当前位置');
+        setDingWeiTai('ok');
         tuijianZhouBian(c); // 定位成功后推荐周边可体检点
         if (!ziDong) run(c);
       },
       (err) => {
-        if (!ziDong) alert('定位失败：' + (err.message || '请检查浏览器定位权限'));
+        // 1=权限被拒 2=位置不可用 3=超时，换成用户看得懂的说明
+        const yuan =
+          err && err.code === 1
+            ? '浏览器定位权限被拒绝'
+            : err && err.code === 3
+            ? '定位超时，设备没返回位置'
+            : '无法获取设备位置（可能未开启系统定位）';
+        setDingWeiTai('fail');
+        setDingWeiYin(yuan);
+        if (!ziDong) alert('定位失败：' + yuan + '。可改在地图上选点或拖动蓝色图钉。');
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
     );
@@ -260,10 +307,30 @@ export function App() {
     a.click();
   }
 
+  // 地图选点确认 / 拖动图钉落点：只有用户明确确认后才回写中心点，避免误触就搬走体检中心
   const xuanZeZhongXin = useCallback((p) => {
     jiaoHuRef.current = true;
     setCenter(p);
+    setCurName('地图选点');
+    setBuXingLuXian(null); // 中心点变了，旧路线不再成立
   }, []);
+
+  // 点击设施：沿真实路网计算「中心点 → 该设施」步行路线并展示（再次点击同一设施取消）
+  async function dianJiSheShi(p) {
+    const prov = providerRef.current;
+    if (!prov || runningRef.current) return;
+    setBuXingLuXian((prev) => (prev && prev.uid && prev.uid === p.uid ? null : { uid: p.uid, dian: p, zhuangTai: 'loading' }));
+    try {
+      const r = await prov.walkingRoute(center, p);
+      setBuXingLuXian((prev) =>
+        prev && prev.uid === p.uid
+          ? { ...prev, zhuangTai: 'ok', polyline: r.polyline, distanceM: r.distanceM, durationSec: r.durationSec }
+          : prev
+      );
+    } catch {
+      setBuXingLuXian((prev) => (prev && prev.uid === p.uid ? { ...prev, zhuangTai: 'fail' } : prev));
+    }
+  }
 
   return (
     <div className="app">
@@ -329,11 +396,24 @@ export function App() {
           report={report}
           center={center}
           onPick={xuanZeZhongXin}
+          onPoiDianJi={dianJiSheShi}
+          buXing={buXing}
           xianshi={xianshi}
           ditu={ditu}
           onDitu={setDitu}
         />
         {offline && <div className="offline">地图服务异常，已降级真实路网兜底模式，请检查 AK / 网络</div>}
+        {buXing && (
+          <div className={`buxing-tip ${buXing.zhuangTai}`}>
+            {buXing.zhuangTai === 'loading' && '正在沿真实路网计算步行路线…'}
+            {buXing.zhuangTai === 'ok' &&
+              `${buXing.dian.ming || '所选设施'}：沿街步行 ${Math.round(buXing.distanceM)} 米 · 约 ${Math.max(1, Math.round(buXing.durationSec / 60))} 分钟`}
+            {buXing.zhuangTai === 'fail' && '步行路线计算失败（该设施可能不在路网覆盖范围内）'}
+            <button type="button" className="link-btn" onClick={() => setBuXingLuXian(null)}>
+              关闭
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 左下控制卡片：整块显隐由顶栏开关控制 */}
@@ -341,9 +421,25 @@ export function App() {
         <div className="panel-title">体检控制</div>
 
         <div className="sec">
-          <div className="sec-title">定位周边推荐</div>
-          {zhouBian.length === 0 && (
-            <div className="empty-tip">正在获取你的位置…若浏览器拒绝授权，可点击下方「定位」重试，或直接在地图上点选中心点</div>
+          <div className="sec-title">
+            定位周边推荐
+            {dingWeiTai === 'ok' && <span className="sec-tag">已定位</span>}
+          </div>
+          {zhouBian.length === 0 && dingWeiTai === 'loading' && (
+            <div className="empty-tip">正在获取你的位置…首次访问浏览器会弹出定位授权，请选择「允许」</div>
+          )}
+          {zhouBian.length === 0 && dingWeiTai === 'ok' && (
+            <div className="empty-tip">已拿到你的位置，正在读取周边社区名…</div>
+          )}
+          {zhouBian.length === 0 && dingWeiTai === 'fail' && (
+            <div className="empty-tip">
+              没拿到设备定位：{dingWeiYin}。<br />
+              当前中心点（{curName}）{jiaoHuRef.current ? '来自你手动选点' : '是兜底默认坐标，不是你的真实位置'}。<br />
+              可点下面「重新定位」再试；也可在地图上单击选点后点「设为中心点」确认，或直接拖动地图上的蓝色图钉。
+              <button type="button" className="link-btn" onClick={() => dingWei()}>
+                重新定位
+              </button>
+            </div>
           )}
           {zhouBian.length > 0 && (
             <div className="chips-row">
@@ -367,7 +463,7 @@ export function App() {
                 style={{ '--c': COLOR[f] }}
                 onClick={() => qieHuanFenlei(f)}
               >
-                <i />
+                <SheShiTubiao f={f} yanSe={COLOR[f]} on={xianshi[f]} />
                 <span>{MING[f]}</span>
               </label>
             ))}
@@ -412,7 +508,7 @@ export function App() {
         </div>
 
         <div className="btn-row">
-          <button className="locate-btn" onClick={dingWei}>
+          <button className="locate-btn" onClick={dingWei} title="定位到浏览器当前位置（也可以拖动地图上的蓝色图钉改中心点）">
             <MorphIcon icon={MapPin} size={15} spring="snappy" />
             定位
           </button>

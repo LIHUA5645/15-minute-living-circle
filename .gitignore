@@ -12,3 +12,7 @@ coverage
 .idea
 .vscode
 .codebuddy
+.agents
+.claude
+agent
+skills-lock.json

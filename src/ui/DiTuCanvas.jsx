@@ -1,8 +1,8 @@
 // 版权声明：肖沐樑  QQ：3387432690
-// 完成时间：2026，09，18
+// 完成时间：2026，09，20
 // 开源瓦片底图引擎：不依赖百度 AK，直接绘制真实地图瓦片并叠加等时圈/设施/盲区
 // 采用 Web Mercator 投影，与瓦片坐标系一致，叠加层与底图严格对齐
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 const TILE = 256;
 
@@ -36,6 +36,46 @@ const ZHONG_XIN_PIN = (() => {
   return img;
 })();
 
+// 六类设施点形状：色彩之外再给形状差异（医疗十字/教育三角/购物方块/养老六边形/交通圆/休闲菱形）
+// 与 App.jsx 图例、MapCanvas 散点图标保持一致
+function huaSheShiDian(ctx, x, y, f, yanSe) {
+  const r = 4.2;
+  ctx.beginPath();
+  if (f === 'yiliao') {
+    ctx.rect(x - r * 0.4, y - r, r * 0.8, r * 2);
+    ctx.rect(x - r, y - r * 0.4, r * 2, r * 0.8);
+  } else if (f === 'jiaoyu') {
+    ctx.moveTo(x, y - r * 1.15);
+    ctx.lineTo(x + r * 1.15, y + r * 0.9);
+    ctx.lineTo(x - r * 1.15, y + r * 0.9);
+    ctx.closePath();
+  } else if (f === 'gouwu') {
+    ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
+  } else if (f === 'yanglao') {
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 2;
+      const px = x + Math.cos(a) * r * 1.1;
+      const py = y + Math.sin(a) * r * 1.1;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  } else if (f === 'xiuxian') {
+    ctx.moveTo(x, y - r * 1.2);
+    ctx.lineTo(x + r * 1.2, y);
+    ctx.lineTo(x, y + r * 1.2);
+    ctx.lineTo(x - r * 1.2, y);
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+  }
+  ctx.fillStyle = yanSe;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
 function lngLatToWorld(lng, lat, z) {
   const scale = TILE * 2 ** z;
   const s = Math.sin((lat * Math.PI) / 180);
@@ -53,7 +93,7 @@ function worldToLngLat(x, y, z) {
   };
 }
 
-export function DiTuCanvas({ report, center, onPick, xianshi }) {
+export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi }) {
   const wrapRef = useRef(null);
   const cvsRef = useRef(null);
   const stRef = useRef({ z: 15, cx: 0, cy: 0, yuan: 0 });
@@ -63,6 +103,11 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
   const shiBaiRef = useRef(new Set()); // 已失败的瓦片（按源区分）
   const jiShuRef = useRef(0); // 当前源失败次数
   const ziFaRef = useRef(null); // 由地图自身点击产生的中心点（避免自己点完又强行居中，导致视图跳动）
+  // 选中确认机制：单击地图只产生「待确认点」（橙色虚线针 + 气泡），点气泡里的确认按钮才回写中心点，
+  // 避免误触一下就把体检中心挪走；图钉本身可拖拽，松手即生效（拖拽本身就是明确意图）
+  const [daiXuan, setDaiXuan] = useState(null); // 待确认的体检中心（WGS-84）
+  const pinPxRef = useRef({ x: 0, y: 0 }); // 图钉当前的屏幕坐标（画完即记录，供拖拽命中检测）
+  const qiPaoRef = useRef(null); // 确认气泡 DOM（位置随地图平移/缩放实时跟随）
 
   const draw = useCallback(() => {
     const cvs = cvsRef.current;
@@ -160,13 +205,7 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
         if (xianshi && !xianshi[f]) continue;
         for (const p of (poiSet.fenleiSet?.[f] || []).slice(0, 120)) {
           const { x, y } = toXY(p);
-          ctx.beginPath();
-          ctx.arc(x, y, 3.4, 0, Math.PI * 2);
-          ctx.fillStyle = COLOR[f];
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
+          huaSheShiDian(ctx, x, y, f, COLOR[f]);
         }
       }
     }
@@ -197,8 +236,46 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
       ctx.globalAlpha = 1;
     }
 
+    // ④′ 步行路线（点击设施后沿真实路网的虚线，画在图钉之下）
+    if (buXing && buXing.zhuangTai === 'ok' && buXing.polyline && buXing.polyline.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      buXing.polyline.forEach((pt, i) => {
+        const w = toXY(pt);
+        if (i === 0) ctx.moveTo(w.x, w.y);
+        else ctx.lineTo(w.x, w.y);
+      });
+      ctx.setLineDash([10, 6]);
+      ctx.strokeStyle = 'rgba(31, 42, 55, 0.85)';
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      // 终点高亮圆点
+      const end = toXY(buXing.polyline[buXing.polyline.length - 1]);
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#1f2a37';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // ⑤ 体检中心（定位图钉，尖端对准坐标）
-    const c = toXY(center);
+    // 正在拖拽图钉时用拖拽中的临时坐标绘制，松手才回写父级，避免拖动过程被父级旧中心点拉回
+    const tuoPin = dragRef.current && dragRef.current.mode === 'pin' ? dragRef.current.cur : null;
+    const c = tuoPin ? toXY(tuoPin) : toXY(center);
+    pinPxRef.current = c;
+    if (tuoPin) {
+      // 拖拽中给一个落点光晕，明确「针尖落在这里」
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 15, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(31,111,235,0.18)';
+      ctx.fill();
+    }
     if (ZHONG_XIN_PIN.complete && ZHONG_XIN_PIN.naturalWidth) {
       ctx.drawImage(ZHONG_XIN_PIN, c.x - 12, c.y - 30, 24, 30);
     } else {
@@ -211,7 +288,50 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
       ctx.lineWidth = 3;
       ctx.stroke();
     }
-  }, [report, center, xianshi]);
+
+    // ⑥ 待确认选点：橙色虚线定位环 + 橙色图钉（针尖对准坐标），只有点气泡里的确认按钮才生效
+    if (daiXuan) {
+      const q = toXY(daiXuan);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 17, 0, Math.PI * 2);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(245,158,11,0.14)';
+      ctx.fill();
+      // 针身
+      ctx.beginPath();
+      ctx.moveTo(q.x - 7, q.y - 10);
+      ctx.lineTo(q.x, q.y);
+      ctx.lineTo(q.x + 7, q.y - 10);
+      ctx.closePath();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // 针头
+      ctx.beginPath();
+      ctx.arc(q.x, q.y - 17, 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.restore();
+      // 气泡跟随地图平移与缩放：直接改样式（left/top），不走 state，避免重绘循环
+      const pao = qiPaoRef.current;
+      if (pao) {
+        const kuan = pao.offsetWidth || 208;
+        const gao = pao.offsetHeight || 76;
+        pao.style.left = `${Math.round(q.x - kuan / 2)}px`;
+        pao.style.top = `${Math.round(q.y - gao - 30)}px`;
+      }
+    }
+  }, [report, center, xianshi, buXing, daiXuan]);
 
   function jianGeChongHua() {
     if (rafRef.current) return;
@@ -248,32 +368,108 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
     return () => ro.disconnect();
   }, []);
 
+  // 命中体检中心图钉本体（24×30，针尖对准坐标）→ 视为「拖动图钉」而不是平移地图
+  function mingZhongTuDing(cx, cy) {
+    const pin = pinPxRef.current;
+    return cx >= pin.x - 13 && cx <= pin.x + 13 && cy >= pin.y - 32 && cy <= pin.y + 4;
+  }
+  function shuBiaoXY(e) {
+    const rect = wrapRef.current.getBoundingClientRect();
+    return { cx: e.clientX - rect.left, cy: e.clientY - rect.top };
+  }
+  function shiTuXY() {
+    const wrap = wrapRef.current;
+    const st = stRef.current;
+    return { ox: st.cx - wrap.clientWidth / 2, oy: st.cy - wrap.clientHeight / 2 };
+  }
+  // 拖动图钉松手（含拖出画布）：拖拽本身就是明确意图，直接回写中心点，不再走二次确认
+  function luoDiTuDing(d) {
+    if (!d || d.mode !== 'pin' || !d.moved || !d.cur || !onPick) return;
+    ziFaRef.current = d.cur; // 标记来源，视图不再重新居中，图钉就停在松手的位置
+    setDaiXuan(null);
+    onPick(d.cur);
+    jianGeChongHua();
+  }
+
   function xiaBiao(e) {
-    dragRef.current = { x: e.clientX, y: e.clientY, moved: false };
+    const { cx, cy } = shuBiaoXY(e);
+    dragRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      mode: mingZhongTuDing(cx, cy) ? 'pin' : 'map',
+      cur: null,
+    };
+    if (dragRef.current.mode === 'pin' && cvsRef.current) cvsRef.current.style.cursor = 'grabbing';
   }
   function yiDong(e) {
     const d = dragRef.current;
-    if (!d) return;
+    if (!d) {
+      // 未按下时只改光标：悬在图钉上提示「可拖动」
+      const { cx, cy } = shuBiaoXY(e);
+      if (cvsRef.current) cvsRef.current.style.cursor = mingZhongTuDing(cx, cy) ? 'grab' : '';
+      return;
+    }
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
     const st = stRef.current;
+    if (d.mode === 'pin') {
+      // 拖图钉：地图本身不动，只把图钉挪到鼠标处
+      const { cx, cy } = shuBiaoXY(e);
+      const { ox, oy } = shiTuXY();
+      d.cur = worldToLngLat(ox + cx, oy + cy, st.z);
+      d.x = e.clientX;
+      d.y = e.clientY;
+      jianGeChongHua();
+      return;
+    }
     st.cx -= dx;
     st.cy -= dy;
-    dragRef.current = { x: e.clientX, y: e.clientY, moved: d.moved };
+    dragRef.current = { x: e.clientX, y: e.clientY, moved: d.moved, mode: 'map', cur: null };
     jianGeChongHua();
   }
   function taiQi(e) {
     const d = dragRef.current;
     dragRef.current = null;
-    if (!d || d.moved || !onPick) return;
-    const rect = wrapRef.current.getBoundingClientRect();
+    if (cvsRef.current) cvsRef.current.style.cursor = '';
+    if (!d) return;
+    if (d.mode === 'pin') {
+      luoDiTuDing(d); // 拖了就生效；只是点一下图钉则什么都不做
+      return;
+    }
+    if (d.moved) return; // 平移地图，不算选点
+    const { cx, cy } = shuBiaoXY(e);
+    const { ox, oy } = shiTuXY();
     const st = stRef.current;
-    const ox = st.cx - wrapRef.current.clientWidth / 2;
-    const oy = st.cy - wrapRef.current.clientHeight / 2;
-    const p = worldToLngLat(ox + (e.clientX - rect.left), oy + (e.clientY - rect.top), st.z);
-    ziFaRef.current = p; // 标记：该中心点来自地图点击
-    onPick(p);
+    // 设施点命中检测：点击位置 10px 内存在可见设施 → 触发步行路线查询，不再当作选中心点
+    if (onPoiDianJi && report?.poiSet) {
+      const toXY2 = (p) => {
+        const w = lngLatToWorld(p.lng, p.lat, st.z);
+        return { x: w.x - ox, y: w.y - oy };
+      };
+      for (const f of Object.keys(COLOR)) {
+        if (xianshi && !xianshi[f]) continue;
+        for (const p of (report.poiSet.fenleiSet?.[f] || []).slice(0, 120)) {
+          const w = toXY2(p);
+          if ((w.x - cx) ** 2 + (w.y - cy) ** 2 <= 100) {
+            onPoiDianJi(p);
+            return;
+          }
+        }
+      }
+    }
+    // 空白处单击：只落一个「待确认点」，等用户点气泡里的确认按钮，避免误触即搬走体检中心
+    setDaiXuan(worldToLngLat(ox + cx, oy + cy, st.z));
+  }
+
+  // 确认待确认点：此时才回写父级中心点；不标记 ziFa，让视图把新中心点居中，给用户明确反馈
+  function queRenXuanDian() {
+    if (!daiXuan) return;
+    const p = daiXuan;
+    ziFaRef.current = null;
+    setDaiXuan(null);
+    if (onPick) onPick(p);
   }
   function gunLun(e) {
     e.preventDefault();
@@ -301,9 +497,30 @@ export function DiTuCanvas({ report, center, onPick, xianshi }) {
         onMouseDown={xiaBiao}
         onMouseMove={yiDong}
         onMouseUp={taiQi}
-        onMouseLeave={() => (dragRef.current = null)}
+        onMouseLeave={() => {
+          const d = dragRef.current;
+          dragRef.current = null;
+          luoDiTuDing(d); // 拖图钉时鼠标划出画布也按落点处理，避免白拖一场
+        }}
         onWheel={gunLun}
       />
+      {/* 选点确认气泡：位置由 draw 跟着地图平移/缩放实时改写 left/top */}
+      {daiXuan && (
+        <div className="pick-bubble" ref={qiPaoRef}>
+          <div className="pick-bubble-t">将体检中心设到此处？</div>
+          <div className="pick-bubble-c">
+            {daiXuan.lng.toFixed(6)}, {daiXuan.lat.toFixed(6)}
+          </div>
+          <div className="pick-bubble-b">
+            <button type="button" className="pick-ok" onClick={queRenXuanDian}>
+              设为中心点
+            </button>
+            <button type="button" className="pick-no" onClick={() => setDaiXuan(null)}>
+              取消
+            </button>
+          </div>
+        </div>
+      )}
       <div className="map-attri">© OpenStreetMap contributors</div>
     </div>
   );

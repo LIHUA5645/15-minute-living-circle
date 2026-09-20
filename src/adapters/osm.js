@@ -226,6 +226,39 @@ export function chuangJianOsm(opt = {}) {
       return { jieDianShu: tu.nodes.size, luDuanShu: tu.bianShu, daoLuShu: tu.wayShu, banJingMi: banJing };
     },
 
+    // 路网时间场访问：供等时圈直接从 Dijkstra 时间场取值（内层 300/600 秒等值线严格精确）
+    // 返回 qu(点) => 该点步行耗时（秒）；不可达返回 Infinity
+    async shiJianChang(zx, zuiDaMiao) {
+      const { t, chang } = await huoChang(zx, Math.max(3600, zuiDaMiao * 4));
+      // 预投影到以中心为原点的平面米制坐标，近邻查询从 O(球面三角) 降为 O(平面欧氏)
+      const kx = 111320 * Math.cos((zx.lat * Math.PI) / 180);
+      const jieDian2 = [];
+      for (const [id, n] of t.nodes) {
+        jieDian2.push({ id, x: (n.lon - zx.lng) * kx, y: (n.lat - zx.lat) * 110540 });
+      }
+      const zhongXinJie = zuiJinJieDian(t, zx);
+      const zhongXinJieBo = ((zhongXinJie.juLi || 0) / 80) * 60; // 中心到其最近路网节点的接驳耗时
+      return {
+        qu(p) {
+          const px = (p.lng - zx.lng) * kx;
+          const py = (p.lat - zx.lat) * 110540;
+          let best = null;
+          let bestD = Infinity;
+          for (const n of jieDian2) {
+            const dx = n.x - px;
+            const dy = n.y - py;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) {
+              bestD = d;
+              best = n;
+            }
+          }
+          if (!best || !chang.time.has(best.id)) return Infinity;
+          return chang.time.get(best.id) + (Math.sqrt(bestD) / 80) * 60 + zhongXinJieBo;
+        },
+      };
+    },
+
     // 真实步行算路：单次 Dijkstra 等时场 + 首尾接驳
     // 路网不可用时直接抛错，由上层提示重试，绝不用直线距离冒充真实路网结果
     async walkingRoute(origin, dest) {

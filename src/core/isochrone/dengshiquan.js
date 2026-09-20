@@ -46,6 +46,26 @@ async function ceLiang(provider, zhongXin, dian, hc, xl) {
   return res;
 }
 
+// 从路线折线派生中间锚点：按累计路程比例估计耗时（零额外请求），
+// 给 IDW 内层等值线提供真实耗时支撑（百度模式无路网时间场时的补偿手段）
+function luXianMiaoDian(polyline, durationSec, fangWei, yangBen) {
+  if (!polyline || polyline.length < 4 || !(durationSec > 0)) return;
+  const d = [0];
+  for (let i = 1; i < polyline.length; i++) {
+    d.push(d[i - 1] + liangDianJuLi(polyline[i - 1], polyline[i]));
+  }
+  const zong = d[d.length - 1];
+  if (!(zong > 0)) return;
+  for (const bei of [0.3, 0.55, 0.8]) {
+    const miaoBiao = zong * bei;
+    let i = 1;
+    while (i < d.length && d[i] < miaoBiao) i++;
+    if (i >= d.length) break;
+    const p = polyline[i];
+    yangBen.push({ lng: p.lng, lat: p.lat, t: durationSec * bei, fangWei });
+  }
+}
+
 // 单方位边界搜索：割线法为主，越界/发散退二分
 async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) {
   const r0 = (V_BUXING * (T / 60)) / K_RAOLU;
@@ -75,6 +95,9 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
     fangWei,
     polyline: rBres.polyline,
   });
+  // 沿真实路线折线派生内层锚点（按路程比例估计耗时），改善 IDW 近中心失真
+  luXianMiaoDian(rAres.polyline, tA, fangWei, yangBen);
+  luXianMiaoDian(rBres.polyline, tB, fangWei, yangBen);
 
   // 立即被阻隔
   if (tA > T) {
@@ -321,11 +344,23 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   }
 
   const chang = gouJianChang(yangBen, zhongXin);
+  // 优先使用路网时间场（OSM 模式提供）：内层 300/600 秒等值线严格精确；
+  // 无时间场的数据源（百度模式）退回 IDW 插值场（已由折线锚点改善近中心失真）
+  let shiJian = null;
+  if (typeof provider.shiJianChang === 'function') {
+    try {
+      shiJian = await provider.shiJianChang(zhongXin, mubiaoMiao);
+    } catch {
+      shiJian = null;
+    }
+  }
   const field = new Array(G * G);
+  const buKeDaMiao = mubiaoMiao * 2; // 不可达哨兵值：必须为有限数，否则等值线插值产生 NaN
   for (let j = 0; j < G; j++) {
     for (let i = 0; i < G; i++) {
       const p = { lng: x0 + i * dx, lat: y0 + j * dy };
-      field[j * G + i] = chang(p);
+      const v = shiJian ? shiJian.qu(p) : chang(p);
+      field[j * G + i] = Number.isFinite(v) ? v : buKeDaMiao;
     }
   }
 
