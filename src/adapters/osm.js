@@ -23,6 +23,25 @@ const LUWANG_FEN_ZU = [
 ];
 
 const CACHE_QIAN = 'osmcache_v1_';
+// localStorage 配额守护：路网响应单条可达数 MB，无限制缓存会挤爆 localStorage，
+// 导致百度 SDK 写 SECKEY_ABVK 等键时抛 QuotaExceededError、地图脚本中断。
+const DAN_TIAO_SHANG_XIAN = 1200000; // 单条缓存上限（字符数）
+const ZONG_YU_SUAN = 3000000; // OSM 缓存总量预算（字符数），超限按最旧优先清理
+
+// 启动自检：OSM 缓存总量超出预算时逐条清理（Object.keys 对字符串键按插入序返回，近似最旧优先）
+(function huanCunZiJian() {
+  try {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(CACHE_QIAN));
+    let zong = keys.reduce((s, k) => s + (localStorage.getItem(k) || '').length, 0);
+    for (const k of keys) {
+      if (zong <= ZONG_YU_SUAN) break;
+      zong -= (localStorage.getItem(k) || '').length;
+      localStorage.removeItem(k);
+    }
+  } catch {
+    /* 忽略 */
+  }
+})();
 
 function huanCunQu(key) {
   try {
@@ -33,10 +52,24 @@ function huanCunQu(key) {
   }
 }
 function huanCunCun(key, val) {
+  let s;
   try {
-    localStorage.setItem(CACHE_QIAN + key, JSON.stringify(val));
+    s = JSON.stringify(val);
   } catch {
-    /* 超容量则忽略 */
+    return; // 序列化失败（循环引用等）放弃缓存
+  }
+  if (s.length > DAN_TIAO_SHANG_XIAN) return; // 超大响应直接不缓存，宁可下次重取也不挤爆配额
+  try {
+    localStorage.setItem(CACHE_QIAN + key, s);
+  } catch {
+    // 存储配额已满：清掉一半旧 OSM 缓存再试，避免挤占百度 SDK 的 localStorage 键
+    try {
+      const jiu = Object.keys(localStorage).filter((k) => k.startsWith(CACHE_QIAN));
+      jiu.slice(0, Math.ceil(jiu.length / 2)).forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem(CACHE_QIAN + key, s);
+    } catch {
+      /* 仍失败则放弃本次缓存 */
+    }
   }
 }
 function zhaiYao(s) {

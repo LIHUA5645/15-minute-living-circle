@@ -20,12 +20,13 @@ export function savePeiZhi(p) {
   localStorage.setItem(KEY, JSON.stringify(p));
 }
 
-// 报告存档（管理员可查看历史体检记录）
-export function saveReport(rep) {
+// 报告存档（个人主页与管理员均可查看）；zhangHao 记录归属账号，供个人主页按账号过滤
+export function saveReport(rep, zhangHao) {
   try {
     const list = JSON.parse(localStorage.getItem(RKEY) || '[]');
     list.unshift({
       t: Date.now(),
+      zhangHao: zhangHao || '',
       zhongXin: rep.zhongXin,
       total: rep.total,
       dengji: rep.dengji,
@@ -42,5 +43,17 @@ export function loadReports() {
     return JSON.parse(localStorage.getItem(RKEY) || '[]');
   } catch {
     return [];
+  }
+}
+
+// 清空指定账号的体检记录（个人主页「清空我的记录」），返回删除条数
+export function shanChuWoDeBaoGao(zhangHao) {
+  try {
+    const list = JSON.parse(localStorage.getItem(RKEY) || '[]');
+    const sheng = list.filter((r) => r.zhangHao !== zhangHao);
+    localStorage.setItem(RKEY, JSON.stringify(sheng));
+    return list.length - sheng.length;
+  } catch {
+    return 0;
   }
 }

@@ -16,7 +16,7 @@ export function BaoGao({ report }) {
   useEffect(() => {
     if (!report) return;
     const fps = report.fenleiPingfen;
-    const names = fps.map((x) => MING[x.fenlei]);
+    const names = fps.map((x) => x.ming || MING[x.fenlei]);
     const scores = fps.map((x) => x.score);
 
     const r = echarts.init(rRef.current);

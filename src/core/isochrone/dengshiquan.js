@@ -315,13 +315,22 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   const bianJie = [];
   const geshe = [];
 
-  for (let i = 0; i < cfg.fangwei; i++) {
-    const fw = (360 / cfg.fangwei) * i;
-    const r = await qiuBianJie(provider, zhongXin, fw, mubiaoMiao, cfg, hc, xl, yangBen);
-    bianJie.push({ fangWei: fw, r: r.r, blocked: r.blocked });
-    if (r.blocked) geshe.push({ fangWei: fw, leixing: 'jukuaisai/zugai' });
-    if (opt.jinDu) opt.jinDu((i + 1) / cfg.fangwei, 'caiyang');
-  }
+  // 各方位彼此独立，原来逐个 await 串行推进：单次算路实测 2~3 秒，24 个方位要等两三分钟，
+  // 界面看着就像卡死。这里并发提交，真实速率由限流器（令牌桶 + 并发池）统一兜住，不会超配额。
+  const [jin0, jin1] = opt.jinDuQuJian || [0, 1];
+  let yiWanCheng = 0;
+  await Promise.all(
+    Array.from({ length: cfg.fangwei }, (_, i) => {
+      const fw = (360 / cfg.fangwei) * i;
+      return qiuBianJie(provider, zhongXin, fw, mubiaoMiao, cfg, hc, xl, yangBen).then((r) => {
+        bianJie.push({ fangWei: fw, r: r.r, blocked: r.blocked });
+        if (r.blocked) geshe.push({ fangWei: fw, leixing: 'jukuaisai/zugai' });
+        // 进度映射到调用方给的区间（整体进度里 POI 检索已经先吃掉一段，不能从头再数一遍）
+        yiWanCheng++;
+        if (opt.jinDu) opt.jinDu(jin0 + (jin1 - jin0) * (yiWanCheng / cfg.fangwei), 'caiyang');
+      });
+    })
+  );
 
   // 构造插值场
   const rMax = 2.2 * ((V_BUXING * (mubiaoMiao / 60)) / K_RAOLU);

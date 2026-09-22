@@ -5,6 +5,7 @@
 //   ② 开源瓦片（DiTuCanvas）—— 不依赖任何 AK，百度不可用时自动降级
 // 两种引擎均叠加：等时圈热力分层 / 设施散点 / 服务盲区 / 体检中心
 import React, { useEffect, useRef, useState } from 'react';
+import { Cross, GraduationCap, ShoppingCart, Armchair, Bus, Trees, Shapes } from 'lucide';
 import { loadBmap } from './loadBmap.js';
 import { DiTuCanvas } from './DiTuCanvas.jsx';
 import { wgs84ZhuanBd09, bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
@@ -22,30 +23,46 @@ const COLOR = {
 };
 const MI_CAISE = { 300: '#3ddc97', 600: '#2f9bff', 900: '#ff6b6b' };
 
-// 六类设施散点形状（与 App 图例、DiTuCanvas 散点一致）：色彩之外加形状差异
-const XING_ZHUANG = {
-  yiliao: (c) => `<path d='M5.6 1.5h2.8v4.1h4.1v2.8H8.4v4.1H5.6V8.4H1.5V5.6h4.1z' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-  jiaoyu: (c) => `<path d='M7 1.5l5.2 10.5H1.8z' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-  gouwu: (c) => `<rect x='2.5' y='2.5' width='9' height='9' rx='1.2' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-  yanglao: (c) => `<path d='M7 1.2l5 2.9v5.8l-5 2.9-5-2.9V4.1z' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-  jiaotong: (c) => `<circle cx='7' cy='7' r='5' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-  xiuxian: (c) => `<path d='M7 1.5L12.5 7 7 12.5 1.5 7z' fill='${c}' stroke='#0f1420' stroke-width='1.2'/>`,
-};
+// 六类设施散点形状统一取自 sheShiXing.js（与图例、瓦片画布共用），色彩之外加形状差异
 const MI_OPA = { 300: 0.34, 600: 0.22, 900: 0.12 };
 
 function svgIcon(svg) {
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
+// 设施散点图标：与「设施图层」图例同款 lucide 语义图标（白描边）+ 类别色圆底徽章，图例与地图一一对应。
+// 注意：lucide 导出的是图标节点数据（[[标签, 属性], ...]）而非 React 组件，需手动拼接 SVG 字符串
+const TU_BIAO = { yiliao: Cross, jiaoyu: GraduationCap, gouwu: ShoppingCart, yanglao: Armchair, jiaotong: Bus, xiuxian: Trees };
+const kebab = (s) => s.replace(/([A-Z])/g, '-$1').toLowerCase();
+function tuZhuanSvg(Tu) {
+  const nei = Tu.map(([tag, attrs]) => {
+    const a = Object.entries(attrs || {})
+      .map(([k, v]) => `${kebab(k)}='${v}'`)
+      .join(' ');
+    return `<${tag} ${a}/>`;
+  }).join('');
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='#ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'>${nei}</svg>`;
+}
+const tuHuanCun = {};
+function sheShiBiaoJi(f, color) {
+  if (!tuHuanCun[f]) {
+    tuHuanCun[f] =
+      `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'>` +
+      `<circle cx='10' cy='10' r='9' fill='${color}' stroke='#ffffff' stroke-width='1.6'/>` +
+      `<g transform='translate(4.5,4.5)'>${tuZhuanSvg(TU_BIAO[f] || Shapes)}</g></svg>`;
+  }
+  return tuHuanCun[f];
+}
+
 function simpleKey(obj) {
   return JSON.stringify(obj);
 }
 
-export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi, ditu = 'baidu', onDitu }) {
+export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi, ditu = 'baidu', onDitu, guanZhuId }) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
-  const layersRef = useRef({ iso: [], poi: [], blind: [], center: [], buXing: [] });
-  const keysRef = useRef({ iso: '', poi: '', blind: '', center: '', buXing: '' });
+  const layersRef = useRef({ iso: [], poi: [], blind: [], center: [], buJian: [], buXing: [], guanZhu: [] });
+  const keysRef = useRef({ iso: '', poi: '', blind: '', center: '', buJian: '', buXing: '', guanZhu: '' });
   const onPickRef = useRef(onPick);
   const onPoiRef = useRef(onPoiDianJi);
   const ziFaRef = useRef(null); // 由地图点击产生的中心点，避免重复居中造成视图跳动
@@ -57,6 +74,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
   const ballonRef = useRef(null); // 确认气泡（BMapGL.CustomOverlay，跟随地图移动）
   const huLveRef = useRef(0); // 忽略时间戳：点设施 / 点气泡按钮时，紧随其后的地图 click 不算选点
   const queRenRef = useRef(null);
+  const [juJiaoCi, setJuJiaoCi] = useState(0); // 「回到体检中心」按钮计数（瓦片引擎靠它强制重新居中）
   onPickRef.current = onPick;
   onPoiRef.current = onPoiDianJi;
   queRenRef.current = () => {
@@ -148,7 +166,31 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
     clearTimeout(drawTimerRef.current);
     drawTimerRef.current = setTimeout(() => drawBaidu(), 80);
     return () => clearTimeout(drawTimerRef.current);
-  }, [engine, report, center, xianshi, buXing]);
+  }, [engine, report, center, xianshi, buXing, guanZhuId]);
+
+  // 用户在清单里标记某盲区 → 地图飞到该盲区中心
+  useEffect(() => {
+    if (!guanZhuId || engine !== 'baidu' || !mapRef.current) return;
+    const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+    if (mq && mq.zhongxin) {
+      const { map, B } = mapRef.current;
+      const q = Z(mq.zhongxin);
+      ziFaRef.current = null;
+      map.setCenter(new B.Point(q.lng, q.lat));
+    }
+  }, [guanZhuId, engine]);
+
+  // 一键回到体检中心：地图乱滑后找不回位置时使用
+  function huiDaoDingWei() {
+    if (engine === 'baidu' && mapRef.current) {
+      const { map, B } = mapRef.current;
+      const q = Z(center);
+      ziFaRef.current = null;
+      map.setCenter(new B.Point(q.lng, q.lat));
+    } else if (engine === 'tile') {
+      setJuJiaoCi((n) => n + 1); // DiTuCanvas 监听该计数强制重新居中
+    }
+  }
 
   function clearLayer(name) {
     if (!mapRef.current) return;
@@ -199,24 +241,23 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
       }
     }
 
-    // ② POI 散点：仅当 POI 数据或图层显隐变化时重建
+    // ② POI 散点：仅当 POI 数据或图层显隐变化时重建（含管理员自定义维度，未知类别回退圆形中性色）
     const poiSet = report?.poiSet;
+    const fenLeiJian = [...new Set([...Object.keys(COLOR), ...Object.keys(poiSet?.fenleiSet || {})])];
     const poiKey = simpleKey({
-      counts: Object.fromEntries(Object.keys(COLOR).map((f) => [f, (poiSet?.fenleiSet?.[f] || []).length])),
+      counts: Object.fromEntries(fenLeiJian.map((f) => [f, (poiSet?.fenleiSet?.[f] || []).length])),
       xianshi,
     });
     if (poiKey !== keysRef.current.poi) {
       keysRef.current.poi = poiKey;
       clearLayer('poi');
       const icons = {};
-      for (const f of Object.keys(COLOR)) {
-        if (xianshi && !xianshi[f]) continue;
+      for (const f of fenLeiJian) {
+        if (xianshi && xianshi[f] === false) continue;
         if (!icons[f]) {
           icons[f] = new B.Icon(
-            svgIcon(
-              `<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14'>${XING_ZHUANG[f](COLOR[f])}</svg>`
-            ),
-            new B.Size(14, 14)
+            svgIcon(sheShiBiaoJi(f, COLOR[f] || '#8a93a3')),
+            new B.Size(20, 20)
           );
         }
         const list = (poiSet?.fenleiSet?.[f] || []).slice(0, 90);
@@ -254,7 +295,8 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
             })
           );
         } else {
-          const r = Math.max(80, Math.sqrt((mq.areaM2 || 400000) / Math.PI));
+          // 盲区统一画圆：优先用后端给的半径，缺省再按面积折算
+          const r = Math.max(80, mq.banJingM || Math.sqrt((mq.areaM2 || 400000) / Math.PI));
           const q = Z(mq.zhongxin);
           addTo(
             'blind',
@@ -301,9 +343,56 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
       });
     }
 
+    // ④′ 盲区补建点：绿色 ✚ 图钉
+    const buJianKey = simpleKey((report?.mangquList || []).map((m) => m.buJianDian));
+    if (buJianKey !== keysRef.current.buJian) {
+      keysRef.current.buJian = buJianKey;
+      clearLayer('buJian');
+      for (const mq of report?.mangquList || []) {
+        if (!mq.buJianDian) continue;
+        const q = Z(mq.buJianDian);
+        addTo(
+          'buJian',
+          new B.Marker(new B.Point(q.lng, q.lat), {
+            icon: new B.Icon(
+              svgIcon(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><circle cx='11' cy='11' r='10' fill='#1a8f57' stroke='#ffffff' stroke-width='2'/><path d='M11 5.5v11M5.5 11h11' stroke='#ffffff' stroke-width='2.4' stroke-linecap='round'/></svg>`
+              ),
+              new B.Size(22, 22),
+              { anchor: new B.Size(11, 11) }
+            ),
+            title: `补建点 ${mq.id}`,
+          })
+        );
+      }
+    }
+
+    // ④″ 用户标记的盲区：清单点「标记」后画橙色旗标 + 轮廓加粗，突出该盲区
+    const gzKey = `${guanZhuId || ''}|${(report?.mangquList || []).length}`;
+    if (gzKey !== keysRef.current.guanZhu) {
+      keysRef.current.guanZhu = gzKey;
+      clearLayer('guanZhu');
+      const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+      if (mq && mq.zhongxin) {
+        const q = Z(mq.zhongxin);
+        addTo(
+          'guanZhu',
+          new B.Marker(new B.Point(q.lng, q.lat), {
+            title: `${mq.id} 盲区标记`,
+            icon: new B.Icon(
+              svgIcon(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#ff8c00' stroke='#ffffff' stroke-width='1.5'/><path d='M8.5 15.5h7v-6h-7z' fill='#ffffff'/><path d='M15.5 10.5l4 1.8-4 1.8z' fill='#ffffff'/></svg>`
+              ),
+              new B.Size(24, 30),
+              { anchor: new B.Size(12, 30) }
+            ),
+          })
+        );
+      }
+    }
+
     // ⑤ 步行路线：点击设施后沿真实路网的虚线折线（官方 Polyline 写法，见技能文档 references/polyline.md）
-    const buXingKey = buXing ? `${buXing.uid}|${buXing.zhuangTai}|${(buXing.polyline || []).length}` : '';
-    if (buXingKey !== keysRef.current.buXing) {
+    const buXingKey = buXing ? `${buXing.uid}|${buXing.zhuangTai}|${(buXing.polyline || []).length}` : '';    if (buXingKey !== keysRef.current.buXing) {
       keysRef.current.buXing = buXingKey;
       clearLayer('buXing');
       if (buXing && buXing.zhuangTai === 'ok' && buXing.polyline && buXing.polyline.length > 1) {
@@ -407,8 +496,20 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
           onPoiDianJi={onPoiDianJi}
           buXing={buXing}
           xianshi={xianshi}
+          juJiao={juJiaoCi}
         />
       )}
+      <button
+        type="button"
+        className="map-huiWei"
+        onClick={huiDaoDingWei}
+        title="回到体检中心"
+        aria-label="回到体检中心"
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="7" /><line x1="12" y1="1" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="1" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="23" y2="12" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
       {engine === 'loading' && (
         <div className="map-loading">
           <span>百度地图加载中…</span>

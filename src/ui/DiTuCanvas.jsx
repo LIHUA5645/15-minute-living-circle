@@ -93,7 +93,7 @@ function worldToLngLat(x, y, z) {
   };
 }
 
-export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi }) {
+export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi, juJiao = 0, guanZhuId }) {
   const wrapRef = useRef(null);
   const cvsRef = useRef(null);
   const stRef = useRef({ z: 15, cx: 0, cy: 0, yuan: 0 });
@@ -198,24 +198,26 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
       }
     }
 
-    // ③ 设施散点
+    // ③ 设施散点（内置六类 + 管理员自定义维度，未知类别回退圆形中性色）
     const poiSet = report?.poiSet;
     if (poiSet) {
-      for (const f of Object.keys(COLOR)) {
-        if (xianshi && !xianshi[f]) continue;
+      const fenLeiJian = [...new Set([...Object.keys(COLOR), ...Object.keys(poiSet.fenleiSet || {})])];
+      for (const f of fenLeiJian) {
+        if (xianshi && xianshi[f] === false) continue;
         for (const p of (poiSet.fenleiSet?.[f] || []).slice(0, 120)) {
           const { x, y } = toXY(p);
-          huaSheShiDian(ctx, x, y, f, COLOR[f]);
+          huaSheShiDian(ctx, x, y, f, COLOR[f] || '#8a93a3');
         }
       }
     }
 
-    // ④ 服务盲区
+    // ④ 服务盲区（被用户标记的盲区：橙色加粗描边突出）
     for (const mq of report?.mangquList || []) {
+      const beiBiaoJi = mq.id === guanZhuId;
       ctx.globalAlpha = 0.32;
       ctx.fillStyle = '#ff6b6b';
-      ctx.strokeStyle = '#d13438';
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = beiBiaoJi ? '#ff8c00' : '#d13438';
+      ctx.lineWidth = beiBiaoJi ? 3.2 : 1.6;
       if (mq.polygon && mq.polygon.length > 2) {
         ctx.beginPath();
         mq.polygon.forEach((pt, i) => {
@@ -227,13 +229,38 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
         ctx.fill();
         ctx.stroke();
       } else if (mq.zhongxin) {
+        // 盲区画成真实尺度的圆：米 → 像素按 Web Mercator 换算（与瓦片投影一致）
         const { x, y } = toXY(mq.zhongxin);
+        const mi = mq.banJingM || Math.sqrt((mq.areaM2 || 400000) / Math.PI);
+        const miMeiPx = (156543.03392 * Math.cos((mq.zhongxin.lat * Math.PI) / 180)) / 2 ** st.z;
         ctx.beginPath();
-        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.arc(x, y, Math.max(6, mi / miMeiPx), 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
+    }
+
+    // ③′ 盲区补建点：绿色 ✚ 图钉（medoid 候选点）
+    for (const mq of report?.mangquList || []) {
+      if (!mq.buJianDian) continue;
+      const b = toXY(mq.buJianDian);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a8f57';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(b.x - 4.5, b.y);
+      ctx.lineTo(b.x + 4.5, b.y);
+      ctx.moveTo(b.x, b.y - 4.5);
+      ctx.lineTo(b.x, b.y + 4.5);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.stroke();
     }
 
     // ④′ 步行路线（点击设施后沿真实路网的虚线，画在图钉之下）
@@ -343,9 +370,11 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
 
   // 中心点变化 → 视图居中
   // 但若这次中心点就是「用户刚点地图产生的」，则不再居中，否则每点一次画面整体平移，观感就是乱跳
+  // juJiao 计数变化时（「回到体检中心」按钮）无条件居中，且此时中心点与当前一致
   useEffect(() => {
     const z = ziFaRef.current;
     const ziFa =
+      juJiao === 0 &&
       z && Math.abs(z.lng - center.lng) < 1e-9 && Math.abs(z.lat - center.lat) < 1e-9;
     if (!ziFa) {
       const st = stRef.current;
@@ -354,11 +383,24 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
       st.cy = w.y;
     }
     jianGeChongHua();
-  }, [center]);
+  }, [center, juJiao]);
 
   useEffect(() => {
     jianGeChongHua();
   }, [draw]);
+
+  // 用户在清单里标记某盲区 → 瓦片视图飞到该盲区中心
+  useEffect(() => {
+    if (!guanZhuId) return undefined;
+    const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+    if (mq && mq.zhongxin) {
+      const st = stRef.current;
+      const w = lngLatToWorld(mq.zhongxin.lng, mq.zhongxin.lat, st.z);
+      st.cx = w.x;
+      st.cy = w.y;
+      jianGeChongHua();
+    }
+  }, [guanZhuId]);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => jianGeChongHua());

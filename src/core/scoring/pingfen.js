@@ -2,7 +2,7 @@
 // 完成时间：2026，09，18
 // 六维评分模型 + 等级 + 自然语言建议
 import { liangDianJuLi } from '../geo/jichu.js';
-import { FENLEI_QUANZHONG, BIAOZHUN, MOREN_PEI_ZHI } from '../types.js';
+import { FENLEI_QUANZHONG, BIAOZHUN, MOREN_PEI_ZHI, FENLEI_MING } from '../types.js';
 
 const V_BUXING = 80; // 米/分钟
 const K_RAOLU = 1.25; // 路网绕行系数
@@ -19,11 +19,16 @@ export function pingFen(zhongXin, fenleiSet, dengShiQuan, peiZhi) {
 
   const fenleiPingfen = [];
   let total = 0;
-  for (const f of Object.keys(FENLEI_QUANZHONG)) {
+  // 参评维度 = 内置六类 + 管理员自定义维度（各自携带基准数/权重/名称）
+  const canPing = [
+    ...Object.keys(FENLEI_QUANZHONG).map((f) => ({ f, biaoZhunZhi: biaoZhun[f] || 3, quanZhongZhi: quanZhong[f] || 0, ming: (cfg.mingGai && cfg.mingGai[f]) || FENLEI_MING[f] })),
+    ...(cfg.ziDing || []).map((z) => ({ f: z.f, biaoZhunZhi: z.biaoZhun || 1, quanZhongZhi: z.quanZhong || 0, ming: z.ming })),
+  ];
+  for (const { f, biaoZhunZhi, quanZhongZhi, ming } of canPing) {
     const list = (fenleiSet[f] || []).filter((p) => liangDianJuLi(zhongXin, p) <= r0);
     const shuliang = list.length;
     // C 覆盖率
-    const C = Math.min(1, shuliang / (biaoZhun[f] || 3));
+    const C = Math.min(1, shuliang / (biaoZhunZhi || 3));
     // A 可达性：最近设施步行时间
     let nearestSec = Infinity;
     for (const p of list) {
@@ -46,8 +51,8 @@ export function pingFen(zhongXin, fenleiSet, dengShiQuan, peiZhi) {
     const std = Math.sqrt(quad.reduce((s, v) => s + (v - mean) ** 2, 0) / 4);
     const B = mean === 0 ? 0 : Math.max(0, 1 - std / mean);
     const score = Math.round(100 * (0.4 * C + 0.3 * A + 0.2 * D + 0.1 * B));
-    fenleiPingfen.push({ fenlei: f, score, C, A, D, B, shuliang });
-    total += (quanZhong[f] || 0) * score;
+    fenleiPingfen.push({ fenlei: f, ming, score, C, A, D, B, shuliang });
+    total += (quanZhongZhi || 0) * score;
   }
   total = Math.round(total);
   let dengji = 'D';
@@ -58,7 +63,7 @@ export function pingFen(zhongXin, fenleiSet, dengShiQuan, peiZhi) {
   return { fenleiPingfen, total, dengji };
 }
 
-// 短板建议生成
+// 短板建议生成（自定义维度用其名称）
 export function shengChengJianYi(fenleiPingfen) {
   const sorted = [...fenleiPingfen].sort((a, b) => a.score - b.score);
   const mingzi = {
@@ -73,6 +78,6 @@ export function shengChengJianYi(fenleiPingfen) {
     .slice(0, 2)
     .map(
       (x) =>
-        `${mingzi[x.fenlei]}维度得分偏低(${x.score})，建议补建${mingzi[x.fenlei]}类设施、提升圈内覆盖与可达性`
+        `${x.ming || mingzi[x.fenlei]}维度得分偏低(${x.score})，建议补建${x.ming || mingzi[x.fenlei]}类设施、提升圈内覆盖与可达性`
     );
 }

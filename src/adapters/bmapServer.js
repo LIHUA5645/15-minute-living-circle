@@ -11,7 +11,7 @@ function duHuanJing(ming) {
   return process.env[ming] || '';
 }
 
-async function baiDuGet(api, path, params) {
+async function baiDuGet(api, path, params, chaoShiMs = 15000) {
   // 支持相对 api（浏览器经 Vite/nginx 代理调用，AK 由服务端注入，前端不持有密钥）
   const qs = new URLSearchParams();
   for (const k of Object.keys(params)) {
@@ -23,7 +23,18 @@ async function baiDuGet(api, path, params) {
   // 响应体是 <PlaceSearchResponse>…，resp.json() 会直接抛解析错，白白浪费一次请求
   if (!qs.has('output')) qs.set('output', 'json');
   const tou = params._referer ? { Referer: params._referer } : undefined;
-  const resp = await fetch(`${api}${path}?${qs.toString()}`, { headers: tou });
+  // 必须带超时：百度接口被限流/网络半死时，请求会一直挂着不返回也不报错，
+  // 上层限流池会跟着一起卡死（曾出现过整个体检停在 0% 永不结束）。超时后走重试与降级。
+  const kong = new AbortController();
+  const jiShi = setTimeout(() => kong.abort(), chaoShiMs);
+  let resp;
+  try {
+    resp = await fetch(`${api}${path}?${qs.toString()}`, { headers: tou, signal: kong.signal });
+  } catch (e) {
+    throw new Error(`baidu 请求失败（${path}）：${(e && e.message) || '网络异常'}`, { cause: e });
+  } finally {
+    clearTimeout(jiShi);
+  }
   const wenBen = await resp.text();
   let json;
   try {
@@ -50,6 +61,10 @@ export function chuangJianBmapServer(cfg = {}) {
   const referer = cfg.referer || 'http://localhost';
 
   return {
+    // 标记：本适配器的 searchPoi 一次只认一个关键词（百度地点检索接口本身如此），
+    // 调用方据此把「分类 × 关键词」展开并发提交，否则只能串行等待，30 多个关键词要跑两三分钟
+    danGuanJianCi: true,
+
     async walkingRoute(origin, dest) {
       const json = await baiDuGet(api, '/direction/v2/walking', {
         ak,
@@ -67,24 +82,44 @@ export function chuangJianBmapServer(cfg = {}) {
     },
 
     async routeMatrix(origins, dests) {
-      // 批量算路 RouteMatrix v2：扁平数组按行优先返回，duration/distance 为 {text, value} 对象
-      const json = await baiDuGet(api, '/routematrix/v2/walking', {
-        ak,
-        origins: origins.map((o) => `${o.lat},${o.lng}`).join('|'),
-        destinations: dests.map((d) => `${d.lat},${d.lng}`).join('|'),
-        _referer: referer,
-      });
-      const ge = json.result || [];
-      const lie = Math.max(1, dests.length);
-      return origins.map((_, i) =>
-        dests.map((_, j) => {
-          const e = ge[i * lie + j] || {};
-          return {
-            durationSec: e.duration?.value ?? Infinity,
-            distanceM: e.distance?.value ?? Infinity,
-          };
-        })
-      );
+      // 批量算路 RouteMatrix v2：扁平数组按行优先返回，duration/distance 为 {text, value} 对象。
+      // 单次请求的起终点数量与 URL 长度都有上限：把上百个起终点拼进一个 URL 会导致请求行过长，
+      // 经 Vite 代理转发时直接被拒（实测 HTTP 431 Request Header Fields Too Large，整轮体检白跑）。
+      // 这里固定按 10×10 拆批，再合并回完整矩阵；批间用小并发，避免退化成串行等待。
+      const OP = 10;
+      const DP = 10;
+      const jie = origins.map(() => dests.map(() => ({ durationSec: Infinity, distanceM: Infinity })));
+      const pi = [];
+      for (let i = 0; i < origins.length; i += OP) {
+        for (let j = 0; j < dests.length; j += DP) {
+          pi.push({ i, j, o: origins.slice(i, i + OP), d: dests.slice(j, j + DP) });
+        }
+      }
+      let zhi = 0;
+      const gongZuo = async () => {
+        while (zhi < pi.length) {
+          const p = pi[zhi++];
+          const json = await baiDuGet(api, '/routematrix/v2/walking', {
+            ak,
+            origins: p.o.map((q) => `${q.lat},${q.lng}`).join('|'),
+            destinations: p.d.map((q) => `${q.lat},${q.lng}`).join('|'),
+            _referer: referer,
+          });
+          const ge = json.result || [];
+          const lie = Math.max(1, p.d.length);
+          p.o.forEach((_, a) =>
+            p.d.forEach((q, b) => {
+              const e = ge[a * lie + b] || {};
+              jie[p.i + a][p.j + b] = {
+                durationSec: e.duration?.value ?? Infinity,
+                distanceM: e.distance?.value ?? Infinity,
+              };
+            })
+          );
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(6, Math.max(1, pi.length)) }, gongZuo));
+      return jie;
     },
 
     async searchPoi(center, keywords, radiusMi) {
@@ -99,7 +134,26 @@ export function chuangJianBmapServer(cfg = {}) {
           page_size: 20,
           _referer: referer,
         });
-        for (const p of json.results || []) {
+        let results = json.results || [];
+        // 第一页拉满 20 条说明该关键词在圈内还有更多结果，追加第二页（共 40 条），提高设施覆盖密度
+        if (results.length >= 20) {
+          try {
+            const j2 = await baiDuGet(api, '/place/v2/search', {
+              ak,
+              query: kw,
+              location: `${center.lat},${center.lng}`,
+              radius: radiusMi,
+              scope: 2,
+              page_size: 20,
+              page_num: 1,
+              _referer: referer,
+            });
+            results = results.concat(j2.results || []);
+          } catch {
+            /* 第二页失败不影响第一页结果 */
+          }
+        }
+        for (const p of results) {
           out.push({
             uid: p.uid,
             name: p.name,
