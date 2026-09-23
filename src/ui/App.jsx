@@ -349,6 +349,11 @@ export function App() {
     let provider;
     let daiChang = '';
     try {
+      // 生产静态部署（Pages）走浏览器端检索：体检前先等百度地图 JS SDK 就绪，
+      // 否则自动体检（定位回调里触发）会早于 BMapGL 加载，适配器拿不到 SDK 而白白降级 OSM
+      if (mode === 'bmap' && !import.meta.env.DEV && !window.BMapGL) {
+        await loadBmap();
+      }
       if (mode === 'server' && isElectron) provider = chuangJianIpc();
       else if (mode === 'osm') provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
       else if (mode === 'bmap') {
