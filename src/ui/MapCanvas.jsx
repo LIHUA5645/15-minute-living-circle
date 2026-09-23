@@ -74,10 +74,14 @@ export const MapCanvas = React.memo(function MapCanvas({
   xianshi,
   ditu = 'baidu',
   onDitu,
-  guanZhuId
+  guanZhuId,
+  daoHang,
+  gongJu,
+  gongJuSheZhi
 }) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
+  const resizeRoRef = useRef(null); // 地图容器尺寸监听（销毁时须断开）
   const layersRef = useRef({
     iso: [],
     poi: [],
@@ -147,13 +151,19 @@ export const MapCanvas = React.memo(function MapCanvas({
           // 百度返回 BD-09，转回内部 WGS-84 后作为「待确认点」，等用户点气泡里的确认按钮再生效
           setDaiXuan(bd09ZhuanWgs84(ll.lng, ll.lat));
         });
-        const ro = new ResizeObserver(() => map.resize && map.resize());
+        const ro = new ResizeObserver(() => {
+          // 只对仍挂载在 mapRef 上的当前实例 resize，防止销毁后误触发（曾致 GL 画布被搞崩白屏）
+          if (mapRef.current && mapRef.current.map === map && map.resize) map.resize();
+        });
         ro.observe(mapDivRef.current);
+        resizeRoRef.current = ro;
         setEngine('baidu');
         // 底图瓦片超时未加载完成（AK 被风控时百度瓦片会一直不来）→ 提示排查，不降级非百度底图
         // 首屏瓦片受网络影响常超过 3 秒，这里给 12 秒，避免正常加载被误判为失败
         readyTimer = setTimeout(() => {
           if (cancelled) return;
+          // 画布已经出图（GL 正常渲染）就不再误报「加载失败」，慢网下瓦片晚到属正常现象
+          if (mapDivRef.current && mapDivRef.current.querySelector('canvas')) return;
           setEngine('error');
         }, 12000);
         // 瓦片迟到时恢复底图状态，自动撤掉误报提示
@@ -188,6 +198,10 @@ export const MapCanvas = React.memo(function MapCanvas({
     return () => {
       cancelled = true;
       clearTimeout(readyTimer);
+      if (resizeRoRef.current) {
+        resizeRoRef.current.disconnect();
+        resizeRoRef.current = null;
+      }
       if (mapRef.current && mapRef.current.map.destroy) mapRef.current.map.destroy();
       mapRef.current = null;
     };
@@ -224,6 +238,156 @@ export const MapCanvas = React.memo(function MapCanvas({
       setJuJiaoCi(n => n + 1); // DiTuCanvas 监听该计数强制重新居中
     }
   }
+
+  // —— 地图工具条：路况图层 / 卫星图 / 3D 倾斜（百度地图同款）——
+  // 状态由父组件受控（AI 导航卡与地图工具条共用同一套开关），此处只负责把状态落到地图上
+  const luKuangKai = !!(gongJu && gongJu.luKuang);
+  const weiXingKai = !!(gongJu && gongJu.weiXing);
+  const qingXieKai = !!(gongJu && gongJu.qingXie);
+  // 路况图层挂/摘：GL 版官方原生 setTrafficOn / setTrafficOff
+  useEffect(() => {
+    const mb = mapRef.current;
+    if (engine !== 'baidu' || !mb) return;
+    const { map } = mb;
+    try {
+      if (luKuangKai) {
+        if (map.setTrafficOn) map.setTrafficOn();
+      } else if (map.setTrafficOff) {
+        map.setTrafficOff();
+      }
+    } catch {
+      /* 当前 GL 版本不支持路况图层时保持原状 */
+    }
+  }, [luKuangKai, engine]);
+  // 卫星图 / 普通地图切换
+  useEffect(() => {
+    const mb = mapRef.current;
+    if (engine !== 'baidu' || !mb) return;
+    const { map } = mb;
+    try {
+      const lei = weiXingKai
+        ? window.BMAP_SATELLITE_MAP || (window.BMapGL && window.BMapGL.BMAP_SATELLITE_MAP)
+        : window.BMAP_NORMAL_MAP || (window.BMapGL && window.BMapGL.BMAP_NORMAL_MAP);
+      if (lei) map.setMapType(lei);
+    } catch {
+      /* 当前 GL 版本不支持卫星图层时保持原状 */
+    }
+  }, [weiXingKai, engine]);
+  // 3D 倾斜 / 回正
+  useEffect(() => {
+    const mb = mapRef.current;
+    if (engine !== 'baidu' || !mb) return;
+    const { map } = mb;
+    try {
+      map.setTilt(qingXieKai ? 52 : 0);
+    } catch {
+      /* 不支持倾斜时保持原状 */
+    }
+  }, [qingXieKai, engine]);
+
+  // —— 模拟导航带路：小蓝点沿步行路线前进，视角像手机导航一样跟着走 ——
+  const daoHangBiaoRef = useRef(null); // 导航小蓝点 Marker
+  const daoHangLuRef = useRef([]); // 导航中的路线高亮（白边 + 蓝色实线）
+  const daoHangKaiRef = useRef(false); // 是否已做过开局路线总览
+  const daoHangYiRef = useRef(0); // panTo 节流时间戳（60fps 更新位置，视角每 300ms 平滑跟一次）
+  // 摘掉导航期间的所有专属覆盖物
+  function qingDaoHangFuGai() {
+    if (!mapRef.current) return;
+    const { map } = mapRef.current;
+    if (daoHangBiaoRef.current) {
+      try {
+        map.removeOverlay(daoHangBiaoRef.current);
+      } catch {
+        /* 旧地图实例已销毁时忽略 */
+      }
+      daoHangBiaoRef.current = null;
+    }
+    daoHangLuRef.current.forEach(o => {
+      try {
+        map.removeOverlay(o);
+      } catch {
+        /* 忽略 */
+      }
+    });
+    daoHangLuRef.current = [];
+  }
+  useEffect(() => {
+    const mb = mapRef.current;
+    const zaiKai = !!(daoHang && daoHang.kai && daoHang.weiZhi && engine === 'baidu');
+    if (!mb || !zaiKai) {
+      // 退出导航 / 引擎切换：摘掉小蓝点与高亮路线，回正视角
+      daoHangKaiRef.current = false;
+      qingDaoHangFuGai();
+      if (mb && daoHangLuRef.current.length === 0) {
+        try {
+          mb.map.setTilt(0);
+        } catch {
+          /* 个别版本无 setTilt 时忽略 */
+        }
+      }
+      return;
+    }
+    const { map, B } = mb;
+    // 开局：路线高亮（白边蓝实线）+ 3D 倾斜 + 总览整条路线，随后跟随视角
+    if (!daoHangKaiRef.current) {
+      daoHangKaiRef.current = true;
+      if (buXing && buXing.polyline && buXing.polyline.length > 1) {
+        const dian = buXing.polyline.map(p => {
+          const q = Z(p);
+          return new B.Point(q.lng, q.lat);
+        });
+        try {
+          const bai = new B.Polyline(dian, {
+            strokeColor: '#ffffff',
+            strokeWeight: 10,
+            strokeOpacity: 0.9
+          });
+          const lan = new B.Polyline(dian, {
+            strokeColor: '#2f86f7',
+            strokeWeight: 7,
+            strokeOpacity: 0.95
+          });
+          map.addOverlay(bai);
+          map.addOverlay(lan);
+          daoHangLuRef.current = [bai, lan];
+        } catch {
+          /* 高亮失败不影响导航 */
+        }
+        try {
+          map.setViewport(dian);
+        } catch {
+          /* setViewport 个别版本签名差异时忽略，不影响跟随 */
+        }
+        try {
+          map.setTilt(52);
+        } catch {
+          /* 个别版本无 setTilt 时忽略 */
+        }
+        setTimeout(() => {
+          if (daoHangKaiRef.current) map.setZoom(Math.max(map.getZoom(), 17));
+        }, 900);
+      }
+    }
+    // 小蓝点：蓝色圆 + 白圈白心（首帧创建，之后只挪位置）
+    if (!daoHangBiaoRef.current) {
+      const tu = svgIcon(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'>" +
+          "<circle cx='15' cy='15' r='11.5' fill='rgba(47,134,247,0.25)'/>" +
+          "<circle cx='15' cy='15' r='7.5' fill='#2f86f7' stroke='#ffffff' stroke-width='2.4'/>" +
+          '<circle cx="15" cy="15" r="2.6" fill="#ffffff"/></svg>'
+      );
+      const biao = new B.Icon(tu, new B.Size(30, 30), { anchor: new B.Size(15, 15) });
+      daoHangBiaoRef.current = new B.Marker(new B.Point(0, 0), { icon: biao, zIndex: 999 });
+      map.addOverlay(daoHangBiaoRef.current);
+    }
+    const q = Z(daoHang.weiZhi);
+    daoHangBiaoRef.current.setPosition(new B.Point(q.lng, q.lat));
+    const xianZai = Date.now();
+    if (xianZai - daoHangYiRef.current > 300) {
+      daoHangYiRef.current = xianZai;
+      map.panTo(new B.Point(q.lng, q.lat));
+    }
+  }, [daoHang, buXing, engine]);
 
   function clearLayer(name) {
     if (!mapRef.current) return;
@@ -526,6 +690,35 @@ export const MapCanvas = React.memo(function MapCanvas({
     <div className="map-view">
       {/* 百度底图容器必须常驻：初始化时需要它已经有尺寸，否则会一直卡在加载中 */}
       {engine !== 'tile' && <div ref={mapDivRef} className="map-inner" />}
+      {/* 地图工具条：百度地图同款（路况 / 卫星 / 3D） */}
+      {engine === 'baidu' && (
+        <div className="map-gongJu">
+          <button
+            type="button"
+            className={luKuangKai ? 'on' : ''}
+            onClick={() => gongJuSheZhi && gongJuSheZhi.luKuang(!luKuangKai)}
+            title="实时路况图层"
+          >
+            🚦 路况
+          </button>
+          <button
+            type="button"
+            className={weiXingKai ? 'on' : ''}
+            onClick={() => gongJuSheZhi && gongJuSheZhi.weiXing(!weiXingKai)}
+            title="卫星影像 / 普通地图"
+          >
+            🛰 卫星
+          </button>
+          <button
+            type="button"
+            className={qingXieKai ? 'on' : ''}
+            onClick={() => gongJuSheZhi && gongJuSheZhi.qingXie(!qingXieKai)}
+            title="3D 倾斜视角"
+          >
+            🏔 3D
+          </button>
+        </div>
+      )}
       {engine === 'tile' && (
         <DiTuCanvas
           report={report}

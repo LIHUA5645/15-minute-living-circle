@@ -15,6 +15,7 @@ import { loadPeiZhi, saveReport } from './peiZhi.js';
 import { loadBmap } from './loadBmap.js';
 import { shengChengZhenDuan } from '../core/zhenduan.js';
 import { aiXuanDian, shiDaoHangYiTu } from '../core/aiDaohang.js';
+import { guiHuaLuXian } from './luxian.js';
 import { aiLiaoTian } from '../core/aiLiaoTian.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
@@ -38,8 +39,25 @@ import {
   NavigationOff
 } from 'lucide';
 
+// 悬浮面板层级计数器（各面板共享）：点击谁谁置顶，最高只到 29（顶栏 z30 之下），满了就整体重排
+let mianBanCeng = 20;
+function zhiDingMianBan(ka) {
+  mianBanCeng += 1;
+  if (mianBanCeng > 29) {
+    // 快够到顶栏层级（z30）了：把所有悬浮面板按当前 z 从低到高重排回 21 起，计数器随之回落
+    const qun = Array.from(document.querySelectorAll('.app .float-card'));
+    qun.sort((a, b) => (parseInt(a.style.zIndex, 10) || 20) - (parseInt(b.style.zIndex, 10) || 20));
+    qun.forEach((m, i) => {
+      m.style.zIndex = String(21 + i);
+    });
+    mianBanCeng = 20 + qun.length;
+  }
+  ka.style.zIndex = String(mianBanCeng);
+}
+
 // 悬浮面板自由拖动：按住面板标题栏整块拖动。首次拖动时把 CSS 的 left/bottom/right/top
-// 定位统一换算为内联 left/top（不影响显隐动画用的 transform），拖动范围限制在地图容器内，
+// 定位统一换算为内联 left/top（不影响显隐动画用的 transform），拖动范围严格限制在地图区域内
+// 且永不越过蓝色顶栏底沿；点击面板任意位置即置顶（点击谁谁在最上层，互不常驻最上层）。
 // 标题栏上的按钮 / 输入框按下不触发拖动。返回 ref 挂到对应面板上。
 function yongMianBanTuoDong() {
   const ref = useRef(null);
@@ -50,47 +68,153 @@ function yongMianBanTuoDong() {
     biao.style.cursor = 'grab';
     biao.style.touchAction = 'none';
     let qi = null;
+    // —— 碰撞互动（物理感）：撞到别的面板 → 对方果冻晃一下就停；晃动幅度与快慢由拖动速度决定，
+    //    持续快速摩擦才会连着晃（每次晃完才允许下一次），慢速蹭过只有轻微一下 ——
+    const pengZhuangLieBiao = new Set();
+    const shangCiYao = new WeakMap(); // 每个面板上次晃动结束时间，防连触发
+    let suDu = 0; // 平滑后的拖动速度（px/ms），决定水波强度与时长
+    let shangYiDian = null;
+    // 波浪线碰撞（纯视觉）：面板布局与文字完全固定不动——水波只体现在
+    // 「涟漪圆环从碰撞点扩散」与「水面折射滤镜（内容看起来在水下扭动，实际位置不变）」；
+    // 强度与时长仍由拖动速度决定。
+    function yaoHuang(m) {
+      const jv = ka.getBoundingClientRect();
+      const r = m.getBoundingClientRect();
+      // 波源：被撞面板上离拖动面板中心最近的点
+      const ac = { x: jv.left + jv.width / 2, y: jv.top + jv.height / 2 };
+      const dian = {
+        x: Math.min(Math.max(ac.x, r.left), r.right),
+        y: Math.min(Math.max(ac.y, r.top), r.bottom)
+      };
+      const shiChang = Math.round(Math.max(900, Math.min(1400, 1300 - suDu * 50)));
+      shangCiYao.set(m, Date.now() + shiChang);
+      // —— 粒子面：涟漪圆环从碰撞点一圈圈扩散（限在面板内，pointer-events 全关） ——
+      const tao = document.createElement('span');
+      tao.className = 'shuiBo-Tao';
+      m.appendChild(tao);
+      for (let i = 0; i < 3; i++) {
+        const huan = document.createElement('i');
+        huan.className = 'shuiHuan';
+        huan.style.left = `${(dian.x - r.left).toFixed(1)}px`;
+        huan.style.top = `${(dian.y - r.top).toFixed(1)}px`;
+        tao.appendChild(huan);
+        const dong3 = huan.animate(
+          [
+            { transform: 'translate(-50%, -50%) scale(0.12)', opacity: 0.85 },
+            {
+              transform: `translate(-50%, -50%) scale(${(3.2 + i * 1.6).toFixed(2)})`,
+              opacity: 0
+            }
+          ],
+          {
+            duration: 640 + i * 170,
+            delay: i * 110,
+            easing: 'cubic-bezier(.2,.65,.35,1)',
+            fill: 'forwards'
+          }
+        );
+        dong3.onfinish = () => huan.remove();
+      }
+      setTimeout(() => tao.remove(), 1200);
+    }
+    function gengXinPengZhuang() {
+      const jv = ka.getBoundingClientRect();
+      const xianZai = Date.now();
+      document.querySelectorAll('.app .float-card').forEach(m => {
+        if (m === ka || m.classList.contains('hidden')) return;
+        const r = m.getBoundingClientRect();
+        const xiangJiao =
+          jv.left < r.right - 6 &&
+          jv.right > r.left + 6 &&
+          jv.top < r.bottom - 6 &&
+          jv.bottom > r.top + 6;
+        if (xiangJiao && !pengZhuangLieBiao.has(m)) {
+          // 刚撞上：必晃一下
+          pengZhuangLieBiao.add(m);
+          m.classList.add('pengZhuang');
+          yaoHuang(m);
+        } else if (xiangJiao && suDu > 0.55 && (shangCiYao.get(m) || 0) <= xianZai) {
+          // 撞着不放还快速摩擦：晃完一阵再补一下（物理感：有速度才有新晃动）
+          yaoHuang(m);
+        } else if (!xiangJiao && pengZhuangLieBiao.has(m)) {
+          pengZhuangLieBiao.delete(m);
+          m.classList.remove('pengZhuang');
+        }
+      });
+    }
+    function qingChuPengZhuang() {
+      pengZhuangLieBiao.forEach(m => m.classList.remove('pengZhuang'));
+      pengZhuangLieBiao.clear();
+      suDu = 0;
+      shangYiDian = null;
+    }
+    // 碰撞只做视觉反馈（被撞面板果冻波纹晃动），不改变任何面板的位置
+    // 点击面板任意位置 → 置顶（用户习惯：点谁谁在最上层）
+    const dianJiZhiDing = () => zhiDingMianBan(ka);
     const xia = e => {
       if (e.button !== 0 || e.target.closest('button, input, select, textarea, a')) return;
-      const fu = ka.offsetParent;
+      // 边界一律用地图区域（.mapwrap）算，且上界不超过蓝色顶栏底沿——绝不拖进顶栏底下
+      const fu = ka.closest('.mapwrap') || ka.parentElement;
+      const op = ka.offsetParent;
       if (!fu) return;
+      const fr = fu.getBoundingClientRect();
+      const or = op ? op.getBoundingClientRect() : { left: 0, top: 0 };
+      const jv = ka.getBoundingClientRect();
+      const tou = document.querySelector('.header');
+      const dingBuXia = tou ? tou.getBoundingClientRect().bottom - or.top : 0;
       qi = {
         x: e.clientX,
         y: e.clientY,
-        l: ka.offsetLeft,
-        t: ka.offsetTop,
-        w: ka.offsetWidth,
-        fw: fu.clientWidth,
-        fh: fu.clientHeight
+        // 卡片当前位置换算成相对 offsetParent 的 left/top（内联样式即按此坐标系写入）
+        l: jv.left - or.left,
+        t: jv.top - or.top,
+        w: jv.width,
+        // 地图区域在 offsetParent 坐标系里的位置与大小；上界取「地图区域顶」与「顶栏底沿」的较大者
+        dx: fr.left - or.left,
+        dy: Math.max(fr.top - or.top, dingBuXia),
+        fw: fr.width,
+        fh: fr.height
       };
       biao.setPointerCapture(e.pointerId);
       biao.style.cursor = 'grabbing';
-      ka.style.zIndex = 40;
+      ka.classList.add('tuoDongZhong');
       e.preventDefault();
     };
     const dong = e => {
       if (!qi) return;
-      const xl = Math.min(Math.max(qi.l + e.clientX - qi.x, -qi.w + 90), qi.fw - 90);
-      const yt = Math.min(Math.max(qi.t + e.clientY - qi.y, 0), qi.fh - 52);
+      // 实时拖动速度（px/ms，指数平滑），决定水波强度与时长
+      if (shangYiDian) {
+        const ge = Math.max(1, e.timeStamp - shangYiDian.t);
+        const benCi = Math.hypot(e.clientX - shangYiDian.x, e.clientY - shangYiDian.y) / ge;
+        suDu = suDu * 0.65 + benCi * 0.35;
+      }
+      shangYiDian = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+      const xl = Math.min(Math.max(qi.l + e.clientX - qi.x, qi.dx - qi.w + 90), qi.dx + qi.fw - 90);
+      const yt = Math.min(Math.max(qi.t + e.clientY - qi.y, qi.dy), qi.dy + qi.fh - 52);
       ka.style.left = `${xl}px`;
       ka.style.top = `${yt}px`;
       ka.style.right = 'auto';
       ka.style.bottom = 'auto';
+      gengXinPengZhuang();
     };
     const song = () => {
       qi = null;
       biao.style.cursor = 'grab';
-      ka.style.zIndex = '';
+      ka.classList.remove('tuoDongZhong');
+      qingChuPengZhuang();
     };
+    ka.addEventListener('pointerdown', dianJiZhiDing);
     biao.addEventListener('pointerdown', xia);
     biao.addEventListener('pointermove', dong);
     biao.addEventListener('pointerup', song);
     biao.addEventListener('pointercancel', song);
     return () => {
+      ka.removeEventListener('pointerdown', dianJiZhiDing);
       biao.removeEventListener('pointerdown', xia);
       biao.removeEventListener('pointermove', dong);
       biao.removeEventListener('pointerup', song);
       biao.removeEventListener('pointercancel', song);
+      qingChuPengZhuang();
     };
   }, []);
   return ref;
@@ -630,10 +754,11 @@ export function App() {
   async function dianJiSheShi(p, qiangZhi = false) {
     const prov = providerRef.current;
     if (!prov || runningRef.current) return;
+    if (!qiangZhi) setChuXing('walk'); // 手动点设施默认回到步行
     setBuXingLuXian(prev =>
       !qiangZhi && prev && prev.uid && prev.uid === p.uid
         ? null
-        : { uid: p.uid, dian: p, zhuangTai: 'loading' }
+        : { uid: p.uid, dian: p, zhuangTai: 'loading', chuXing: 'walk' }
     );
     try {
       const r = await prov.walkingRoute(center, p);
@@ -642,6 +767,7 @@ export function App() {
           ? {
               ...prev,
               zhuangTai: 'ok',
+              chuXing: 'walk',
               polyline: r.polyline,
               distanceM: r.distanceM,
               durationSec: r.durationSec
@@ -652,6 +778,220 @@ export function App() {
       setBuXingLuXian(prev => (prev && prev.uid === p.uid ? { ...prev, zhuangTai: 'fail' } : prev));
     }
   }
+
+  // —— 模拟导航带路：百度地图式全屏导航页，小蓝点沿步行路线前进、视角跟随、转向提示 ——
+  const [daoHangTai, setDaoHangTai] = useState(null); // {kai, weiZhi, shengYuM, quanChengM, jinDuM, buWen, buJiao}
+  const [daoHangPing, setDaoHangPing] = useState(false); // 全屏导航页显隐
+  const daoHangDongRef = useRef(null);
+  // 地图工具状态（AI 导航卡与地图工具条共用，MapCanvas 负责落到地图上）
+  const [diTuLuKuang, setDiTuLuKuang] = useState(false);
+  const [diTuWeiXing, setDiTuWeiXing] = useState(false);
+  const [diTuQingXie, setDiTuQingXie] = useState(false);
+  const diTuGongJu = { luKuang: diTuLuKuang, weiXing: diTuWeiXing, qingXie: diTuQingXie };
+  const diTuGongJuSheZhi = {
+    luKuang: setDiTuLuKuang,
+    weiXing: setDiTuWeiXing,
+    qingXie: setDiTuQingXie
+  };
+  const buXingRef = useRef(null);
+  buXingRef.current = buXing;
+  const zaiGuiHuaRef = useRef(false); // 出行方式重规划进行中（防重复触发）
+  const daiDaoHangRef = useRef(null); // 体检期间收到的导航请求，体检完成后自动执行
+  // 出行方式：步行（默认，走服务端真实路网）/ 骑行 / 驾车 / 公交（走浏览器端 JS API 规划）
+  const [chuXing, setChuXing] = useState('walk');
+  const CHU_XING = [
+    { jian: 'walk', biao: '🚶 步行' },
+    { jian: 'riding', biao: '🚲 骑行' },
+    { jian: 'driving', biao: '🚗 驾车' },
+    { jian: 'transit', biao: '🚌 公交' }
+  ];
+  const chuXingBiao = (CHU_XING.find(c => c.jian === (buXing && buXing.chuXing)) || CHU_XING[0])
+    .biao;
+  // 只停播放、不出全屏导航页（换出行方式重规划时用，避免把用户踢出导航）
+  function tingZhiBoFang() {
+    if (daoHangDongRef.current) cancelAnimationFrame(daoHangDongRef.current);
+    daoHangDongRef.current = null;
+    setDaoHangTai(null);
+  }
+  function tingZhiDaiLu() {
+    tingZhiBoFang();
+    setDaoHangPing(false);
+  }
+  // 切换出行方式：以当前路线目的地为准重新规划；导航中切换则规划成功后自动重新开始带路
+  async function qieHuanChuXing(mode) {
+    if (mode === chuXing) return;
+    const lu = buXingRef.current;
+    if (!lu || !lu.dian || zaiGuiHuaRef.current) return;
+    setChuXing(mode);
+    if (mode === 'walk') {
+      // 步行走回原服务端真实路网链路（带缓存）
+      const zaiNav = !!daoHangTai;
+      tingZhiBoFang();
+      zaiGuiHuaRef.current = true;
+      setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'loading', chuXing: 'walk' });
+      try {
+        const prov = providerRef.current;
+        if (!prov) throw new Error('地图数据源未就绪');
+        const r = await prov.walkingRoute(center, lu.dian);
+        const xin = {
+          uid: lu.uid,
+          dian: lu.dian,
+          zhuangTai: 'ok',
+          chuXing: 'walk',
+          polyline: r.polyline,
+          distanceM: r.distanceM,
+          durationSec: r.durationSec
+        };
+        setBuXingLuXian(xin);
+        if (zaiNav || daoHangPing) kaiShiDaiLu(xin);
+      } catch {
+        setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'fail', chuXing: 'walk' });
+      } finally {
+        zaiGuiHuaRef.current = false;
+      }
+      return;
+    }
+    const zaiNav = !!daoHangTai || daoHangPing;
+    tingZhiBoFang();
+    zaiGuiHuaRef.current = true;
+    setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'loading', chuXing: mode });
+    try {
+      const r = await guiHuaLuXian(mode, center, lu.dian);
+      const xin = {
+        uid: lu.uid,
+        dian: lu.dian,
+        zhuangTai: 'ok',
+        chuXing: mode,
+        polyline: r.polyline,
+        distanceM: r.distanceM,
+        durationSec: r.durationSec
+      };
+      setBuXingLuXian(xin);
+      if (zaiNav) kaiShiDaiLu(xin);
+    } catch (e) {
+      // 规划失败：回到原路线，并在对话区给出可读原因
+      setBuXingLuXian(lu);
+      setDaoHangJie({ ok: false, xinxi: (e && e.message) || '路线规划失败' });
+    } finally {
+      zaiGuiHuaRef.current = false;
+    }
+  }
+  // 按方向变化把折线切成若干「步」（八方位），生成转向提示用
+  function shengChengBuZou(xian) {
+    const jiaoDu = (a, b2) => {
+      const d = (Math.atan2(b2.lng - a.lng, b2.lat - a.lat) * 180) / Math.PI;
+      return (d + 360) % 360;
+    };
+    const buZou = [];
+    let qiJiao = null;
+    let duanM = 0;
+    let lei = 0;
+    for (let i = 1; i < xian.length; i++) {
+      const d = liangDianJuLi(xian[i - 1], xian[i]);
+      const j = jiaoDu(xian[i - 1], xian[i]);
+      if (qiJiao === null) qiJiao = j;
+      const cha = Math.abs(((j - qiJiao + 540) % 360) - 180);
+      if (cha > 30 && duanM > 30) {
+        buZou.push({ jiao: qiJiao, qiLei: lei - duanM, zhiLei: lei });
+        qiJiao = j;
+        duanM = 0;
+      }
+      duanM += d;
+      lei += d;
+    }
+    if (duanM > 0) buZou.push({ jiao: qiJiao, qiLei: lei - duanM, zhiLei: lei });
+    return buZou;
+  }
+  // 开始导航：进入全屏导航页并播放（视觉速度约 12m/s，全程最短 10 秒、最长 60 秒）；可显式传入路线
+  function kaiShiDaiLu(luZhiDing) {
+    const lu = luZhiDing || buXingRef.current;
+    if (!lu || lu.zhuangTai !== 'ok' || !lu.polyline || lu.polyline.length < 2) return;
+    if (daoHangDongRef.current) cancelAnimationFrame(daoHangDongRef.current);
+    const buZou = shengChengBuZou(lu.polyline);
+    const duan = [];
+    let quanCheng = 0;
+    for (let i = 1; i < lu.polyline.length; i++) {
+      const d = liangDianJuLi(lu.polyline[i - 1], lu.polyline[i]);
+      duan.push(d);
+      quanCheng += d;
+    }
+    const zongMiao = Math.min(60, Math.max(10, quanCheng / 12));
+    const qiShi = performance.now();
+    setDaoHangPing(true);
+    setDaoHangTai({
+      kai: true,
+      quanChengM: quanCheng,
+      shengYuM: quanCheng,
+      jinDuM: 0,
+      weiZhi: lu.polyline[0],
+      buWen: '沿路线出发',
+      buJiao: buZou.length ? buZou[0].jiao : 0
+    });
+    const bu = now => {
+      const p = Math.min(1, (now - qiShi) / (zongMiao * 1000));
+      const muBiao = quanCheng * p;
+      let lei = 0;
+      let wei = lu.polyline[lu.polyline.length - 1];
+      for (let i = 0; i < duan.length; i++) {
+        if (lei + duan[i] >= muBiao) {
+          const t = duan[i] ? (muBiao - lei) / duan[i] : 0;
+          const a = lu.polyline[i];
+          const b2 = lu.polyline[i + 1];
+          wei = { lng: a.lng + (b2.lng - a.lng) * t, lat: a.lat + (b2.lat - a.lat) * t };
+          break;
+        }
+        lei += duan[i];
+      }
+      // 当前所处「步」：八方位转向提示（北为 0°）
+      const FANG = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+      const bu = buZou.find(s => muBiao >= s.qiLei && muBiao < s.zhiLei);
+      const daoDaQian = quanCheng - muBiao < 30;
+      const buWen = daoDaQian
+        ? '即将到达目的地'
+        : bu
+          ? `${FANG[Math.round(bu.jiao / 45) % 8]}向直行 · 剩余 ${Math.max(1, Math.round(bu.zhiLei - muBiao))} 米`
+          : '沿路线前进';
+      const buJiao = bu ? bu.jiao : 0;
+      setDaoHangTai({
+        kai: p < 1,
+        quanChengM: quanCheng,
+        shengYuM: quanCheng * (1 - p),
+        jinDuM: muBiao,
+        weiZhi: wei,
+        buWen,
+        buJiao
+      });
+      if (p < 1) {
+        daoHangDongRef.current = requestAnimationFrame(bu);
+      } else {
+        daoHangDongRef.current = null;
+        // 到达：聊天里报一声（导航页停留，底部显示已到达，点退出返回）
+        const ming = lu.dian && lu.dian.name;
+        const daoTiao = {
+          role: 'ai',
+          wen: `🏁 已带你到达${ming ? `「${ming}」` : '目的地'}附近，这一路设施覆盖情况可以在报告里细看。`
+        };
+        setLiaoTianLieBiao(prev => [...prev, daoTiao]);
+        ltBaoCun([daoTiao], null);
+      }
+    };
+    daoHangDongRef.current = requestAnimationFrame(bu);
+  }
+  // 路线被清掉 / 换了新路线 / 组件卸载时，自动停止播放（全屏导航页保留，供重新开始）
+  useEffect(() => {
+    if (!buXing || buXing.zhuangTai !== 'ok') tingZhiBoFang();
+  }, [buXing]);
+  useEffect(() => () => tingZhiBoFang(), []);
+  // 体检完成后自动执行体检期间挂起的导航请求（用户说「带我去xx」，体检完自动选点带路）
+  useEffect(() => {
+    if (!daiDaoHangRef.current) return;
+    if (!report || runningRef.current) return;
+    const wen = daiDaoHangRef.current;
+    daiDaoHangRef.current = null;
+    // 移除挂起进度卡（下一帧再执行，避免旧卡片被并进新消息列表）
+    setLiaoTianLieBiao(prev => prev.filter(m => m.role !== 'dai'));
+    setTimeout(() => faQiLiaoTian(wen), 0);
+  }, [report, running]);
 
   // —— AI 导航：不再有独立输入框，统一走下方对话输入 ——
   // 对话里出现导航意图（如「帮我找最近的医院」）时自动选点并画步行路线，
@@ -667,6 +1007,78 @@ export function App() {
   const [liaoTianWen, setLiaoTianWen] = useState('');
   const [liaoTianZhong, setLiaoTianZhong] = useState(false);
   const ltGunRef = useRef(null);
+
+  // —— 聊天历史：会话按账号存 localStorage，可回看 / 续聊 / 删除 ——
+  const [ltLiShi, setLtLiShi] = useState([]); // 全部历史会话 [{id, shiJian, biaoTi, xiaoXi}]
+  const [ltLiShiKai, setLtLiShiKai] = useState(false); // 历史面板显隐
+  const ltDangQianId = useRef(null); // 当前会话 id（null = 首条消息时新建会话）
+  const ltCunJian = zhangHao => `sq_lt_lishi_${zhangHao || 'youke'}`;
+  function ltDuQu() {
+    try {
+      const lie = JSON.parse(localStorage.getItem(ltCunJian(yongHu && yongHu.zhangHao)) || '[]');
+      return Array.isArray(lie) ? lie : [];
+    } catch {
+      return [];
+    }
+  }
+  function ltXieRu(lieBiao) {
+    // 最多留 20 个会话，每个会话最多 100 条消息，防 localStorage 撑爆
+    try {
+      localStorage.setItem(
+        ltCunJian(yongHu && yongHu.zhangHao),
+        JSON.stringify(
+          lieBiao.slice(0, 20).map(hui => ({ ...hui, xiaoXi: (hui.xiaoXi || []).slice(-100) }))
+        )
+      );
+    } catch {
+      /* 存储满时静默放弃，不影响聊天 */
+    }
+  }
+  // 把一组消息（本条提问 + 回答）追加进当前会话并落盘；无会话则按首条提问建标题
+  function ltBaoCun(xinXiaoXi, shouWen) {
+    const lie = ltDuQu();
+    if (!ltDangQianId.current) {
+      ltDangQianId.current = `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      lie.unshift({
+        id: ltDangQianId.current,
+        shiJian: Date.now(),
+        biaoTi: String(shouWen || '').slice(0, 24),
+        xiaoXi: []
+      });
+    }
+    const hui = lie.find(s => s.id === ltDangQianId.current);
+    if (hui) hui.xiaoXi = [...(hui.xiaoXi || []), ...xinXiaoXi];
+    ltXieRu(lie);
+    setLtLiShi(lie);
+  }
+  // 回看历史：把该会话消息载入当前聊天视图，可直接接着聊
+  function huiKanLiShi(hui) {
+    ltDangQianId.current = hui.id;
+    setLiaoTianLieBiao([...(hui.xiaoXi || [])]);
+    setLtLiShiKai(false);
+  }
+  function shanChuLiShi(id) {
+    const lie = ltDuQu().filter(s => s.id !== id);
+    ltXieRu(lie);
+    setLtLiShi(lie);
+    if (ltDangQianId.current === id) {
+      ltDangQianId.current = null;
+      setLiaoTianLieBiao([]);
+    }
+  }
+  function xinDuiHua() {
+    ltDangQianId.current = null;
+    setLiaoTianLieBiao([]);
+    setLtLiShiKai(false);
+    daiDaoHangRef.current = null; // 开新对话时丢弃体检期间挂起的导航请求
+  }
+  // 登录账号变化时重载该账号的历史
+  useEffect(() => {
+    ltDangQianId.current = null;
+    setLtLiShi(ltDuQu());
+    setLtLiShiKai(false);
+  }, [yongHu && yongHu.zhangHao]);
+
   // 新消息后自动滚到底部
   useEffect(() => {
     if (ltGunRef.current) ltGunRef.current.scrollTop = ltGunRef.current.scrollHeight;
@@ -679,29 +1091,58 @@ export function App() {
     setLiaoTianLieBiao(xinLie);
     setLiaoTianWen('');
     setLiaoTianZhong(true);
-    // 导航意图（如「帮我找最近的医院」）：直接 AI 选点 + 自动画步行路线，结果同步回聊天
-    if (report && !runningRef.current && shiDaoHangYiTu(wen)) {
+    // 导航意图（如「帮我找最近的医院」「带我去吧」）：直接 AI 选点 + 自动画步行路线，结果同步回聊天
+    if (shiDaoHangYiTu(wen)) {
+      // 体检进行中：先应答并挂起请求（聊天里放实时进度卡，随体检进度自动刷新），完成后自动选点带路
+      if (runningRef.current) {
+        daiDaoHangRef.current = wen;
+        setLiaoTianZhong(false);
+        setLiaoTianLieBiao([
+          ...liaoTianLieBiao.filter(m => m.role !== 'dai'),
+          { role: 'dai', wen }
+        ]);
+        ltBaoCun(
+          [
+            { role: 'user', wen },
+            {
+              role: 'ai',
+              wen: '收到！体检进行中，完成后会自动按你的要求选点并带你去，不用再发一遍。'
+            }
+          ],
+          wen
+        );
+        return;
+      }
+      // 没有报告且没在体检：给明确引导（不挂起，因为不知道用户什么时候才会体检）
+      if (!report) {
+        const tiTiao = {
+          role: 'ai',
+          wen: '还没有体检结果，无法从真实设施里选目的地——点「开始体检」完成一轮体检，我会自动按你的要求带你去；或把数据源切到「离线样例」立即体验。'
+        };
+        setLiaoTianZhong(false);
+        setLiaoTianLieBiao([...xinLie, tiTiao]);
+        ltBaoCun([{ role: 'user', wen }, tiTiao], wen);
+        return;
+      }
       const dh = await aiXuanDian(wen, report, center, peiZhi && peiZhi.ai);
       setDaoHangJie(dh);
       if (dh.ok) dianJiSheShi(dh.poi, true);
       setLiaoTianZhong(false);
-      setLiaoTianLieBiao([
-        ...xinLie,
-        dh.ok
-          ? {
-              role: 'ai',
-              wen: `🧭 带你去「${dh.poi.name}」：${dh.liYou}。步行路线已画在地图上，点地图上其他设施可随时换目的地。`
-            }
-          : { role: 'cuo', wen: dh.xinxi }
-      ]);
+      const huiTiao = dh.ok
+        ? {
+            role: 'ai',
+            wen: `🧭 带你去「${dh.poi.name}」：${dh.liYou}。步行路线已画在地图上，点地图上其他设施可随时换目的地。`
+          }
+        : { role: 'cuo', wen: dh.xinxi };
+      setLiaoTianLieBiao([...xinLie, huiTiao]);
+      ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
       return;
     }
     const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai);
     setLiaoTianZhong(false);
-    setLiaoTianLieBiao([
-      ...xinLie,
-      j.ok ? { role: 'ai', wen: j.hui } : { role: 'cuo', wen: j.xinxi }
-    ]);
+    const huiTiao = j.ok ? { role: 'ai', wen: j.hui } : { role: 'cuo', wen: j.xinxi };
+    setLiaoTianLieBiao([...xinLie, huiTiao]);
+    ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
   }
 
   return (
@@ -845,7 +1286,7 @@ export function App() {
         </div>
       </header>
 
-      <div className="mapwrap">
+      <div className={`mapwrap ${daoHangPing ? 'daoHang-quanPing' : ''}`}>
         <MapCanvas
           report={report}
           center={center}
@@ -856,7 +1297,83 @@ export function App() {
           xianshi={xianshi}
           ditu={ditu}
           onDitu={setDitu}
+          daoHang={daoHangTai}
+          gongJu={diTuGongJu}
+          gongJuSheZhi={diTuGongJuSheZhi}
         />
+        {/* 百度地图式全屏导航页：路线就绪时出「开始导航」入口，导航中铺满屏幕 */}
+        {buXing &&
+          buXing.zhuangTai === 'ok' &&
+          buXing.polyline &&
+          buXing.polyline.length > 1 &&
+          !daoHangPing && (
+            <button className="daiLu-ruKou" onClick={kaiShiDaiLu} title="进入全屏导航">
+              🧭 开始导航
+            </button>
+          )}
+        {daoHangPing && (
+          <>
+            {/* 顶部转向提示卡：八方位箭头 + 指引文字（百度导航同款蓝色大卡） */}
+            <div className="daoPing-ding">
+              <span
+                className="daoPing-jian"
+                style={{ transform: `rotate(${daoHangTai ? daoHangTai.buJiao : 0}deg)` }}
+              >
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="#ffffff">
+                  <path d="M12 2l7 18-7-4-7 4z" />
+                </svg>
+              </span>
+              <div className="daoPing-ding-wen">
+                <b>{daoHangTai ? daoHangTai.buWen : '已到达目的地'}</b>
+                <span>
+                  {daoHangTai
+                    ? `剩余 ${Math.round(daoHangTai.shengYuM)} 米 · 约 ${Math.max(1, Math.round(daoHangTai.shengYuM / 80))} 分钟`
+                    : '导航结束，点下方「退出导航」返回'}
+                </span>
+              </div>
+            </div>
+            {/* 顶部左侧退出 */}
+            <button className="daoPing-tui" onClick={tingZhiDaiLu} title="退出导航">
+              ← 退出导航
+            </button>
+            {/* 出行方式切换：像手机导航一样可选步行 / 骑行 / 驾车 / 公交，切换即重新规划并重放 */}
+            <div className="daoPing-fangShi">
+              {CHU_XING.map(c => (
+                <button
+                  key={c.jian}
+                  className={chuXing === c.jian ? 'on' : ''}
+                  onClick={() => qieHuanChuXing(c.jian)}
+                  disabled={zaiGuiHuaRef.current}
+                  title={`切换为${c.biao.slice(2)}路线`}
+                >
+                  {c.biao}
+                </button>
+              ))}
+            </div>
+            {/* 底部信息卡：目的地 / 里程 / 进度条 */}
+            <div className="daoPing-di">
+              <div className="daoPing-di-hang">
+                <span className="daoPing-muDi">
+                  {chuXingBiao} · {buXing && buXing.dian ? buXing.dian.ming || '目的地' : '目的地'}
+                </span>
+                <span className="daoPing-shu">
+                  {daoHangTai
+                    ? `全程 ${Math.round(daoHangTai.quanChengM)} 米 · 已走 ${Math.round(daoHangTai.jinDuM)} 米`
+                    : '导航完成'}
+                </span>
+              </div>
+              <div className="daoPing-jin">
+                <i
+                  style={{
+                    width: daoHangTai
+                      ? `${Math.min(100, Math.round((daoHangTai.jinDuM / Math.max(1, daoHangTai.quanChengM)) * 100))}%`
+                      : '100%'
+                  }}
+                />
+              </div>
+            </div>
+          </>
+        )}
         {offline && (
           <div className="offline">
             {tijianCuo || '地图服务异常，已降级真实路网兜底模式，请检查 AK / 网络'}
@@ -864,10 +1381,12 @@ export function App() {
         )}
         {buXing && (
           <div className={`buxing-tip ${buXing.zhuangTai}`}>
-            {buXing.zhuangTai === 'loading' && '正在沿真实路网计算步行路线…'}
+            {buXing.zhuangTai === 'loading' && '正在沿真实路网计算路线…'}
             {buXing.zhuangTai === 'ok' &&
-              `${buXing.dian.ming || '所选设施'}：沿街步行 ${Math.round(buXing.distanceM)} 米 · 约 ${Math.max(1, Math.round(buXing.durationSec / 60))} 分钟`}
-            {buXing.zhuangTai === 'fail' && '步行路线计算失败（该设施可能不在路网覆盖范围内）'}
+              `${buXing.dian.ming || '所选设施'}：${chuXingBiao} ${Math.round(
+                buXing.distanceM
+              )} 米 · 约 ${Math.max(1, Math.round(buXing.durationSec / 60))} 分钟`}
+            {buXing.zhuangTai === 'fail' && '路线计算失败（该设施可能不在路网覆盖范围内）'}
             <button type="button" className="link-btn" onClick={() => setBuXingLuXian(null)}>
               关闭
             </button>
@@ -1018,9 +1537,50 @@ export function App() {
           AI 导航
           {peiZhi?.ai?.qiYong && <span className="sec-tag">大模型选点</span>}
         </div>
-        <div className="a-tip">
-          在下方对话框说一句要去哪（如「帮我找最近的医院」「去购物」），会自动从本轮体检的真实设施里选最佳目的地并画出步行路线；普通问题则正常问答。
+        {/* 快捷目的地：一键发导航指令；路线就绪后卡内也有「开始导航」入口 */}
+        <div className="dh-kuaiJie">
+          {['医院', '超市', '学校', '公园', '药店'].map(c => (
+            <button
+              key={c}
+              className="dh-kuai"
+              onClick={() => faQiLiaoTian(`帮我找最近的${c}`)}
+              disabled={!report || running}
+              title={`导航到最近的${c}`}
+            >
+              最近{c[0] === '医' ? '' : '的'}
+              {c}
+            </button>
+          ))}
         </div>
+        {/* 地图图层控制（与地图左上角工具条同一套开关，双向联动） */}
+        {ditu === 'baidu' && (
+          <div className="dh-tuCeng">
+            <span className="dh-tuCeng-biao">地图</span>
+            {[
+              ['luKuang', '🚦 路况', '实时路况图层'],
+              ['weiXing', '🛰 卫星', '卫星影像 / 普通地图'],
+              ['qingXie', '🏔 3D', '3D 倾斜视角']
+            ].map(([jian, biao, ti]) => (
+              <button
+                key={jian}
+                className={`dh-tuCeng-an ${diTuGongJu[jian] ? 'on' : ''}`}
+                onClick={() => diTuGongJuSheZhi[jian](!diTuGongJu[jian])}
+                title={ti}
+              >
+                {biao}
+              </button>
+            ))}
+          </div>
+        )}
+        {buXing &&
+          buXing.zhuangTai === 'ok' &&
+          buXing.polyline &&
+          buXing.polyline.length > 1 &&
+          !daoHangPing && (
+            <button className="dh-kaiShi" onClick={kaiShiDaiLu} title="进入全屏导航">
+              🧭 开始导航 · 沿当前路线带路
+            </button>
+          )}
         {daoHangJie && daoHangJie.zhuangTai === 'loading' && (
           <div className="empty-tip">正在从本轮体检的设施里挑选最佳目的地…</div>
         )}
@@ -1034,18 +1594,51 @@ export function App() {
             </div>
             <div className="dh-liYou">{daoHangJie.liYou}</div>
             <div className="dh-luJing">
-              步行路线已画在地图上，沿虚线走即可（点地图上其他设施可随时换目的地）。
+              路线已画在地图上；可切出行方式（步行 / 骑行 / 驾车 /
+              公交），或点「开始导航」进入全屏导航。
             </div>
+          </div>
+        )}
+        {/* 出行方式切换：有路线时显示，与全屏导航页共用同一状态 */}
+        {buXing && buXing.zhuangTai !== 'loading' && (
+          <div className="dh-chuXing">
+            {CHU_XING.map(c => (
+              <button
+                key={c.jian}
+                className={chuXing === c.jian ? 'on' : ''}
+                onClick={() => qieHuanChuXing(c.jian)}
+                disabled={zaiGuiHuaRef.current || !report}
+                title={`切换为${c.biao.slice(2)}路线`}
+              >
+                {c.biao}
+              </button>
+            ))}
           </div>
         )}
         {daoHangJie && !daoHangJie.ok && !daoHangJie.zhuangTai && (
           <div className="a-tip a-tip-err">{daoHangJie.xinxi}</div>
         )}
-        {!report && <div className="empty-tip">完成一轮体检后，才能从真实设施里选目的地。</div>}
 
         <div className="divider" />
-        <div className="sec-title">
-          在线问答{peiZhi?.ai?.qiYong && <span className="sec-tag">可结合本轮体检结果回答</span>}
+        <div className="sec-title lt-biaoHang">
+          <span>
+            在线问答{peiZhi?.ai?.qiYong && <span className="sec-tag">可结合本轮体检结果回答</span>}
+          </span>
+          <span className="lt-caoZu">
+            <button
+              className={`lt-caoAn ${ltLiShiKai ? 'on' : ''}`}
+              onClick={() => {
+                setLtLiShi(ltDuQu());
+                setLtLiShiKai(true);
+              }}
+              title="查看历史聊天"
+            >
+              🕘 历史{ltLiShi.length ? ` (${ltLiShi.length})` : ''}
+            </button>
+            <button className="lt-caoAn" onClick={xinDuiHua} title="清空当前聊天，开启新对话">
+              ＋ 新对话
+            </button>
+          </span>
         </div>
         {/* 豆包式对话界面：欢迎语 + 推荐问法芯片 + 头像气泡 + 底部圆角大输入框 */}
         <div className="lt-lie" ref={ltGunRef}>
@@ -1078,6 +1671,23 @@ export function App() {
               <div key={i} className="lt-hang user">
                 <div className="lt-qiPao user">{m.wen}</div>
                 <span className="lt-touXiang">我</span>
+              </div>
+            ) : m.role === 'dai' ? (
+              // 挂起导航实时进度卡：随体检进度实时刷新（progress 状态驱动），完成后自动移除
+              <div key={i} className="lt-hang ai">
+                <AiHuiZhang />
+                <div className="lt-qiPao ai lt-daiKa">
+                  <b>
+                    <span className="lt-dai-shaLou">⏳</span> 收到，体检完成后自动带你去
+                  </b>
+                  <div className="lt-dai-jin">
+                    <i style={{ width: `${Math.min(100, Math.round(progress * 100))}%` }} />
+                  </div>
+                  <span>
+                    体检进行中 · {Math.min(100, Math.round(progress * 100))}% ·
+                    完成后自动选点并画路线，不用再发一遍
+                  </span>
+                </div>
               </div>
             ) : (
               <div key={i} className="lt-hang ai">
@@ -1272,6 +1882,58 @@ export function App() {
           }
         }}
       />
+      {/* 聊天历史弹窗：独立窗口回看 / 续聊 / 删除历史会话 */}
+      {ltLiShiKai && (
+        <div className="admin-mask" onClick={() => setLtLiShiKai(false)}>
+          <div className="admin-panel lt-ls-chuang" onClick={e => e.stopPropagation()}>
+            <div className="admin-head">
+              <div className="panel-title">🕘 聊天历史</div>
+              <button className="lt-ls-guan" onClick={() => setLtLiShiKai(false)}>
+                关闭
+              </button>
+            </div>
+            <div className="lt-ls-lie">
+              {ltLiShi.length === 0 && (
+                <div className="lt-ls-kong">还没有历史聊天记录，去对话框聊两句吧。</div>
+              )}
+              {ltLiShi.map(hui => {
+                const shi = new Date(hui.shiJian);
+                const zuiHou = (hui.xiaoXi || []).slice(-1)[0];
+                return (
+                  <div key={hui.id} className="lt-ls-hang" onClick={() => huiKanLiShi(hui)}>
+                    <div className="lt-ls-zhu">
+                      <b className="lt-ls-biao">{hui.biaoTi || '（无标题对话）'}</b>
+                      <span className="lt-ls-yu">
+                        {zuiHou
+                          ? `${zuiHou.role === 'user' ? '我' : 'AI'}：${String(zuiHou.wen).slice(0, 40)}`
+                          : ''}
+                      </span>
+                    </div>
+                    <div className="lt-ls-fu">
+                      {shi.getMonth() + 1}月{shi.getDate()}日{' '}
+                      {String(shi.getHours()).padStart(2, '0')}:
+                      {String(shi.getMinutes()).padStart(2, '0')} · {(hui.xiaoXi || []).length} 条
+                      <button
+                        className="lt-ls-shan"
+                        title="删除该会话"
+                        onClick={e => {
+                          e.stopPropagation();
+                          shanChuLiShi(hui.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="lt-ls-tiShi">
+              点任意会话载入聊天窗口，可直接接着聊；× 只删该条会话。
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

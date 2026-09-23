@@ -16,3 +16,4 @@ coverage
 .claude
 agent
 skills-lock.json
+.playwright-cli/

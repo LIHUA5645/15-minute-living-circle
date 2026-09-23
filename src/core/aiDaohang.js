@@ -17,16 +17,19 @@ const YI_TU = [
   { f: 'xiuxian', ci: ['休闲', '锻炼', '健身', '公园', '散步', '玩', '遛弯'] }
 ];
 
-// 导航意图判定：聊天输入里出现「类别词 + 选点动作」才算导航（如「帮我找最近的医院」「去购物」），
+// 导航意图判定：聊天输入里出现「类别词 + 选点动作」才算导航（如「帮我找最近的医院」「去购物」）；
+// 或出现明确的导航动词（如「帮我导航回家」「导航到xx」「带我去xx」）也算——目的地能否满足由选点层判断；
 // 纯疑问句（看病方便吗？散步适合吗？）不算，仍走在线问答
 export function shiDaoHangYiTu(wen) {
   const s = String(wen || '').trim();
   if (!s) return false;
-  // 句尾是疑问语气的不导航（但「最近的医院在哪 / 怎么去」这类路线问句仍算）
-  if (/[吗呢吧？?]\s*$/.test(s) && !/怎么去|怎么走|在哪|路线/.test(s)) return false;
+  // 句尾是疑问语气的不导航（但「最近的医院在哪 / 怎么去」「带我去吧」这类路线/祈使句仍算）
+  if (/[吗呢？?]\s*$/.test(s) && !/怎么去|怎么走|在哪|路线/.test(s)) return false;
   const leiCi = YI_TU.flatMap(y => y.ci);
   const youDongZuo = /去|找|导航|带我去|送我去|最近的?|哪家|哪个|推荐/;
-  return leiCi.some(c => s.includes(c)) && youDongZuo.test(s);
+  if (leiCi.some(c => s.includes(c)) && youDongZuo.test(s)) return true;
+  // 明确的导航指令词（「帮我导航回家」这类没有类别词的也算，交给选点层解释为什么去不了/去哪）
+  return /导航|带我去|送我去|开车去|骑车去|坐车去/.test(s);
 }
 
 // 本地规则选点：意图定类别 → 距离与可信度加权排序
@@ -59,7 +62,12 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
   for (const [f, list] of Object.entries(report?.poiSet?.fenleiSet || {})) {
     for (const p of list) houXuan.push({ ...p, fenlei: f });
   }
-  if (!houXuan.length) return { ok: false, xinxi: '没有可选设施，请先完成一轮体检' };
+  if (!houXuan.length)
+    return {
+      ok: false,
+      xinxi:
+        '本轮体检没有检索到任何设施（多为百度接口配额超限或数据源异常），暂时无法规划导航。等配额恢复后重新体检，或在管理员面板把数据源切到「离线样例」体验导航。'
+    };
 
   // ① 大模型路：候选清单（限 120 条防超长）+ 用户需求 → 结构化 JSON 选择
   if (ai && ai.qiYong && ai.apiDiZhi && ai.miYao) {
@@ -105,7 +113,12 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
 
   // ② 本地规则路
   const ben = benDiXuanDian(wen, houXuan, zhongXin);
-  if (!ben) return { ok: false, xinxi: '没听懂要去哪，试试「去购物」「去看病」「去锻炼」' };
+  if (!ben)
+    return {
+      ok: false,
+      xinxi:
+        '没听懂要去哪，或该目的地不在本轮体检的设施里（导航只能去体检检索到的真实设施，比如家、公司这类私人地点去不了）。试试「去最近的医院」「去超市」「带我去药店」。'
+    };
   return {
     ok: true,
     poi: ben.poi,

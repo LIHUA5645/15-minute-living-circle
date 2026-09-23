@@ -481,44 +481,58 @@ body {
 }
 .offline {
   position: absolute;
-  top: 16px;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 25;
+  z-index: 45;
   background: #fff4e5;
   color: #b35c00;
   border: 1px solid #ffd8a8;
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 13px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 30px rgba(16, 32, 64, 0.22);
 }
+/* 路线提示条：悬浮在地图顶部居中、最上层（z 45 高于所有悬浮面板），失败态红色醒目 */
 .buxing-tip {
   position: absolute;
-  bottom: 18px;
+  top: 54px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 25;
+  z-index: 45;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   white-space: nowrap;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid #cddcf7;
-  border-radius: 999px;
-  padding: 8px 16px;
+  border-radius: 12px;
+  padding: 10px 16px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 30px rgba(16, 32, 64, 0.25);
+  animation: tip-luo 0.3s ease;
+}
+@keyframes tip-luo {
+  from {
+    transform: translate(-50%, -12px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
 }
 .buxing-tip.ok {
   border-color: var(--brand-2);
   color: var(--brand);
 }
 .buxing-tip.fail {
-  border-color: #ffd8a8;
-  color: #b35c00;
+  background: #fff1f0;
+  border-color: #ffa39e;
+  color: #cf1322;
+  font-weight: 700;
 }
 
 /* 地图选点确认气泡：单击地图只落「待确认点」，点气泡里的确认按钮才真正搬走体检中心 */
@@ -866,6 +880,573 @@ body {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+}
+
+/* ===== 手机导航式带路 ===== */
+/* 地图工具条：百度地图同款白色胶囊组，左上角悬浮 */
+.map-gongJu {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 22;
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(16, 32, 64, 0.16);
+}
+.map-gongJu button {
+  border: none;
+  background: transparent;
+  color: #3c4657;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.map-gongJu button:hover {
+  background: #f0f4fa;
+}
+.map-gongJu button.on {
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  color: #fff;
+}
+/* 全屏导航页隐藏工具条与回中按钮，保持导航画面干净 */
+.daoHang-quanPing .map-gongJu,
+.daoHang-quanPing .map-huiWei {
+  display: none;
+}
+/* AI 导航卡快捷目的地芯片 */
+.dh-kuaiJie {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dh-kuai {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #3c4657;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dh-kuai:hover:not(:disabled) {
+  border-color: #2f86f7;
+  color: #2f86f7;
+  background: #f0f5ff;
+}
+.dh-kuai:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 地图图层控制行（AI 导航卡内，与地图工具条联动） */
+.dh-tuCeng {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: #f6f8fb;
+  border-radius: 12px;
+}
+.dh-tuCeng-biao {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a93a3;
+}
+.dh-tuCeng-an {
+  border: 1px solid transparent;
+  background: #fff;
+  color: #3c4657;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dh-tuCeng-an:hover {
+  border-color: #2f86f7;
+  color: #2f86f7;
+}
+.dh-tuCeng-an.on {
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(31, 111, 235, 0.3);
+}
+/* 卡内开始导航按钮：主色整行 */
+.dh-kaiShi {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  box-shadow: 0 6px 18px rgba(31, 111, 235, 0.3);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.dh-kaiShi:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(31, 111, 235, 0.4);
+}
+/* 入口按钮：路线就绪时悬浮在地图底部中央 */
+.daiLu-ruKou {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 25;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  box-shadow: 0 8px 24px rgba(31, 111, 235, 0.35);
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.daiLu-ruKou:hover {
+  transform: translateX(-50%) translateY(-2px);
+  box-shadow: 0 12px 28px rgba(31, 111, 235, 0.45);
+}
+/* 带路中的导航条：深色胶囊，蓝点呼吸闪烁 */
+.daoHang-quanPing {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: #0b1526;
+}
+/* 顶部转向提示卡：百度导航同款蓝色大卡 */
+.daoPing-ding {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(560px, calc(100% - 32px));
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #3b7cff, #1f6feb);
+  box-shadow: 0 14px 36px rgba(16, 44, 96, 0.5);
+  color: #fff;
+}
+.daoPing-jian {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  transition: transform 0.4s ease;
+}
+.daoPing-ding-wen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.daoPing-ding-wen b {
+  font-size: 17px;
+  letter-spacing: 0.5px;
+}
+.daoPing-ding-wen span {
+  font-size: 12.5px;
+  opacity: 0.88;
+}
+/* 顶部左侧退出按钮 */
+.daoPing-tui {
+  position: absolute;
+  top: 18px;
+  left: 16px;
+  z-index: 30;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(17, 27, 43, 0.82);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(10, 20, 40, 0.4);
+}
+.daoPing-tui:hover {
+  background: rgba(17, 27, 43, 0.95);
+}
+/* 全屏导航页左上出行方式切换（退出按钮下方竖排） */
+.daoPing-fangShi {
+  position: absolute;
+  top: 62px;
+  left: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.daoPing-fangShi button {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(17, 27, 43, 0.78);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.daoPing-fangShi button:hover:not(:disabled) {
+  background: rgba(17, 27, 43, 0.95);
+}
+.daoPing-fangShi button.on {
+  background: linear-gradient(135deg, #3b7cff, #1f6feb);
+  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.45);
+}
+.daoPing-fangShi button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+/* AI 导航卡出行方式切换行 */
+.dh-chuXing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dh-chuXing button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #3c4657;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dh-chuXing button:hover:not(:disabled) {
+  border-color: #2f86f7;
+  color: #2f86f7;
+  background: #f0f5ff;
+}
+.dh-chuXing button.on {
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  border-color: transparent;
+  color: #fff;
+}
+.dh-chuXing button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 底部信息卡：白卡 + 进度条 */
+.daoPing-di {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: min(560px, calc(100% - 32px));
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px 18px 16px;
+  box-shadow: 0 14px 36px rgba(16, 32, 64, 0.35);
+}
+.daoPing-di-hang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.daoPing-muDi {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.daoPing-shu {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #6b7686;
+}
+.daoPing-jin {
+  height: 8px;
+  border-radius: 999px;
+  background: #e9edf4;
+  overflow: hidden;
+}
+.daoPing-jin i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4da3ff, #1f6feb);
+  transition: width 0.2s linear;
+}
+
+/* ===== 挂起导航实时进度卡 ===== */
+.lt-daiKa {
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lt-daiKa b {
+  font-size: 13.5px;
+  color: var(--text);
+}
+/* 沙漏旋转动画：像翻沙漏一样持续翻转，更有「正在等待」的互动感 */
+.lt-dai-shaLou {
+  display: inline-block;
+  animation: shaLou-fan 1.6s ease-in-out infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes shaLou-fan {
+  0% {
+    transform: rotateY(0deg);
+  }
+  50% {
+    transform: rotateY(180deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+
+/* ===== 面板拖动碰撞互动 ===== */
+/* 拖动中的面板：投影加深，有「提起来」的感觉 */
+.float-card.tuoDongZhong {
+  box-shadow: 0 22px 55px rgba(16, 32, 64, 0.35);
+}
+/* 被撞到的面板：蓝色光晕标识重叠（果冻晃动由 JS 按拖动速度驱动，撞一下晃一下不循环） */
+.float-card.pengZhuang {
+  box-shadow:
+    0 10px 30px rgba(16, 32, 64, 0.18),
+    0 0 0 2px rgba(47, 134, 247, 0.45),
+    0 0 22px rgba(47, 134, 247, 0.35);
+}
+
+/* ===== 碰撞水波：涟漪圆环（粒子面）+ 水面折射滤镜（波动面） ===== */
+/* 涟漪容器：铺满面板、裁掉出界部分，不响应任何指针事件 */
+.shuiBo-Tao {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 5;
+}
+/* 涟漪圆环：从碰撞点扩散，蓝色渐隐（默认全透明，避免延迟期间露出初始小圆） */
+.shuiHuan {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border: 2px solid rgba(47, 134, 247, 0.55);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    0 0 18px rgba(47, 134, 247, 0.28),
+    inset 0 0 14px rgba(47, 134, 247, 0.2);
+  will-change: transform, opacity;
+}
+.lt-dai-jin {
+  height: 8px;
+  border-radius: 999px;
+  background: #e9edf4;
+  overflow: hidden;
+  position: relative;
+}
+.lt-dai-jin i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4da3ff, #1f6feb);
+  transition: width 0.5s ease;
+  position: relative;
+}
+/* 进度条上的流动光带动画 */
+.lt-dai-jin i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    transparent 100%
+  );
+  animation: lt-dai-liu 1.4s linear infinite;
+}
+@keyframes lt-dai-liu {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+.lt-daiKa span {
+  font-size: 11.5px;
+  color: #8a93a3;
+}
+
+/* ===== 聊天历史 ===== */
+/* 「在线问答」标题行：标题居左，历史/新对话按钮居右 */
+.lt-biaoHang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lt-caoZu {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.lt-caoAn {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.lt-caoAn:hover {
+  border-color: #2f86f7;
+  color: #2f86f7;
+}
+.lt-caoAn.on {
+  background: linear-gradient(135deg, #2f86f7, #1f6feb);
+  border-color: transparent;
+  color: #fff;
+}
+/* 历史聊天弹窗：独立窗口展示全部历史会话 */
+.lt-ls-chuang {
+  width: 560px;
+}
+.lt-ls-guan {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.lt-ls-guan:hover {
+  border-color: #2f86f7;
+  color: #2f86f7;
+}
+.lt-ls-lie {
+  max-height: 52vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 12px 0 8px;
+}
+.lt-ls-kong {
+  padding: 28px 14px;
+  font-size: 13px;
+  color: #8a93a3;
+  text-align: center;
+}
+.lt-ls-hang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #eef1f6;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.lt-ls-hang:last-child {
+  border-bottom: none;
+}
+.lt-ls-hang:hover {
+  background: #f0f5ff;
+}
+.lt-ls-zhu {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lt-ls-biao {
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lt-ls-yu {
+  font-size: 12px;
+  color: #98a1b0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lt-ls-fu {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #98a1b0;
+}
+.lt-ls-shan {
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #b6bec9;
+  font-size: 15px;
+  cursor: pointer;
+}
+.lt-ls-shan:hover {
+  background: #ffecec;
+  color: #e5484d;
+}
+.lt-ls-tiShi {
+  font-size: 11.5px;
+  color: #a5adba;
+  text-align: center;
 }
 
 /* ===== 面板标题与静态分区 ===== */
