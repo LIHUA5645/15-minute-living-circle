@@ -1043,7 +1043,12 @@ export function App() {
               <b>你好，我是 AI 助手</b>
               <span>能结合本轮体检结果聊聊你关心的问题</span>
               <div className="lt-tui">
-                {['帮我找最近的医院', '我这个社区看病方便吗？', '盲区是什么意思？', '附近适合散步锻炼吗？'].map(t => (
+                {[
+                  '帮我找最近的医院',
+                  '我这个社区看病方便吗？',
+                  '盲区是什么意思？',
+                  '附近适合散步锻炼吗？'
+                ].map(t => (
                   <button
                     key={t}
                     className="lt-tuiXiang"
