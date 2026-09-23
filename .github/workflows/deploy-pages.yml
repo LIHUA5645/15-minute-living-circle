@@ -1,0 +1,45 @@
+# 版权声明：肖沐樑  QQ：3387432690
+# 完成时间：2026，09，23
+# GitHub Pages 自动部署：master 推送后自动构建 dist 并发布为静态站点
+# 供赛事演示与百度地图配额申请提供公网访问地址
+name: Deploy Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: # 允许在 Actions 页面手动触发
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个部署，新推送取消旧的
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: 构建生产版本
+        run: npm run build
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: 发布
+        id: deployment
+        uses: actions/deploy-pages@v4
