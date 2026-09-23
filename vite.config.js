@@ -141,6 +141,9 @@ export default defineConfig(({ mode }) => {
     server: {
       host: true,
       port: 5173,
+      // 允许内网穿透域名访问本机 dev 服务（cloudflared / ngrok / cpolar 等），
+      // 否则 Vite 的主机白名单校验会对非 localhost 的 Host 返回 403
+      allowedHosts: true,
       proxy: {
         '/bmapapi': {
           target: 'https://api.map.baidu.com',

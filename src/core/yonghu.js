@@ -79,7 +79,8 @@ export async function dengLuGuanLiYuan(zhangHao, miMa) {
 }
 
 export function yongHuLieBiao() {
-  return fetch('/api/guanliyuan/yongHuLieBiao', {
+  // 后端该路由为 GET；走可配置服务端地址（未配置即同域）
+  return fetch(fuWuUrl('/api/guanliyuan/yongHuLieBiao'), {
     headers: { Authorization: 'Bearer ' + guanLiYuanLingPai() }
   }).then(r => r.json());
 }
