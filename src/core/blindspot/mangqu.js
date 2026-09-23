@@ -26,7 +26,7 @@ function dbscan(dianLie, eps, minPts) {
   const cluster = new Array(n).fill(-1);
   let cid = 0;
   const wangGe = chuangJianWangGe(dianLie, eps);
-  const quYu = (i) => wangGe.zaiBanJingNei(dianLie[i], eps).map((it) => it.i);
+  const quYu = i => wangGe.zaiBanJingNei(dianLie[i], eps).map(it => it.i);
   for (let i = 0; i < n; i++) {
     if (visited[i]) continue;
     visited[i] = true;
@@ -52,7 +52,7 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
   const { zhongXin } = canShu;
   const dangwei = canShu.dangwei || 'standard';
   const bu = CUCAI_BU[dangwei] || 200;
-  const xl = opt.xianliu || { run: (f) => f() };
+  const xl = opt.xianliu || { run: f => f() };
   // 盲区阈值：管理员配置可覆盖（旧配置无 mangqu 字段时用默认值）
   const yu = (opt.peiZhi && opt.peiZhi.mangqu) || {};
   const XIAN_CAI = yu.caiShiChangMiao || T_MUBIAO;
@@ -105,7 +105,7 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
   let yiWan = 0;
   const zongShu = Math.max(1, zuLie.length);
   await Promise.all(
-    zuLie.map((zu) =>
+    zuLie.map(zu =>
       (async () => {
         const dai = zu[0];
         const key = `rg:${dai.lng.toFixed(4)},${dai.lat.toFixed(4)}`;
@@ -154,9 +154,9 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
   let juZhenKeYong = false;
   if (qiDian.length && typeof provider.routeMatrix === 'function') {
     const dests = [
-      ...dCai.map((p) => ({ lng: p.lng, lat: p.lat })),
-      ...dYao.map((p) => ({ lng: p.lng, lat: p.lat })),
-      ...dXiao.map((p) => ({ lng: p.lng, lat: p.lat })),
+      ...dCai.map(p => ({ lng: p.lng, lat: p.lat })),
+      ...dYao.map(p => ({ lng: p.lng, lat: p.lat })),
+      ...dXiao.map(p => ({ lng: p.lng, lat: p.lat }))
     ];
     let matrix = null;
     try {
@@ -168,9 +168,11 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
       juZhenKeYong = true;
       for (let k = 0; k < qiDian.length; k++) {
         const row = matrix[k] || [];
-        const cai = Math.min(...row.slice(0, dCai.length).map((m) => m.durationSec));
-        const yao = Math.min(...row.slice(dCai.length, dCai.length + dYao.length).map((m) => m.durationSec));
-        const xiao = Math.min(...row.slice(dCai.length + dYao.length).map((m) => m.durationSec));
+        const cai = Math.min(...row.slice(0, dCai.length).map(m => m.durationSec));
+        const yao = Math.min(
+          ...row.slice(dCai.length, dCai.length + dYao.length).map(m => m.durationSec)
+        );
+        const xiao = Math.min(...row.slice(dCai.length + dYao.length).map(m => m.durationSec));
         if (cai > XIAN_CAI && yao > XIAN_YAO && xiao > XIAN_XIAO) {
           qiDian[k]._shiChang = { cai, yao, xiao };
           mangquDian.push(qiDian[k]);
@@ -220,15 +222,15 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
       }
     }
     // 判定依据：簇内各点「到最近缺口设施的真实步行耗时」取平均，对照阈值
-    const pingJun = (jian) => {
-      const you = pts.filter((p) => p._shiChang);
+    const pingJun = jian => {
+      const you = pts.filter(p => p._shiChang);
       if (!you.length) return null;
       return Math.round(you.reduce((s, p) => s + p._shiChang[jian], 0) / you.length);
     };
     const caiPing = pingJun('cai');
     const yaoPing = pingJun('yao');
     const xiaoPing = pingJun('xiao');
-    const fen = (m) => (m == null ? '—' : `${Math.round(m / 60)} 分钟`);
+    const fen = m => (m == null ? '—' : `${Math.round(m / 60)} 分钟`);
     const yiJu = `实测最近菜市场平均步行 ${fen(caiPing)}、药店 ${fen(yaoPing)}、小学 ${fen(xiaoPing)}，均超过 ${Math.round(T_MUBIAO / 60)} 分钟阈值`;
     return {
       id: 'MQ' + (idx + 1),
@@ -245,7 +247,7 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
       pingJunBuXing: { caiShiChangMiao: caiPing, yaoDianMiao: yaoPing, xiaoXueMiao: xiaoPing },
       yiJu,
       jianyi: `建议在补建点 (${medoid.lng.toFixed(5)}, ${medoid.lat.toFixed(5)}) 增设社区菜市场与药店，建成后约 ${geShu * 260} 名居民步行 15 分钟内可达`,
-      yujiFugaiRenkou: geShu * 260,
+      yujiFugaiRenkou: geShu * 260
     };
   });
 

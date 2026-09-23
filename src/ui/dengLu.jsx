@@ -59,34 +59,61 @@ export function DengLu({ open, onClose, onDengLu }) {
 
   return (
     <div className="admin-mask" onClick={onClose}>
-      <div className="admin-panel" style={{ width: 420 }} onClick={(e) => e.stopPropagation()}>
+      <div className="admin-panel" style={{ width: 420 }} onClick={e => e.stopPropagation()}>
         <div className="admin-head">
           <div className="panel-title">{ye === 'denglu' ? '用户登录' : '用户注册'}</div>
-          <button className="a-btn a-btn-ghost" onClick={onClose}>关闭</button>
+          <button className="a-btn a-btn-ghost" onClick={onClose}>
+            关闭
+          </button>
         </div>
         <div className="admin-body">
           <div className="a-row">
             <button
               className={`a-btn ${ye === 'denglu' ? 'a-btn-primary' : 'a-btn-ghost'}`}
-              onClick={() => { setYe('denglu'); setCuo(''); }}
+              onClick={() => {
+                setYe('denglu');
+                setCuo('');
+              }}
             >
               登录
             </button>
             <button
               className={`a-btn ${ye === 'zhuce' ? 'a-btn-primary' : 'a-btn-ghost'}`}
-              onClick={() => { setYe('zhuce'); setCuo(''); }}
+              onClick={() => {
+                setYe('zhuce');
+                setCuo('');
+              }}
             >
               注册
             </button>
           </div>
 
-          <input className="a-input" placeholder="账号（3 位以上）" value={zhangHao} onChange={(e) => setZhangHao(e.target.value)} />
-          <input className="a-input" type="password" placeholder="密码（6 位以上）" value={miMa} onChange={(e) => setMiMa(e.target.value)} />
+          <input
+            className="a-input"
+            placeholder="账号（3 位以上）"
+            value={zhangHao}
+            onChange={e => setZhangHao(e.target.value)}
+          />
+          <input
+            className="a-input"
+            type="password"
+            placeholder="密码（6 位以上）"
+            value={miMa}
+            onChange={e => setMiMa(e.target.value)}
+          />
           {ye === 'zhuce' && (
-            <input className="a-input" type="password" placeholder="确认密码" value={miMa2} onChange={(e) => setMiMa2(e.target.value)} />
+            <input
+              className="a-input"
+              type="password"
+              placeholder="确认密码"
+              value={miMa2}
+              onChange={e => setMiMa2(e.target.value)}
+            />
           )}
           {cuo && <div className="a-tip a-tip-err">{cuo}</div>}
-          <div className="a-tip">密码经服务端加密存储，明文不落盘。管理员后台为独立入口，与用户账号互不相通。</div>
+          <div className="a-tip">
+            密码经服务端加密存储，明文不落盘。管理员后台为独立入口，与用户账号互不相通。
+          </div>
           <button className="a-btn a-btn-primary" onClick={tiJiao} disabled={mang}>
             {mang ? '处理中…' : ye === 'denglu' ? '登录' : '注册并登录'}
           </button>

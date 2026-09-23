@@ -7,7 +7,8 @@ let p = null;
 function dengMapJiuXu(resolve, reject) {
   const t0 = Date.now();
   (function xun() {
-    if (typeof window !== 'undefined' && window.BMapGL && window.BMapGL.Map) return resolve(window.BMapGL);
+    if (typeof window !== 'undefined' && window.BMapGL && window.BMapGL.Map)
+      return resolve(window.BMapGL);
     if (Date.now() - t0 > 6000) return reject(new Error('BMapGL.Map 未就绪'));
     setTimeout(xun, 100);
   })();
@@ -16,7 +17,8 @@ function dengMapJiuXu(resolve, reject) {
 export function loadBmap() {
   if (p) return p;
   p = new Promise((resolve, reject) => {
-    if (typeof window !== 'undefined' && window.BMapGL && window.BMapGL.Map) return resolve(window.BMapGL);
+    if (typeof window !== 'undefined' && window.BMapGL && window.BMapGL.Map)
+      return resolve(window.BMapGL);
     const ak = import.meta.env.VITE_BMAP_AK;
     if (!ak) return reject(new Error('缺少 VITE_BMAP_AK'));
     window.__bmapReady = () => dengMapJiuXu(resolve, reject);

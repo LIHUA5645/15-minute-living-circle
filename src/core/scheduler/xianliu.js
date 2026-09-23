@@ -20,7 +20,7 @@ class LingPaiTong {
       return;
     }
     const wait = (1 - this.lingPai) / this.qps;
-    await new Promise((r) => setTimeout(r, wait * 1000));
+    await new Promise(r => setTimeout(r, wait * 1000));
     return this.huoQu();
   }
 }
@@ -34,7 +34,7 @@ class BingFaChi {
   }
   async run(task) {
     if (this.running >= this.bingFa) {
-      await new Promise((r) => this.queue.push(r));
+      await new Promise(r => this.queue.push(r));
     }
     this.running++;
     try {
@@ -56,8 +56,8 @@ class HuanCun {
   _s() {
     if (this.store) return this.store;
     return {
-      get: (k) => (this.memory.has(k) ? this.memory.get(k) : null),
-      set: (k, v) => this.memory.set(k, v),
+      get: k => (this.memory.has(k) ? this.memory.get(k) : null),
+      set: (k, v) => this.memory.set(k, v)
     };
   }
   get(key) {
@@ -86,7 +86,7 @@ async function tuiBiChongShi(fn, maxCi = 3, jiChi = 200) {
       return await fn();
     } catch (e) {
       lastErr = e;
-      await new Promise((r) => setTimeout(r, jiChi * 2 ** i));
+      await new Promise(r => setTimeout(r, jiChi * 2 ** i));
     }
   }
   throw lastErr;
@@ -96,7 +96,7 @@ async function tuiBiChongShi(fn, maxCi = 3, jiChi = 200) {
 function ouJiGuJI(origin, dest, raoLu = 1.35) {
   const dist = haversineLite(origin, dest);
   const v = 80; // 米/分钟
-  return { durationSec: (dist * raoLu) / v * 60, distanceM: dist * raoLu, polyline: null };
+  return { durationSec: ((dist * raoLu) / v) * 60, distanceM: dist * raoLu, polyline: null };
 }
 
 function haversineLite(a, b) {
@@ -105,8 +105,7 @@ function haversineLite(a, b) {
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
   const la1 = (a.lat * Math.PI) / 180;
   const la2 = (b.lat * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 

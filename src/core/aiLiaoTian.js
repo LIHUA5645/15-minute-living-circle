@@ -9,16 +9,25 @@ import { duiHuaJieKouZhi } from './zhenduan.js';
 export async function aiLiaoTian(lishi, wen, report, ai) {
   // 先区分「没配置」和「配置了但没开启用开关」，给用户可执行的提示
   if (!(ai && ai.apiDiZhi && ai.miYao)) {
-    return { ok: false, xinxi: '管理员尚未配置大模型的接口地址与密钥，请在管理员控制台「AI 设置」里填写并点「保存配置」。' };
+    return {
+      ok: false,
+      xinxi:
+        '管理员尚未配置大模型的接口地址与密钥，请在管理员控制台「AI 设置」里填写并点「保存配置」。'
+    };
   }
   if (!ai.qiYong) {
     return {
       ok: false,
-      xinxi: '大模型已配置，但「启用」开关还没打开——请到管理员控制台「AI 设置」，把「AI 诊断服务」右上角的开关切到「已启用」，再点「保存配置」。',
+      xinxi:
+        '大模型已配置，但「启用」开关还没打开——请到管理员控制台「AI 设置」，把「AI 诊断服务」右上角的开关切到「已启用」，再点「保存配置」。'
     };
   }
   if (!ai.moXing) {
-    return { ok: false, xinxi: '还没填写模型名称——请在管理员控制台「AI 设置」里点「自动获取」选择模型，或手填模型 ID 后保存。' };
+    return {
+      ok: false,
+      xinxi:
+        '还没填写模型名称——请在管理员控制台「AI 设置」里点「自动获取」选择模型，或手填模型 ID 后保存。'
+    };
   }
 
   // 体检摘要塞进系统提示，让模型「看得见」本轮结果
@@ -32,14 +41,14 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
       content:
         '你是「15 分钟生活圈智能体检助手」的在线问答助手，用简体中文简洁、口语化地回答，' +
         '话题围绕社区生活圈、设施配套、体检报告解读。回答控制在 200 字以内。当前上下文：' +
-        zhaiYao,
+        zhaiYao
     },
     // 只带最近 8 条，防上下文超长
-    ...lishi.slice(-8).map((m) => ({
+    ...lishi.slice(-8).map(m => ({
       role: m.role === 'user' ? 'user' : 'assistant',
-      content: m.wen,
+      content: m.wen
     })),
-    { role: 'user', content: wen },
+    { role: 'user', content: wen }
   ];
 
   // 双路尝试：①服务端 /airelay 中转（防 CORS）→ ②浏览器直连（过 Cloudflare 等防火墙的真实 TLS 指纹）。
@@ -52,14 +61,14 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
       ti: {
         url: duiHuaJieKouZhi(ai.apiDiZhi),
         tou: { Authorization: 'Bearer ' + ai.miYao },
-        body: moXingTi,
-      },
+        body: moXingTi
+      }
     },
     {
       ming: '浏览器直连',
       url: duiHuaJieKouZhi(ai.apiDiZhi),
-      ti: moXingTi,
-    },
+      ti: moXingTi
+    }
   ];
   const cuoLieBiao = [];
   for (const lu of changShi) {
@@ -67,7 +76,7 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
       const r = await fetch(lu.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ai.miYao },
-        body: JSON.stringify(lu.ti),
+        body: JSON.stringify(lu.ti)
       });
       const yuan = await r.text();
       let j = null;
@@ -80,13 +89,17 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
       }
       if (!r.ok) {
         const fuWuShangCuo =
-          (j && j.error && (j.error.message || j.error.code)) || j.xinxi || j.message || `HTTP ${r.status}`;
+          (j && j.error && (j.error.message || j.error.code)) ||
+          j.xinxi ||
+          j.message ||
+          `HTTP ${r.status}`;
         cuoLieBiao.push(`${lu.ming}：服务商返回错误：${fuWuShangCuo}`);
         // 密钥/模型/余额类错误换路径也没用，直接停下报错
         if ([401, 402, 404].includes(r.status)) break;
         continue;
       }
-      const hui = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+      const hui =
+        (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
       if (!hui) {
         cuoLieBiao.push(`${lu.ming}：模型没有返回内容`);
         continue;
@@ -102,6 +115,6 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
     xinxi:
       '调用大模型失败，两条路都试过了：' +
       cuoLieBiao.join('；') +
-      '。若两条路都是 403 / 返回网页 / Failed to fetch，说明该服务商开启了 Cloudflare 防护且不允许跨域直连，建议更换服务商接口地址。',
+      '。若两条路都是 403 / 返回网页 / Failed to fetch，说明该服务商开启了 Cloudflare 防护且不允许跨域直连，建议更换服务商接口地址。'
   };
 }

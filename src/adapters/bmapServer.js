@@ -49,7 +49,7 @@ async function baiDuGet(api, path, params, chaoShiMs = 15000) {
 
 function jieXiLuXian(pathStr) {
   if (!pathStr) return [];
-  return pathStr.split(';').map((s) => {
+  return pathStr.split(';').map(s => {
     const [lng, lat] = s.split(',').map(Number);
     return { lng, lat };
   });
@@ -71,13 +71,13 @@ export function chuangJianBmapServer(cfg = {}) {
         // direction/v2 要求纬度在前（lat,lng）
         origin: `${origin.lat},${origin.lng}`,
         destination: `${dest.lat},${dest.lng}`,
-        _referer: referer,
+        _referer: referer
       });
       const r = json.result.routes[0];
       return {
         durationSec: r.duration,
         distanceM: r.distance,
-        polyline: jieXiLuXian(r.steps?.map((s) => s.path).join(';')),
+        polyline: jieXiLuXian(r.steps?.map(s => s.path).join(';'))
       };
     },
 
@@ -88,7 +88,9 @@ export function chuangJianBmapServer(cfg = {}) {
       // 这里固定按 10×10 拆批，再合并回完整矩阵；批间用小并发，避免退化成串行等待。
       const OP = 10;
       const DP = 10;
-      const jie = origins.map(() => dests.map(() => ({ durationSec: Infinity, distanceM: Infinity })));
+      const jie = origins.map(() =>
+        dests.map(() => ({ durationSec: Infinity, distanceM: Infinity }))
+      );
       const pi = [];
       for (let i = 0; i < origins.length; i += OP) {
         for (let j = 0; j < dests.length; j += DP) {
@@ -101,9 +103,9 @@ export function chuangJianBmapServer(cfg = {}) {
           const p = pi[zhi++];
           const json = await baiDuGet(api, '/routematrix/v2/walking', {
             ak,
-            origins: p.o.map((q) => `${q.lat},${q.lng}`).join('|'),
-            destinations: p.d.map((q) => `${q.lat},${q.lng}`).join('|'),
-            _referer: referer,
+            origins: p.o.map(q => `${q.lat},${q.lng}`).join('|'),
+            destinations: p.d.map(q => `${q.lat},${q.lng}`).join('|'),
+            _referer: referer
           });
           const ge = json.result || [];
           const lie = Math.max(1, p.d.length);
@@ -112,7 +114,7 @@ export function chuangJianBmapServer(cfg = {}) {
               const e = ge[a * lie + b] || {};
               jie[p.i + a][p.j + b] = {
                 durationSec: e.duration?.value ?? Infinity,
-                distanceM: e.distance?.value ?? Infinity,
+                distanceM: e.distance?.value ?? Infinity
               };
             })
           );
@@ -132,7 +134,7 @@ export function chuangJianBmapServer(cfg = {}) {
           radius: radiusMi,
           scope: 2,
           page_size: 20,
-          _referer: referer,
+          _referer: referer
         });
         let results = json.results || [];
         // 第一页拉满 20 条说明该关键词在圈内还有更多结果，追加第二页（共 40 条），提高设施覆盖密度
@@ -146,7 +148,7 @@ export function chuangJianBmapServer(cfg = {}) {
               scope: 2,
               page_size: 20,
               page_num: 1,
-              _referer: referer,
+              _referer: referer
             });
             results = results.concat(j2.results || []);
           } catch {
@@ -160,7 +162,7 @@ export function chuangJianBmapServer(cfg = {}) {
             lng: p.location.lng,
             lat: p.location.lat,
             type: '',
-            address: p.address || '',
+            address: p.address || ''
           });
         }
       }
@@ -171,13 +173,13 @@ export function chuangJianBmapServer(cfg = {}) {
       const json = await baiDuGet(api, '/reverse_geocoding/v3', {
         ak,
         location: `${point.lat},${point.lng}`,
-        _referer: referer,
+        _referer: referer
       });
       const sem = json.result.sematic_description || '';
       const addr = json.result.formatted_address || '';
       let poiType = 'residential';
       if (/湖|河|江|湿地|公园|绿地|工业|厂房|铁路|高铁/.test(addr + sem)) poiType = 'fei_juzhu';
       return { address: addr, aoi: sem, poiType };
-    },
+    }
   };
 }

@@ -17,11 +17,12 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
   const xl = new BingFaChi(bingfa);
   let qingQiuShu = 0;
   const xianliu = {
-    run: (fn) => xl.run(async () => {
-      await tong.huoQu();
-      qingQiuShu++;
-      return fn();
-    }),
+    run: fn =>
+      xl.run(async () => {
+        await tong.huoQu();
+        qingQiuShu++;
+        return fn();
+      })
   };
   const hc = opt.huanCun || new HuanCun(opt.store);
 
@@ -31,7 +32,7 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     xianliu,
     huanCun: hc,
     peiZhi: opt.peiZhi,
-    jinDu: (wan, zong) => opt.jinDu && opt.jinDu(0.18 * (wan / Math.max(1, zong)), 'sousuo'),
+    jinDu: (wan, zong) => opt.jinDu && opt.jinDu(0.18 * (wan / Math.max(1, zong)), 'sousuo')
   });
   if (poiSet.cunYi && poiSet.cunYi.length) {
     warnings.push(`POI 清洗阶段有 ${poiSet.cunYi.length} 条低可信度数据未参评`);
@@ -56,12 +57,12 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     huanCun: hc,
     xianliu,
     jinDu: opt.jinDu,
-    jinDuQuJian: [0.18, 0.85],
+    jinDuQuJian: [0.18, 0.85]
   });
   if (dengShiQuan.geshe && dengShiQuan.geshe.length) {
     warnings.push(`检测到 ${dengShiQuan.geshe.length} 个方位存在明显阻隔/割裂`);
   }
-  const jiangZhiYangBen = (dengShiQuan.yangBenDian || []).filter((s) => s.degraded);
+  const jiangZhiYangBen = (dengShiQuan.yangBenDian || []).filter(s => s.degraded);
   if (jiangZhiYangBen.length) {
     warnings.push(`${jiangZhiYangBen.length} 个采样点因算路失败降级为直线估算`);
   }
@@ -72,7 +73,7 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     xianliu,
     jinDu: opt.jinDu,
     jinDuQuJian: [0.85, 1],
-    peiZhi: opt.peiZhi,
+    peiZhi: opt.peiZhi
   });
 
   // 4. 评分（管理员配置可覆盖基准值/权重/目标时长）
@@ -99,8 +100,8 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     xinxi: {
       qingQiuShu,
       haoShiMs: Date.now() - t0,
-      miDu: dengShiQuan.miDu,
-    },
+      miDu: dengShiQuan.miDu
+    }
   };
   return report;
 }

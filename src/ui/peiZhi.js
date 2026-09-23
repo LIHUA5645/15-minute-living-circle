@@ -40,7 +40,7 @@ export function saveReport(rep, zhangHao) {
       zhongXin: rep.zhongXin,
       total: rep.total,
       dengji: rep.dengji,
-      mang: rep.mangquList.length,
+      mang: rep.mangquList.length
     });
     localStorage.setItem(RKEY, JSON.stringify(list.slice(0, 30)));
   } catch {
@@ -60,7 +60,7 @@ export function loadReports() {
 export function shanChuWoDeBaoGao(zhangHao) {
   try {
     const list = JSON.parse(localStorage.getItem(RKEY) || '[]');
-    const sheng = list.filter((r) => r.zhangHao !== zhangHao);
+    const sheng = list.filter(r => r.zhangHao !== zhangHao);
     localStorage.setItem(RKEY, JSON.stringify(sheng));
     return list.length - sheng.length;
   } catch {

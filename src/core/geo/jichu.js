@@ -19,8 +19,7 @@ function liangDianJuLi(a, b) {
   const dLng = zhuanHuDu(b.lng - a.lng);
   const lat1 = zhuanHuDu(a.lat);
   const lat2 = zhuanHuDu(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
   return 2 * R_DIQIU * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -30,8 +29,7 @@ function fangWeiJiao(a, b) {
   const lat2 = zhuanHuDu(b.lat);
   const dLng = zhuanHuDu(b.lng - a.lng);
   const y = Math.sin(dLng) * Math.cos(lat2);
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
   return (zhuanDu(Math.atan2(y, x)) + 360) % 360;
 }
 
@@ -103,8 +101,7 @@ function zaiDuoBianXingNei(dian, duoBianXing) {
     const xj = duoBianXing[j].lng,
       yj = duoBianXing[j].lat;
     const intersect =
-      yi > dian.lat !== yj > dian.lat &&
-      dian.lng < ((xj - xi) * (dian.lat - yi)) / (yj - yi) + xi;
+      yi > dian.lat !== yj > dian.lat && dian.lng < ((xj - xi) * (dian.lat - yi)) / (yj - yi) + xi;
     if (intersect) inside = !inside;
   }
   return inside;
@@ -172,7 +169,7 @@ function chuangJianWangGe(dianLie, cellSizeM = 100) {
         }
       }
       return out;
-    },
+    }
   };
 }
 
@@ -189,5 +186,5 @@ export {
   zaiDuoBianXingNei,
   waiBaoJuXing,
   pingMianJuLi,
-  chuangJianWangGe,
+  chuangJianWangGe
 };

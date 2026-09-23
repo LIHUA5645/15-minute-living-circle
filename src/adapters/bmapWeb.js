@@ -27,31 +27,31 @@ function daiBiao(fn) {
 export function chuangJianBmapWeb() {
   const B = huoBMap();
   // 内部 WGS-84 → 百度 BD-09
-  const dian = (p) => {
+  const dian = p => {
     const q = wgs84ZhuanBd09(p.lng, p.lat);
     return new B.Point(q.lng, q.lat);
   };
   // 百度 BD-09 → 内部 WGS-84
-  const hui = (p) => bd09ZhuanWgs84(p.lng, p.lat);
+  const hui = p => bd09ZhuanWgs84(p.lng, p.lat);
 
   return {
     // 步行路线
     walkingRoute(origin, dest) {
-      return daiBiao((cb) => {
+      return daiBiao(cb => {
         const ds = new B.DirectionService();
         ds.route(
           {
             origin: dian(origin),
             destination: dian(dest),
-            mode: BMAP_MODE_WALKING,
+            mode: BMAP_MODE_WALKING
           },
-          (res) => {
+          res => {
             try {
               const plan = res.getPlan(0);
               const distanceM = plan.getDistance(true);
               const durationSec = plan.getDuration(true);
               const path = plan.getPath();
-              const polyline = (path || []).map((p) => hui(p));
+              const polyline = (path || []).map(p => hui(p));
               cb(null, { durationSec, distanceM, polyline });
             } catch (e) {
               cb(e);
@@ -68,7 +68,7 @@ export function chuangJianBmapWeb() {
 
     // POI 周边检索（单关键词组）
     searchPoi(center, keywords, radiusMi) {
-      return daiBiao((cb) => {
+      return daiBiao(cb => {
         const ls = new B.LocalSearch(new B.Map(document.createElement('div')), {
           onSearchComplete(results) {
             try {
@@ -83,14 +83,14 @@ export function chuangJianBmapWeb() {
                   lng: q.lng,
                   lat: q.lat,
                   type: '',
-                  address: poi.address || '',
+                  address: poi.address || ''
                 });
               }
               cb(null, out);
             } catch (e) {
               cb(e);
             }
-          },
+          }
         });
         ls.searchNearby(keywords.join('|'), dian(center), radiusMi);
       });
@@ -98,20 +98,21 @@ export function chuangJianBmapWeb() {
 
     // 逆地理编码：用于居住性过滤
     reverseGeocode(point) {
-      return daiBiao((cb) => {
+      return daiBiao(cb => {
         const gc = new B.Geocoder();
-        gc.getLocation(dian(point), (res) => {
+        gc.getLocation(dian(point), res => {
           try {
             const sem = (res && res.surroundingPois && res.surroundingPois[0]?.title) || '';
             const addr = (res && res.address) || '';
             let poiType = 'residential';
-            if (/湖|河|江|湿地|公园|绿地|工业|厂房|铁路|高铁/.test(addr + sem)) poiType = 'fei_juzhu';
+            if (/湖|河|江|湿地|公园|绿地|工业|厂房|铁路|高铁/.test(addr + sem))
+              poiType = 'fei_juzhu';
             cb(null, { address: addr, aoi: sem, poiType });
           } catch (e) {
             cb(e);
           }
         });
       });
-    },
+    }
   };
 }

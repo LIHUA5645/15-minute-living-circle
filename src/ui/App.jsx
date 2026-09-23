@@ -19,7 +19,24 @@ import { aiLiaoTian } from '../core/aiLiaoTian.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 import { MorphIcon } from 'morphicons/react';
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, MapPin, Map, Cross, GraduationCap, ShoppingCart, Armchair, Bus, Trees, Shapes, Navigation, NavigationOff } from 'lucide';
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Search,
+  MapPin,
+  Map,
+  Cross,
+  GraduationCap,
+  ShoppingCart,
+  Armchair,
+  Bus,
+  Trees,
+  Shapes,
+  Navigation,
+  NavigationOff
+} from 'lucide';
 
 // AI 助手徽章：渐变蓝底 + 星芒 SVG（本项目 lucide 导出的是节点数据非组件，故手写内联 SVG）
 function AiHuiZhang({ da }) {
@@ -38,9 +55,16 @@ const COLOR = {
   gouwu: '#3ddc97',
   yanglao: '#b18cff',
   jiaotong: '#2f9bff',
-  xiuxian: '#e64980',
+  xiuxian: '#e64980'
 };
-const MING = { yiliao: '医疗', jiaoyu: '教育', gouwu: '购物', yanglao: '养老', jiaotong: '交通', xiuxian: '休闲' };
+const MING = {
+  yiliao: '医疗',
+  jiaoyu: '教育',
+  gouwu: '购物',
+  yanglao: '养老',
+  jiaotong: '交通',
+  xiuxian: '休闲'
+};
 
 // 六类设施图例：语义图标（lucide），颜色跟随类别色，关闭时置灰
 const SHE_SHI_TU = {
@@ -49,7 +73,7 @@ const SHE_SHI_TU = {
   gouwu: ShoppingCart,
   yanglao: Armchair,
   jiaotong: Bus,
-  xiuxian: Trees,
+  xiuxian: Trees
 };
 // AI 诊断卡：体检完成后自动生成诊断叙述（大模型优先，本地规则兜底），打字机逐字浮现
 function AiZhenDuanKa({ report, peiZhi }) {
@@ -63,7 +87,7 @@ function AiZhenDuanKa({ report, peiZhi }) {
     let huo = true;
     setZhuangTai('shengCheng');
     setXianShiWen('');
-    shengChengZhenDuan(report, peiZhi).then((j) => {
+    shengChengZhenDuan(report, peiZhi).then(j => {
       if (!huo) return;
       setWen(j.wen);
       setLaiYuan(j.laiYuan);
@@ -124,7 +148,7 @@ const YANGLI = [
   { name: '长沙·砂子塘社区', lng: 112.9388, lat: 28.2281 },
   { name: '北京·中关村', lng: 116.3163, lat: 39.9836 },
   { name: '上海·人民广场', lng: 121.4737, lat: 31.2304 },
-  { name: '广州·天河城', lng: 113.3245, lat: 23.1371 },
+  { name: '广州·天河城', lng: 113.3245, lat: 23.1371 }
 ];
 
 function chuangJianIpc() {
@@ -133,7 +157,7 @@ function chuangJianIpc() {
     walkingRoute: (o, d) => api.walkingRoute(o, d),
     routeMatrix: (o, d) => api.routeMatrix(o, d),
     searchPoi: (c, k, r) => api.searchPoi(c, k, r),
-    reverseGeocode: (p) => api.reverseGeocode(p),
+    reverseGeocode: p => api.reverseGeocode(p)
   };
 }
 const isElectron = typeof window !== 'undefined' && window.api?.isElectron;
@@ -166,7 +190,9 @@ export function App() {
   const [guanZhuM, setGuanZhuM] = useState(null); // 用户在盲区清单里标记（高亮）的盲区 id
   const [yongHu, setYongHu] = useState(() => dangQianYongHu());
   // 管理员登录态（与用户会话分离，存 localStorage 以便控制台独立标签页共享）：管理员面板关闭时同步一次
-  const [guanLiYuanZai, setGuanLiYuanZai] = useState(() => localStorage.getItem('sq_admin_session') === '1');
+  const [guanLiYuanZai, setGuanLiYuanZai] = useState(
+    () => localStorage.getItem('sq_admin_session') === '1'
+  );
   const guanLiYuanTuiChu = () => {
     localStorage.removeItem('sq_admin_session');
     localStorage.removeItem('sq_admin_token');
@@ -198,10 +224,12 @@ export function App() {
   // 底图引擎：baidu=百度地图（官方 BMap GL SDK 渲染，默认使用），
   // tile=高德/OSM 瓦片（AK 被风控拦截时的兜底，MapCanvas 内 3 秒未就绪会自动切换）
   const [ditu, setDitu] = useState('baidu');
-  const [xianshi, setXianshi] = useState(() => Object.fromEntries(Object.keys(COLOR).map((k) => [k, true])));
+  const [xianshi, setXianshi] = useState(() =>
+    Object.fromEntries(Object.keys(COLOR).map(k => [k, true]))
+  );
   // 自定义维度加入图层开关（管理员新增维度后自动出现在图例中）
   useEffect(() => {
-    setXianshi((prev) => {
+    setXianshi(prev => {
       const next = { ...prev };
       let gai = false;
       for (const z of peiZhi.ziDing || []) {
@@ -226,7 +254,7 @@ export function App() {
   const jinDuShiRef = useRef(0); // 最近一次进度推进的时间戳，供看门狗判断是否卡死
 
   function qieHuanKai(v) {
-    setKai((prev) => ({ ...prev, [v]: !prev[v] }));
+    setKai(prev => ({ ...prev, [v]: !prev[v] }));
   }
 
   // 管理员入口：①右上角齿轮按钮（新标签页打开控制台）②URL 带 #guanliyuan ③连点 logo 三次。
@@ -286,19 +314,19 @@ export function App() {
       mode === 'osm'
         ? { qps: 50, bingfa: 8 }
         : mode === 'server'
-        ? { qps: 5, bingfa: 6 }
-        : mode === 'bmap'
-        // 并发压到 8：实测并发 16 时百度地点检索大面积返回失败（27/31 个关键词失败），
-        // 节奏太松反而把数据打残；单次调用 2~3 秒，靠"关键词并发提交 + 有限并发池"已经够快
-        ? { qps: 6, bingfa: 8 }
-        : { qps: 8, bingfa: 8 };
+          ? { qps: 5, bingfa: 6 }
+          : mode === 'bmap'
+            ? // 并发压到 8：实测并发 16 时百度地点检索大面积返回失败（27/31 个关键词失败），
+              // 节奏太松反而把数据打残；单次调用 2~3 秒，靠"关键词并发提交 + 有限并发池"已经够快
+              { qps: 6, bingfa: 8 }
+            : { qps: 8, bingfa: 8 };
     try {
       let rep;
       try {
         rep = await yunXingTijian(provider, canshu, {
           jinDu: jinDu,
           peiZhi,
-          ...jieZou,
+          ...jieZou
         });
       } catch (e) {
         // 容错降级：百度服务不可用（限流 / 网络异常）时，
@@ -307,16 +335,20 @@ export function App() {
         // 直接抛出去让界面说清楚原因，别让用户对着进度条白等一轮 OSM 兜底
         const xinXi = (e && e.message) || '';
         if (mode !== 'bmap' || /baidu:(4|5|301|302)|配额|AK/i.test(xinXi)) throw e;
-        setTijianCuo(`百度数据源中断（${(e && e.message) || '网络异常'}），已自动降级为 OSM 真实路网`);
+        setTijianCuo(
+          `百度数据源中断（${(e && e.message) || '网络异常'}），已自动降级为 OSM 真实路网`
+        );
         const osm = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
         providerRef.current = osm; // 降级后路线查询跟随可用数据源
         rep = await yunXingTijian(osm, canshu, {
           jinDu: jinDu,
           peiZhi,
           qps: 50,
-          bingfa: 8,
+          bingfa: 8
         });
-        rep.warnings.push('百度地图服务不可用，已自动降级为 OSM 真实路网（结果仍基于真实道路计算）');
+        rep.warnings.push(
+          '百度地图服务不可用，已自动降级为 OSM 真实路网（结果仍基于真实道路计算）'
+        );
         setOffline(true);
       }
       setReport(rep);
@@ -346,7 +378,9 @@ export function App() {
     if (!running) return undefined;
     const t = setInterval(() => {
       if (Date.now() - jinDuShiRef.current < 75000) return;
-      setTijianCuo('体检长时间没有进展（数据源可能被限流或无响应），已停止等待。请稍后重试或切换数据源。');
+      setTijianCuo(
+        '体检长时间没有进展（数据源可能被限流或无响应），已停止等待。请稍后重试或切换数据源。'
+      );
       setOffline(true);
       setRunning(false);
       runningRef.current = false;
@@ -377,8 +411,8 @@ export function App() {
       try {
         const B = await loadBmap();
         const gc = new B.Geocoder();
-        const ok = await new Promise((resolve) => {
-          gc.getPoint(w, (p) => {
+        const ok = await new Promise(resolve => {
+          gc.getPoint(w, p => {
             if (p) {
               // 百度返回 BD-09，转成内部统一的 WGS-84
               yingYong(bd09ZhuanWgs84(p.lng, p.lat));
@@ -406,7 +440,9 @@ export function App() {
     const lie = [{ name: '当前位置', lng: c.lng, lat: c.lat }];
     try {
       const ql = `[out:json][timeout:25];nwr["place"~"^(neighbourhood|suburb|quarter|village|town|city_block)$"](around:2500,${c.lat},${c.lng});out center;`;
-      const r = await fetch(`https://overpass.openstreetmap.fr/api/interpreter?data=${encodeURIComponent(ql)}`);
+      const r = await fetch(
+        `https://overpass.openstreetmap.fr/api/interpreter?data=${encodeURIComponent(ql)}`
+      );
       const j = await r.json();
       const yi = new Set();
       const hou = [];
@@ -419,7 +455,8 @@ export function App() {
         hou.push({ name: ming, lng, lat, juLi: liangDianJuLi(c, { lng, lat }) });
       }
       hou.sort((a, b) => a.juLi - b.juLi);
-      for (const p of hou.slice(0, 5)) lie.push({ name: `${p.name}（${(p.juLi / 1000).toFixed(1)}km）`, lng: p.lng, lat: p.lat });
+      for (const p of hou.slice(0, 5))
+        lie.push({ name: `${p.name}（${(p.juLi / 1000).toFixed(1)}km）`, lng: p.lng, lat: p.lat });
     } catch {
       /* 推荐失败只保留「当前位置」 */
     }
@@ -452,7 +489,7 @@ export function App() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      pos => {
         // 自动定位是异步的，若用户已先在地图上选好了位置，就不要再用定位结果覆盖他
         if (ziDong && jiaoHuRef.current) {
           setDingWeiTai('ok'); // 用户自己选过点了，自动定位结果按「已定位」结束，不再提示
@@ -468,14 +505,14 @@ export function App() {
         if (!ziDong) run(c);
         else ziDongTiJian(c); // 首屏自动模式：拿到位置直接开跑
       },
-      (err) => {
+      err => {
         // 1=权限被拒 2=位置不可用 3=超时，换成用户看得懂的说明
         const yuan =
           err && err.code === 1
             ? '浏览器定位权限被拒绝'
             : err && err.code === 3
-            ? '定位超时，设备没返回位置'
-            : '无法获取设备位置（可能未开启系统定位）';
+              ? '定位超时，设备没返回位置'
+              : '无法获取设备位置（可能未开启系统定位）';
         setDingWeiTai('fail');
         setDingWeiYin(yuan);
         if (!ziDong) alert('定位失败：' + yuan + '。可改在地图上选点或拖动蓝色图钉。');
@@ -499,7 +536,7 @@ export function App() {
   }
 
   function qieHuanFenlei(f) {
-    setXianshi((prev) => ({ ...prev, [f]: !prev[f] }));
+    setXianshi(prev => ({ ...prev, [f]: !prev[f] }));
   }
 
   function exportJson() {
@@ -512,7 +549,7 @@ export function App() {
   }
 
   // 地图选点确认 / 拖动图钉落点：只有用户明确确认后才回写中心点，避免误触就搬走体检中心
-  const xuanZeZhongXin = useCallback((p) => {
+  const xuanZeZhongXin = useCallback(p => {
     jiaoHuRef.current = true;
     setCenter(p);
     setCurName('地图选点');
@@ -523,18 +560,26 @@ export function App() {
   async function dianJiSheShi(p, qiangZhi = false) {
     const prov = providerRef.current;
     if (!prov || runningRef.current) return;
-    setBuXingLuXian((prev) =>
-      !qiangZhi && prev && prev.uid && prev.uid === p.uid ? null : { uid: p.uid, dian: p, zhuangTai: 'loading' }
+    setBuXingLuXian(prev =>
+      !qiangZhi && prev && prev.uid && prev.uid === p.uid
+        ? null
+        : { uid: p.uid, dian: p, zhuangTai: 'loading' }
     );
     try {
       const r = await prov.walkingRoute(center, p);
-      setBuXingLuXian((prev) =>
+      setBuXingLuXian(prev =>
         prev && prev.uid === p.uid
-          ? { ...prev, zhuangTai: 'ok', polyline: r.polyline, distanceM: r.distanceM, durationSec: r.durationSec }
+          ? {
+              ...prev,
+              zhuangTai: 'ok',
+              polyline: r.polyline,
+              distanceM: r.distanceM,
+              durationSec: r.durationSec
+            }
           : prev
       );
     } catch {
-      setBuXingLuXian((prev) => (prev && prev.uid === p.uid ? { ...prev, zhuangTai: 'fail' } : prev));
+      setBuXingLuXian(prev => (prev && prev.uid === p.uid ? { ...prev, zhuangTai: 'fail' } : prev));
     }
   }
 
@@ -569,7 +614,10 @@ export function App() {
     setLiaoTianZhong(true);
     const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai);
     setLiaoTianZhong(false);
-    setLiaoTianLieBiao([...xinLie, j.ok ? { role: 'ai', wen: j.huiFu } : { role: 'cuo', wen: j.xinxi }]);
+    setLiaoTianLieBiao([
+      ...xinLie,
+      j.ok ? { role: 'ai', wen: j.huiFu } : { role: 'cuo', wen: j.xinxi }
+    ]);
   }
 
   return (
@@ -585,97 +633,133 @@ export function App() {
             <input
               placeholder="输入社区 / 街道名称搜索"
               value={souSuoWenBen}
-            onChange={(e) => setSouSuoWenBen(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && souSuo()}
-          />
-          <button className="search-btn" onClick={souSuo}>
-            <MorphIcon icon={Search} spring="snappy" size={15} />
-            <span>搜索</span>
-          </button>
+              onChange={e => setSouSuoWenBen(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && souSuo()}
+            />
+            <button className="search-btn" onClick={souSuo}>
+              <MorphIcon icon={Search} spring="snappy" size={15} />
+              <span>搜索</span>
+            </button>
+          </div>
+          <select
+            className="time-select"
+            value={mubiaoFen}
+            onChange={e => setMubiaoFen(Number(e.target.value))}
+          >
+            <option value={5}>步行 5 分钟</option>
+            <option value={10}>步行 10 分钟</option>
+            <option value={15}>步行 15 分钟</option>
+            <option value={20}>步行 20 分钟</option>
+          </select>
         </div>
-        <select className="time-select" value={mubiaoFen} onChange={(e) => setMubiaoFen(Number(e.target.value))}>
-          <option value={5}>步行 5 分钟</option>
-          <option value={10}>步行 10 分钟</option>
-          <option value={15}>步行 15 分钟</option>
-          <option value={20}>步行 20 分钟</option>
-        </select>
-      </div>
 
-      <div className="header-right">
-        <div className="header-toggles">
-          <button
-            type="button"
-            className={`tog-btn ${kai.zuo ? 'on' : ''}`}
-            title={kai.zuo ? '隐藏左下面板' : '显示左下面板'}
-            onClick={() => qieHuanKai('zuo')}
-          >
-            <MorphIcon icon={kai.zuo ? PanelLeftClose : PanelLeftOpen} spring="snappy" size={15} />
-            控制面板
-          </button>
-          <button
-            type="button"
-            className={`tog-btn ${kai.you ? 'on' : ''}`}
-            title={kai.you ? '隐藏右侧报告' : '显示右侧报告'}
-            onClick={() => qieHuanKai('you')}
-          >
-            <MorphIcon icon={kai.you ? PanelRightClose : PanelRightOpen} spring="snappy" size={15} />
-            报告面板
-          </button>
-          <button
-            type="button"
-            className={`tog-btn ${kai.ai ? 'on' : ''}`}
-            title={kai.ai ? '隐藏 AI 导航' : '显示 AI 导航'}
-            onClick={() => qieHuanKai('ai')}
-          >
-            <MorphIcon icon={kai.ai ? Navigation : NavigationOff} spring="snappy" size={15} />
-            AI 导航
-          </button>
+        <div className="header-right">
+          <div className="header-toggles">
+            <button
+              type="button"
+              className={`tog-btn ${kai.zuo ? 'on' : ''}`}
+              title={kai.zuo ? '隐藏左下面板' : '显示左下面板'}
+              onClick={() => qieHuanKai('zuo')}
+            >
+              <MorphIcon
+                icon={kai.zuo ? PanelLeftClose : PanelLeftOpen}
+                spring="snappy"
+                size={15}
+              />
+              控制面板
+            </button>
+            <button
+              type="button"
+              className={`tog-btn ${kai.you ? 'on' : ''}`}
+              title={kai.you ? '隐藏右侧报告' : '显示右侧报告'}
+              onClick={() => qieHuanKai('you')}
+            >
+              <MorphIcon
+                icon={kai.you ? PanelRightClose : PanelRightOpen}
+                spring="snappy"
+                size={15}
+              />
+              报告面板
+            </button>
+            <button
+              type="button"
+              className={`tog-btn ${kai.ai ? 'on' : ''}`}
+              title={kai.ai ? '隐藏 AI 导航' : '显示 AI 导航'}
+              onClick={() => qieHuanKai('ai')}
+            >
+              <MorphIcon icon={kai.ai ? Navigation : NavigationOff} spring="snappy" size={15} />
+              AI 导航
+            </button>
+          </div>
+          {/* 赛道要求必须使用百度地图，底图固定为百度，不提供第三方底图切换 */}
+          <span className="ditu-chip" title="底图固定使用百度地图（赛道评审要求）">
+            <MorphIcon icon={Map} size={13} spring="snappy" />
+            底图 · 百度地图
+          </span>
+          {yongHu ? (
+            <>
+              <button
+                className="src-chip src-chip-btn"
+                title="进入个人主页"
+                onClick={() => setGeRenKai(true)}
+              >
+                👤 {yongHu.zhangHao}
+              </button>
+              <button
+                className="admin-btn"
+                onClick={() => {
+                  yongHuTuiChu();
+                  setYongHu(null);
+                }}
+              >
+                退出
+              </button>
+            </>
+          ) : guanLiYuanZai ? (
+            <>
+              <span className="src-chip" title="管理员身份已登录">
+                🛡 管理员
+              </span>
+              <button
+                className="admin-btn"
+                onClick={daKaiKongZhiTai}
+                title="在独立标签页打开管理员控制台"
+              >
+                打开控制台
+              </button>
+              <button className="admin-btn" onClick={guanLiYuanTuiChu}>
+                退出
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="admin-btn" onClick={() => setDengLuKai(true)}>
+                登录 / 注册
+              </button>
+              <button
+                className="admin-gear"
+                onClick={daKaiKongZhiTai}
+                title="管理员入口"
+                aria-label="管理员入口"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="15"
+                  height="15"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
-        {/* 赛道要求必须使用百度地图，底图固定为百度，不提供第三方底图切换 */}
-        <span className="ditu-chip" title="底图固定使用百度地图（赛道评审要求）">
-          <MorphIcon icon={Map} size={13} spring="snappy" />
-          底图 · 百度地图
-        </span>
-        {yongHu ? (
-          <>
-            <button
-              className="src-chip src-chip-btn"
-              title="进入个人主页"
-              onClick={() => setGeRenKai(true)}
-            >👤 {yongHu.zhangHao}</button>
-            <button
-              className="admin-btn"
-              onClick={() => {
-                yongHuTuiChu();
-                setYongHu(null);
-              }}
-            >
-              退出
-            </button>
-          </>
-        ) : guanLiYuanZai ? (
-          <>
-            <span className="src-chip" title="管理员身份已登录">🛡 管理员</span>
-            <button className="admin-btn" onClick={daKaiKongZhiTai} title="在独立标签页打开管理员控制台">打开控制台</button>
-            <button className="admin-btn" onClick={guanLiYuanTuiChu}>退出</button>
-          </>
-        ) : (
-          <>
-            <button className="admin-btn" onClick={() => setDengLuKai(true)}>登录 / 注册</button>
-            <button
-              className="admin-gear"
-              onClick={daKaiKongZhiTai}
-              title="管理员入口"
-              aria-label="管理员入口"
-            >
-              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-            </button>
-          </>
-        )}
-      </div>
-    </header>
+      </header>
 
       <div className="mapwrap">
         <MapCanvas
@@ -689,7 +773,11 @@ export function App() {
           ditu={ditu}
           onDitu={setDitu}
         />
-        {offline && <div className="offline">{tijianCuo || '地图服务异常，已降级真实路网兜底模式，请检查 AK / 网络'}</div>}
+        {offline && (
+          <div className="offline">
+            {tijianCuo || '地图服务异常，已降级真实路网兜底模式，请检查 AK / 网络'}
+          </div>
+        )}
         {buXing && (
           <div className={`buxing-tip ${buXing.zhuangTai}`}>
             {buXing.zhuangTai === 'loading' && '正在沿真实路网计算步行路线…'}
@@ -713,7 +801,9 @@ export function App() {
             {dingWeiTai === 'ok' && <span className="sec-tag">已定位</span>}
           </div>
           {zhouBian.length === 0 && dingWeiTai === 'loading' && (
-            <div className="empty-tip">正在获取你的位置…首次访问浏览器会弹出定位授权，请选择「允许」</div>
+            <div className="empty-tip">
+              正在获取你的位置…首次访问浏览器会弹出定位授权，请选择「允许」
+            </div>
           )}
           {zhouBian.length === 0 && dingWeiTai === 'ok' && (
             <div className="empty-tip">已拿到你的位置，正在读取周边社区名…</div>
@@ -721,7 +811,8 @@ export function App() {
           {zhouBian.length === 0 && dingWeiTai === 'fail' && (
             <div className="empty-tip">
               没拿到设备定位：{dingWeiYin}。<br />
-              当前中心点（{curName}）{jiaoHuRef.current ? '来自你手动选点' : '是兜底默认坐标，不是你的真实位置'}。<br />
+              当前中心点（{curName}）
+              {jiaoHuRef.current ? '来自你手动选点' : '是兜底默认坐标，不是你的真实位置'}。<br />
               可点下面「重新定位」再试；也可在地图上单击选点后点「设为中心点」确认，或直接拖动地图上的蓝色图钉。
               <button type="button" className="link-btn" onClick={() => dingWei()}>
                 重新定位
@@ -730,8 +821,12 @@ export function App() {
           )}
           {zhouBian.length > 0 && (
             <div className="chips-row">
-              {zhouBian.map((p) => (
-                <button key={p.name} className={`chip ${curName === p.name ? 'on' : ''}`} onClick={() => tiaoZhuanDian(p)}>
+              {zhouBian.map(p => (
+                <button
+                  key={p.name}
+                  className={`chip ${curName === p.name ? 'on' : ''}`}
+                  onClick={() => tiaoZhuanDian(p)}
+                >
                   <MorphIcon icon={MapPin} spring="snappy" size={12} />
                   {p.name}
                 </button>
@@ -744,12 +839,12 @@ export function App() {
           <div className="sec-title">设施图层</div>
           <div className="layer-grid">
             {[
-              ...Object.keys(COLOR).map((f) => ({ f, ming: MING[f], se: COLOR[f] })),
+              ...Object.keys(COLOR).map(f => ({ f, ming: MING[f], se: COLOR[f] })),
               ...(peiZhi.ziDing || []).map((z, i) => ({
                 f: z.f,
                 ming: z.ming,
-                se: ['#f97316', '#0ea5e9', '#a3e635', '#f472b6', '#facc15', '#34d399'][i % 6],
-              })),
+                se: ['#f97316', '#0ea5e9', '#a3e635', '#f472b6', '#facc15', '#34d399'][i % 6]
+              }))
             ].map(({ f, ming, se }) => (
               <label
                 key={f}
@@ -769,17 +864,27 @@ export function App() {
           <div className="param-row">
             <div className="mini-field">
               <label>中心点经度</label>
-              <input type="number" step="0.0001" value={center.lng} onChange={(e) => setCenter({ ...center, lng: Number(e.target.value) })} />
+              <input
+                type="number"
+                step="0.0001"
+                value={center.lng}
+                onChange={e => setCenter({ ...center, lng: Number(e.target.value) })}
+              />
             </div>
             <div className="mini-field">
               <label>中心点纬度</label>
-              <input type="number" step="0.0001" value={center.lat} onChange={(e) => setCenter({ ...center, lat: Number(e.target.value) })} />
+              <input
+                type="number"
+                step="0.0001"
+                value={center.lat}
+                onChange={e => setCenter({ ...center, lat: Number(e.target.value) })}
+              />
             </div>
             <div className="mini-field">
               <label>采样</label>
               <select
                 value={dangwei}
-                onChange={(e) => setDangwei(e.target.value)}
+                onChange={e => setDangwei(e.target.value)}
                 title="快速：方位少、出结果最快；标准：24 方位平衡；精细：36 方位最细但最慢"
               >
                 <option value="fast">快速</option>
@@ -790,7 +895,7 @@ export function App() {
           </div>
           <div className="mini-field" style={{ marginTop: 8 }}>
             <label>数据源（仅影响 POI / 算路，地图底图始终是百度地图）</label>
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
+            <select value={mode} onChange={e => setMode(e.target.value)}>
               <option value="osm">真实路网 OSM · 真实街道 + 本地算路</option>
               {ak && <option value="bmap">百度地图 · 真实 API、耗配额</option>}
               {isElectron && <option value="server">百度服务端 · 批量矩阵</option>}
@@ -806,7 +911,11 @@ export function App() {
         </div>
 
         <div className="btn-row">
-          <button className="locate-btn" onClick={dingWei} title="定位到浏览器当前位置（也可以拖动地图上的蓝色图钉改中心点）">
+          <button
+            className="locate-btn"
+            onClick={dingWei}
+            title="定位到浏览器当前位置（也可以拖动地图上的蓝色图钉改中心点）"
+          >
             <MorphIcon icon={MapPin} size={15} spring="snappy" />
             定位
           </button>
@@ -814,7 +923,9 @@ export function App() {
             {running ? `${Math.round(progress * 100)}%` : '开始体检'}
           </button>
         </div>
-        <div className="progress"><i style={{ width: `${progress * 100}%` }} /></div>
+        <div className="progress">
+          <i style={{ width: `${progress * 100}%` }} />
+        </div>
       </div>
 
       {/* AI 导航：独立悬浮卡（不挤在体检控制面板里），显隐由顶栏「AI 导航」开关控制 */}
@@ -828,8 +939,10 @@ export function App() {
             className="a-input"
             placeholder="说一句要去哪，如：去购物 / 去看病 / 去锻炼"
             value={daoHangWen}
-            onChange={(e) => setDaoHangWen(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') faQiDaoHang(); }}
+            onChange={e => setDaoHangWen(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') faQiDaoHang();
+            }}
             disabled={!report || running}
           />
           <button className="locate-btn" onClick={faQiDaoHang} disabled={!report || running}>
@@ -848,7 +961,9 @@ export function App() {
               </span>
             </div>
             <div className="dh-liYou">{daoHangJie.liYou}</div>
-            <div className="dh-luJing">步行路线已画在地图上，沿虚线走即可（点地图上其他设施可随时换目的地）。</div>
+            <div className="dh-luJing">
+              步行路线已画在地图上，沿虚线走即可（点地图上其他设施可随时换目的地）。
+            </div>
           </div>
         )}
         {daoHangJie && !daoHangJie.ok && !daoHangJie.zhuangTai && (
@@ -857,7 +972,9 @@ export function App() {
         {!report && <div className="empty-tip">完成一轮体检后，才能从真实设施里选目的地。</div>}
 
         <div className="divider" />
-        <div className="sec-title">在线问答{peiZhi?.ai?.qiYong && <span className="sec-tag">可结合本轮体检结果回答</span>}</div>
+        <div className="sec-title">
+          在线问答{peiZhi?.ai?.qiYong && <span className="sec-tag">可结合本轮体检结果回答</span>}
+        </div>
         {/* 豆包式对话界面：欢迎语 + 推荐问法芯片 + 头像气泡 + 底部圆角大输入框 */}
         <div className="lt-lie" ref={ltGunRef}>
           {liaoTianLieBiao.length === 0 && !liaoTianZhong && (
@@ -866,8 +983,13 @@ export function App() {
               <b>你好，我是 AI 助手</b>
               <span>能结合本轮体检结果聊聊你关心的问题</span>
               <div className="lt-tui">
-                {['我这个社区看病方便吗？', '盲区是什么意思？', '附近适合散步锻炼吗？'].map((t) => (
-                  <button key={t} className="lt-tuiXiang" onClick={() => faQiLiaoTian(t)} disabled={liaoTianZhong}>
+                {['我这个社区看病方便吗？', '盲区是什么意思？', '附近适合散步锻炼吗？'].map(t => (
+                  <button
+                    key={t}
+                    className="lt-tuiXiang"
+                    onClick={() => faQiLiaoTian(t)}
+                    disabled={liaoTianZhong}
+                  >
                     {t}
                   </button>
                 ))}
@@ -891,7 +1013,9 @@ export function App() {
             <div className="lt-hang ai">
               <AiHuiZhang />
               <div className="lt-qiPao ai lt-siKao">
-                <i /><i /><i />
+                <i />
+                <i />
+                <i />
               </div>
             </div>
           )}
@@ -901,8 +1025,10 @@ export function App() {
             className="lt-shuRu-kuang"
             placeholder="给 AI 助手发送消息"
             value={liaoTianWen}
-            onChange={(e) => setLiaoTianWen(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') faQiLiaoTian(); }}
+            onChange={e => setLiaoTianWen(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') faQiLiaoTian();
+            }}
             disabled={liaoTianZhong}
           />
           <button
@@ -912,8 +1038,18 @@ export function App() {
             title="发送"
           >
             {/* 本项目 lucide 导出的是图标节点数据而非组件，发送图标直接内联 SVG */}
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 2 11 13" /><path d="M22 2 15 22 11 13 2 9z" />
+            <svg
+              viewBox="0 0 24 24"
+              width="15"
+              height="15"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M22 2 11 13" />
+              <path d="M22 2 15 22 11 13 2 9z" />
             </svg>
           </button>
         </div>
@@ -933,7 +1069,8 @@ export function App() {
           </div>
           {report && (
             <div className="score-meta">
-              请求 {report.xinxi.qingQiuShu} 次 · 耗时 {(report.xinxi.haoShiMs / 1000).toFixed(1)}s · {report.xinxi.miDu}
+              请求 {report.xinxi.qingQiuShu} 次 · 耗时 {(report.xinxi.haoShiMs / 1000).toFixed(1)}s
+              · {report.xinxi.miDu}
             </div>
           )}
         </div>
@@ -969,44 +1106,53 @@ export function App() {
           <div className="sec-title">服务盲区清单（{report ? report.mangquList.length : 0}）</div>
           {!report && !tijianCuo && <div className="empty-tip">点击「开始体检」后显示盲区</div>}
           {!report && tijianCuo && <div className="empty-tip">{tijianCuo}</div>}
-          {report && report.mangquList.length === 0 && <div className="empty-tip">未识别明显盲区，覆盖良好</div>}
-          {report && report.mangquList.map((m) => (
-            <div className={`mq-item ${guanZhuM === m.id ? 'on' : ''}`} key={m.id}>
-              <div className="mq-head">
-                <b>{m.id}</b>
-                <span className={`mq-tag ${m.level}`}>{m.level === 'red' ? '重度' : '轻度'}</span>
-                <button
-                  className={`mq-biaoJi ${guanZhuM === m.id ? 'on' : ''}`}
-                  onClick={() => setGuanZhuM(guanZhuM === m.id ? null : m.id)}
-                  title={guanZhuM === m.id ? '取消标记' : '在地图上标记并定位该盲区'}
-                >
-                  {guanZhuM === m.id ? '已标记' : '标记'}
-                </button>
+          {report && report.mangquList.length === 0 && (
+            <div className="empty-tip">未识别明显盲区，覆盖良好</div>
+          )}
+          {report &&
+            report.mangquList.map(m => (
+              <div className={`mq-item ${guanZhuM === m.id ? 'on' : ''}`} key={m.id}>
+                <div className="mq-head">
+                  <b>{m.id}</b>
+                  <span className={`mq-tag ${m.level}`}>{m.level === 'red' ? '重度' : '轻度'}</span>
+                  <button
+                    className={`mq-biaoJi ${guanZhuM === m.id ? 'on' : ''}`}
+                    onClick={() => setGuanZhuM(guanZhuM === m.id ? null : m.id)}
+                    title={guanZhuM === m.id ? '取消标记' : '在地图上标记并定位该盲区'}
+                  >
+                    {guanZhuM === m.id ? '已标记' : '标记'}
+                  </button>
+                </div>
+                <div className="mq-body">
+                  缺口：{m.quekou.join('、')}
+                  <br />
+                  面积≈{(m.areaM2 / 10000).toFixed(1)} 万㎡ · 预计覆盖 {m.yujiFugaiRenkou} 人<br />
+                  {m.yiJu && (
+                    <>
+                      判定依据：{m.yiJu}
+                      <br />
+                    </>
+                  )}
+                  {m.buJianDian && (
+                    <>
+                      补建点：({m.buJianDian.lng.toFixed(5)}, {m.buJianDian.lat.toFixed(5)}
+                      )——地图上绿色 ✚ 标记
+                      <br />
+                    </>
+                  )}
+                  {m.jianyi}
+                </div>
               </div>
-              <div className="mq-body">
-                缺口：{m.quekou.join('、')}<br />
-                面积≈{(m.areaM2 / 10000).toFixed(1)} 万㎡ · 预计覆盖 {m.yujiFugaiRenkou} 人<br />
-                {m.yiJu && (
-                  <>
-                    判定依据：{m.yiJu}<br />
-                  </>
-                )}
-                {m.buJianDian && (
-                  <>
-                    补建点：({m.buJianDian.lng.toFixed(5)}, {m.buJianDian.lat.toFixed(5)})——地图上绿色 ✚ 标记<br />
-                  </>
-                )}
-                {m.jianyi}
-              </div>
-            </div>
-          ))}
+            ))}
         </div>
 
         {report && (
           <div className="sec">
             <div className="sec-title">改进建议</div>
             {report.jianYi.map((j, i) => (
-              <div className="suggest" key={i}>· {j}</div>
+              <div className="suggest" key={i}>
+                · {j}
+              </div>
             ))}
           </div>
         )}
@@ -1018,7 +1164,12 @@ export function App() {
         )}
       </div>
 
-      <GuanLiYuan open={adminOpen} onClose={guanLiYuanGuanBi} peiZhi={peiZhi} onChange={setPeiZhi} />
+      <GuanLiYuan
+        open={adminOpen}
+        onClose={guanLiYuanGuanBi}
+        peiZhi={peiZhi}
+        onChange={setPeiZhi}
+      />
       <DengLu open={dengLuKai} onClose={() => setDengLuKai(false)} onDengLu={setYongHu} />
       <GeRen
         open={geRenKai}
@@ -1029,9 +1180,14 @@ export function App() {
           setYongHu(null);
           setGeRenKai(false);
         }}
-        onHuiKan={(r) => {
+        onHuiKan={r => {
           // 回看历史体检：地图中心移到该社区，并清空旧报告提示重新体检
-          if (r && r.zhongXin && Number.isFinite(r.zhongXin.lng) && Number.isFinite(r.zhongXin.lat)) {
+          if (
+            r &&
+            r.zhongXin &&
+            Number.isFinite(r.zhongXin.lng) &&
+            Number.isFinite(r.zhongXin.lat)
+          ) {
             setCenter({ lng: r.zhongXin.lng, lat: r.zhongXin.lat });
             setCurName(r.zhongXin.ming || '历史体检社区');
             setReport(null);

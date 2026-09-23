@@ -52,12 +52,12 @@ function keXinDu(poi) {
 // 清洗主流程：去重 + 过滤 + 可信度 + 分维（waiJia：自定义维度关键词表 {f: [词]}）
 export function qingXi(rawList, zhongXin, waiJia) {
   const list = rawList
-    .filter((p) => p && p.lng && p.lat && p.lng !== 0 && p.lat !== 0)
-    .map((p) => ({ ...p, _clng: zhongXin.lng, _clat: zhongXin.lat }));
+    .filter(p => p && p.lng && p.lat && p.lng !== 0 && p.lat !== 0)
+    .map(p => ({ ...p, _clng: zhongXin.lng, _clat: zhongXin.lat }));
   // 第一遍：过滤 + 分类 + 可信度
   const guoLv = [];
   for (const p of list) {
-    if (HEIMINGDAN.some((w) => (p.name || '').includes(w))) continue;
+    if (HEIMINGDAN.some(w => (p.name || '').includes(w))) continue;
     const fenlei = piPeiFenlei(p.name || '', waiJia);
     if (!fenlei) continue;
     guoLv.push({ ...p, fenlei, zixin: keXinDu(p) });
@@ -67,7 +67,7 @@ export function qingXi(rawList, zhongXin, waiJia) {
   const wangGe = chuangJianWangGe([], 200);
   const suoYouDian = [];
   for (const p of guoLv) {
-    const houXuan = wangGe.zaiBanJingNei(p, 200).map((it) => suoYouDian[it.i]);
+    const houXuan = wangGe.zaiBanJingNei(p, 200).map(it => suoYouDian[it.i]);
     let dup = false;
     for (const q of houXuan) {
       if (q.fenlei !== p.fenlei) continue;
@@ -96,7 +96,7 @@ export function qingXi(rawList, zhongXin, waiJia) {
   for (const f of Object.keys(FENLEI_GUANJIANCI)) fenleiSet[f] = [];
   for (const f of Object.keys(waiJia || {})) fenleiSet[f] = fenleiSet[f] || [];
   for (const p of out) (fenleiSet[p.fenlei] || (fenleiSet[p.fenlei] = [])).push(p);
-  return { suoyou: out, fenleiSet, cunYi: out.filter((p) => p.zixin < 0.45) };
+  return { suoyou: out, fenleiSet, cunYi: out.filter(p => p.zixin < 0.45) };
 }
 
 // 检索并清洗：对所有关键词组检索后合并清洗
@@ -107,12 +107,13 @@ export function qingXi(rawList, zhongXin, waiJia) {
 //   看起来就像体检点不动。现在统一展开成任务并发提交给限流器，由限流器控制实际速率。
 export async function souSuoBingQingXi(provider, zhongXin, banJingMi = 1500, opt = {}) {
   const { xianliu, huanCun, jinDu } = opt;
-  const pao = (fn) => (xianliu ? xianliu.run(fn) : fn());
-  const huanCunKey = (f) => `poi:${f}:${zhongXin.lng.toFixed(4)},${zhongXin.lat.toFixed(4)}:${banJingMi}`;
-  const paoRenWu = (fn) =>
+  const pao = fn => (xianliu ? xianliu.run(fn) : fn());
+  const huanCunKey = f =>
+    `poi:${f}:${zhongXin.lng.toFixed(4)},${zhongXin.lat.toFixed(4)}:${banJingMi}`;
+  const paoRenWu = fn =>
     pao(fn)
-      .then((lie) => ({ lie: lie || [] }))
-      .catch((e) => ({ lie: [], shiBai: true, yin: (e && e.message) || '' }));
+      .then(lie => ({ lie: lie || [] }))
+      .catch(e => ({ lie: [], shiBai: true, yin: (e && e.message) || '' }));
 
   const tong = [];
   const renWu = [];
@@ -140,11 +141,11 @@ export async function souSuoBingQingXi(provider, zhongXin, banJingMi = 1500, opt
     const kws = FENLEI_GUANJIANCI[f] || [];
     // 百度适配器一次只能一个关键词 → 每个关键词一个任务；能批量检索的适配器仍按分类整体提交
     const yiCiYiGe = !!provider.danGuanJianCi;
-    const zuLie = yiCiYiGe ? kws.map((kw) => [kw]) : [kws];
+    const zuLie = yiCiYiGe ? kws.map(kw => [kw]) : [kws];
     for (const zu of zuLie) {
       zongShu++;
       renWu.push(
-        paoRenWu(() => provider.searchPoi(zhongXin, zu, banJingMi)).then((r) => {
+        paoRenWu(() => provider.searchPoi(zhongXin, zu, banJingMi)).then(r => {
           if (r.shiBai) {
             shiBaiShu++;
             shiBaiCi.push(zu.join('/'));

@@ -13,27 +13,31 @@ const YI_TU = [
   { f: 'jiaoyu', ci: ['上学', '教育', '学校', '幼儿园', '接孩子'] },
   { f: 'yanglao', ci: ['养老', '老人', '照料', '敬老'] },
   { f: 'jiaotong', ci: ['坐车', '乘车', '地铁', '公交', '停车', '通勤'] },
-  { f: 'xiuxian', ci: ['休闲', '锻炼', '健身', '公园', '散步', '玩', '遛弯'] },
+  { f: 'xiuxian', ci: ['休闲', '锻炼', '健身', '公园', '散步', '玩', '遛弯'] }
 ];
 
 // 本地规则选点：意图定类别 → 距离与可信度加权排序
 function benDiXuanDian(wen, houXuan, zhongXin) {
-  const yi = YI_TU.find((y) => y.ci.some((c) => wen.includes(c)));
-  let chi = yi ? houXuan.filter((p) => p.fenlei === yi.f) : [];
+  const yi = YI_TU.find(y => y.ci.some(c => wen.includes(c)));
+  let chi = yi ? houXuan.filter(p => p.fenlei === yi.f) : [];
   let tiShi = '';
   if (!chi.length) {
     // 没命中意图词：尝试按名称包含用户输入的词匹配
-    const ci = wen.split(/[，,、。！？\s]+/).filter((w) => w.length >= 2);
-    chi = houXuan.filter((p) => ci.some((w) => (p.name || '').includes(w)));
+    const ci = wen.split(/[，,、。！？\s]+/).filter(w => w.length >= 2);
+    chi = houXuan.filter(p => ci.some(w => (p.name || '').includes(w)));
     tiShi = '按名称匹配选择';
   }
   if (!chi.length) return null;
   const pai = [...chi].sort(
     (a, b) =>
-      liangDianJuLi(zhongXin, a) + (1 - (a.zixin || 0.5)) * 400 -
+      liangDianJuLi(zhongXin, a) +
+      (1 - (a.zixin || 0.5)) * 400 -
       (liangDianJuLi(zhongXin, b) + (1 - (b.zixin || 0.5)) * 400)
   );
-  return { poi: pai[0], liYou: yi ? `${yi.f}类设施中直线距离最近且可信度较高者` : tiShi || '距离最近者' };
+  return {
+    poi: pai[0],
+    liYou: yi ? `${yi.f}类设施中直线距离最近且可信度较高者` : tiShi || '距离最近者'
+  };
 }
 
 // 主入口：wen 用户需求语句；report 本轮体检报告；zhongXin 当前中心点；ai 管理员 AI 配置
@@ -51,13 +55,13 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
         i,
         ming: p.name,
         lei: p.fenlei,
-        mi: Math.round(liangDianJuLi(zhongXin, p)),
+        mi: Math.round(liangDianJuLi(zhongXin, p))
       }));
       const tiShi = [
         '候选设施列表(JSON)：',
         JSON.stringify(mingDan),
         `用户需求：「${wen}」。请从候选中选出最符合需求的 1 个设施（序号 i）。`,
-        '只输出 JSON，格式：{"i": 序号, "liYou": "20字以内选择理由"}，不要输出其他内容。',
+        '只输出 JSON，格式：{"i": 序号, "liYou": "20字以内选择理由"}，不要输出其他内容。'
       ].join('\n');
       const r = await fetch('/airelay', {
         method: 'POST',
@@ -70,10 +74,10 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
             temperature: 0.2,
             messages: [
               { role: 'system', content: '你是社区生活圈导航助手，只输出 JSON，不输出多余文字。' },
-              { role: 'user', content: tiShi },
-            ],
-          },
-        }),
+              { role: 'user', content: tiShi }
+            ]
+          }
+        })
       });
       const j = await r.json();
       const hui = j.choices?.[0]?.message?.content || '';
@@ -93,6 +97,6 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
     ok: true,
     poi: ben.poi,
     liYou: ben.liYou + (ai && ai.qiYong ? '（大模型不可用，本地规则兜底）' : '（本地规则）'),
-    laiYuan: 'bendi',
+    laiYuan: 'bendi'
   };
 }

@@ -9,7 +9,7 @@ import {
   liangDianJuLi,
   waiBaoJuXing,
   chuangJianWangGe,
-  pingMianJuLi,
+  pingMianJuLi
 } from '../geo/jichu.js';
 import { ouJiGuJI, tuiBiChongShi } from '../scheduler/xianliu.js';
 
@@ -17,7 +17,7 @@ import { ouJiGuJI, tuiBiChongShi } from '../scheduler/xianliu.js';
 const MI_DU = {
   fast: { fangwei: 12, diedai: 3, fenbian: 64, tuFa: 6 },
   standard: { fangwei: 24, diedai: 4, fenbian: 96, tuFa: 8 },
-  fine: { fangwei: 36, diedai: 5, fenbian: 128, tuFa: 10 },
+  fine: { fangwei: 36, diedai: 5, fenbian: 128, tuFa: 10 }
 };
 
 const V_BUXING = 80; // 步行速度 米/分钟
@@ -86,14 +86,14 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
     lat: pA.lat,
     t: tA,
     fangWei,
-    polyline: rAres.polyline,
+    polyline: rAres.polyline
   });
   yangBen.push({
     lng: pB.lng,
     lat: pB.lat,
     t: tB,
     fangWei,
-    polyline: rBres.polyline,
+    polyline: rBres.polyline
   });
   // 沿真实路线折线派生内层锚点（按路程比例估计耗时），改善 IDW 近中心失真
   luXianMiaoDian(rAres.polyline, tA, fangWei, yangBen);
@@ -129,7 +129,7 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
       lat: pC.lat,
       t: tc,
       fangWei,
-      polyline: rCres.polyline,
+      polyline: rCres.polyline
     });
     if (Math.abs(tc - T) < 45 || Math.abs(rClamp - r) < 40) {
       r = rClamp;
@@ -151,12 +151,12 @@ async function qiuBianJie(provider, zhongXin, fangWei, T, cfg, hc, xl, yangBen) 
 // 各向异性 IDW 插值：在网格点上求耗时场
 // 优化：用栅格索引只取最近 12 个样本，从 O(N) 降到 O(k)，整体从 O(N·G²) 降到 O(G²)
 function gouJianChang(yangBen, zhongXin) {
-  const yangBenDian = yangBen.map((s) => ({ lng: s.lng, lat: s.lat }));
+  const yangBenDian = yangBen.map(s => ({ lng: s.lng, lat: s.lat }));
   const wangGe = chuangJianWangGe(yangBenDian, 150);
   return function (p) {
     const linJin = wangGe.zaiBanJingNei(p, 1200);
     // 若附近无样本（理论上不会），回退到全量
-    const yuan = linJin.length ? linJin.map((it) => yangBen[it.i]) : yangBen;
+    const yuan = linJin.length ? linJin.map(it => yangBen[it.i]) : yangBen;
     const thetaP = fangWeiJiao(zhongXin, p);
     let num = 0;
     let den = 0;
@@ -245,7 +245,7 @@ function marchingSquares(field, G, x0, y0, dx, dy, level) {
 
 // 把小线段连接成闭合折线
 function lianJieXianDuan(segs, G, x0, y0, dx, dy) {
-  const key = (p) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)}`;
+  const key = p => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)}`;
   const map = new Map();
   for (const [a, b] of segs) {
     if (!map.has(key(a))) map.set(key(a), []);
@@ -265,7 +265,7 @@ function lianJieXianDuan(segs, G, x0, y0, dx, dy) {
       // 键存的是「格坐标×1000」（毫格精度哈希），还原时必须除回 1000，否则顶点经纬度被放大千倍
       const [ix, iy] = cur.split(',').map(Number);
       ring.push({ lng: x0 + (ix / 1000) * dx, lat: y0 + (iy / 1000) * dy });
-      const nxt = map.get(cur).find((e) => key(e) !== cur && !used.has(key(e)));
+      const nxt = map.get(cur).find(e => key(e) !== cur && !used.has(key(e)));
       cur = nxt ? key(nxt) : null;
       guard++;
     }
@@ -284,8 +284,8 @@ function luWangXiFu(rings, luXian) {
   }
   if (!suoYouDian.length) return rings;
   const wangGe = chuangJianWangGe(suoYouDian, 80);
-  return rings.map((ring) =>
-    ring.map((p) => {
+  return rings.map(ring =>
+    ring.map(p => {
       const linJin = wangGe.zaiBanJingNei(p, 80);
       if (!linJin.length) return p;
       let best = null;
@@ -308,7 +308,7 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   const dangwei = canShu.dangwei || 'standard';
   const cfg = MI_DU[dangwei] || MI_DU.standard;
   const hc = opt.huanCun;
-  const xl = opt.xianliu || { run: (f) => f() };
+  const xl = opt.xianliu || { run: f => f() };
 
   const yangBen = [{ lng: zhongXin.lng, lat: zhongXin.lat, t: 0, fangWei: 0 }];
   const luXian = [];
@@ -322,7 +322,7 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   await Promise.all(
     Array.from({ length: cfg.fangwei }, (_, i) => {
       const fw = (360 / cfg.fangwei) * i;
-      return qiuBianJie(provider, zhongXin, fw, mubiaoMiao, cfg, hc, xl, yangBen).then((r) => {
+      return qiuBianJie(provider, zhongXin, fw, mubiaoMiao, cfg, hc, xl, yangBen).then(r => {
         bianJie.push({ fangWei: fw, r: r.r, blocked: r.blocked });
         if (r.blocked) geshe.push({ fangWei: fw, leixing: 'jukuaisai/zugai' });
         // 进度映射到调用方给的区间（整体进度里 POI 检索已经先吃掉一段，不能从头再数一遍）
@@ -335,10 +335,7 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   // 构造插值场
   const rMax = 2.2 * ((V_BUXING * (mubiaoMiao / 60)) / K_RAOLU);
   const G = cfg.fenbian;
-  const box = waiBaoJuXing([
-    ...yangBen.map((s) => ({ lng: s.lng, lat: s.lat })),
-    zhongXin,
-  ]);
+  const box = waiBaoJuXing([...yangBen.map(s => ({ lng: s.lng, lat: s.lat })), zhongXin]);
   const latMid = (box.minLat + box.maxLat) / 2;
   const halfLng = rMax / (111320 * Math.cos((latMid * Math.PI) / 180));
   const halfLat = rMax / 110540;
@@ -376,18 +373,18 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   const ceng = [];
   for (const miao of [300, 600, mubiaoMiao]) {
     let rings = marchingSquares(field, G, x0, y0, dx, dy, miao);
-    rings = rings.map((r) => pingHuaXian(r, 2));
+    rings = rings.map(r => pingHuaXian(r, 2));
     rings = luWangXiFu(rings, luXian);
     if (rings.length) ceng.push({ miao, polygon: rings });
   }
 
   return {
     ceng,
-    yangBenDian: yangBen.filter((s) => s.t > 0),
+    yangBenDian: yangBen.filter(s => s.t > 0),
     luXian,
     geshe,
     rMax,
-    miDu: dangwei,
+    miDu: dangwei
   };
 }
 

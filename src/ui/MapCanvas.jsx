@@ -11,7 +11,7 @@ import { DiTuCanvas } from './DiTuCanvas.jsx';
 import { wgs84ZhuanBd09, bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 
 // 应用内部统一 WGS-84；百度底图需要 BD-09，绘制与拾取时转换
-const Z = (p) => wgs84ZhuanBd09(p.lng, p.lat);
+const Z = p => wgs84ZhuanBd09(p.lng, p.lat);
 
 const COLOR = {
   yiliao: '#ff6b6b',
@@ -19,7 +19,7 @@ const COLOR = {
   gouwu: '#3ddc97',
   yanglao: '#b18cff',
   jiaotong: '#2f9bff',
-  xiuxian: '#e64980',
+  xiuxian: '#e64980'
 };
 const MI_CAISE = { 300: '#3ddc97', 600: '#2f9bff', 900: '#ff6b6b' };
 
@@ -32,8 +32,15 @@ function svgIcon(svg) {
 
 // 设施散点图标：与「设施图层」图例同款 lucide 语义图标（白描边）+ 类别色圆底徽章，图例与地图一一对应。
 // 注意：lucide 导出的是图标节点数据（[[标签, 属性], ...]）而非 React 组件，需手动拼接 SVG 字符串
-const TU_BIAO = { yiliao: Cross, jiaoyu: GraduationCap, gouwu: ShoppingCart, yanglao: Armchair, jiaotong: Bus, xiuxian: Trees };
-const kebab = (s) => s.replace(/([A-Z])/g, '-$1').toLowerCase();
+const TU_BIAO = {
+  yiliao: Cross,
+  jiaoyu: GraduationCap,
+  gouwu: ShoppingCart,
+  yanglao: Armchair,
+  jiaotong: Bus,
+  xiuxian: Trees
+};
+const kebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
 function tuZhuanSvg(Tu) {
   const nei = Tu.map(([tag, attrs]) => {
     const a = Object.entries(attrs || {})
@@ -58,11 +65,37 @@ function simpleKey(obj) {
   return JSON.stringify(obj);
 }
 
-export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi, ditu = 'baidu', onDitu, guanZhuId }) {
+export const MapCanvas = React.memo(function MapCanvas({
+  report,
+  center,
+  onPick,
+  onPoiDianJi,
+  buXing,
+  xianshi,
+  ditu = 'baidu',
+  onDitu,
+  guanZhuId
+}) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
-  const layersRef = useRef({ iso: [], poi: [], blind: [], center: [], buJian: [], buXing: [], guanZhu: [] });
-  const keysRef = useRef({ iso: '', poi: '', blind: '', center: '', buJian: '', buXing: '', guanZhu: '' });
+  const layersRef = useRef({
+    iso: [],
+    poi: [],
+    blind: [],
+    center: [],
+    buJian: [],
+    buXing: [],
+    guanZhu: []
+  });
+  const keysRef = useRef({
+    iso: '',
+    poi: '',
+    blind: '',
+    center: '',
+    buJian: '',
+    buXing: '',
+    guanZhu: ''
+  });
   const onPickRef = useRef(onPick);
   const onPoiRef = useRef(onPoiDianJi);
   const ziFaRef = useRef(null); // 由地图点击产生的中心点，避免重复居中造成视图跳动
@@ -106,7 +139,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
         map.enableScrollWheelZoom(true);
         map.centerAndZoom(new B.Point(center.lng, center.lat), 15);
         mapRef.current = { map, B };
-        map.addEventListener('click', (e) => {
+        map.addEventListener('click', e => {
           // 点设施标记 / 点气泡按钮时也会走到这里，300ms 内一律忽略，避免「点一下就被搬走中心点」
           if (Date.now() - huLveRef.current < 300) return;
           const ll = e.latlng || e.point;
@@ -136,7 +169,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
 
     setEngine('loading');
     loadBmap()
-      .then((B) => {
+      .then(B => {
         if (cancelled || !B || !B.Map) {
           if (!cancelled) setEngine('error');
           return;
@@ -171,7 +204,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
   // 用户在清单里标记某盲区 → 地图飞到该盲区中心
   useEffect(() => {
     if (!guanZhuId || engine !== 'baidu' || !mapRef.current) return;
-    const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+    const mq = (report?.mangquList || []).find(m => m.id === guanZhuId);
     if (mq && mq.zhongxin) {
       const { map, B } = mapRef.current;
       const q = Z(mq.zhongxin);
@@ -188,14 +221,14 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
       ziFaRef.current = null;
       map.setCenter(new B.Point(q.lng, q.lat));
     } else if (engine === 'tile') {
-      setJuJiaoCi((n) => n + 1); // DiTuCanvas 监听该计数强制重新居中
+      setJuJiaoCi(n => n + 1); // DiTuCanvas 监听该计数强制重新居中
     }
   }
 
   function clearLayer(name) {
     if (!mapRef.current) return;
     const { map } = mapRef.current;
-    (layersRef.current[name] || []).forEach((o) => map.removeOverlay(o));
+    (layersRef.current[name] || []).forEach(o => map.removeOverlay(o));
     layersRef.current[name] = [];
   }
   function addTo(name, o) {
@@ -222,7 +255,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
         const col = MI_CAISE[c.miao] || '#2f9bff';
         const opa = MI_OPA[c.miao] || 0.18;
         for (const ring of c.polygon) {
-          const pts = ring.map((p) => {
+          const pts = ring.map(p => {
             const q = Z(p);
             return new B.Point(q.lng, q.lat);
           });
@@ -234,7 +267,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
               strokeWeight: 1,
               strokeOpacity: 0.55,
               fillColor: col,
-              fillOpacity: opa,
+              fillOpacity: opa
             })
           );
         }
@@ -243,10 +276,12 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
 
     // ② POI 散点：仅当 POI 数据或图层显隐变化时重建（含管理员自定义维度，未知类别回退圆形中性色）
     const poiSet = report?.poiSet;
-    const fenLeiJian = [...new Set([...Object.keys(COLOR), ...Object.keys(poiSet?.fenleiSet || {})])];
+    const fenLeiJian = [
+      ...new Set([...Object.keys(COLOR), ...Object.keys(poiSet?.fenleiSet || {})])
+    ];
     const poiKey = simpleKey({
-      counts: Object.fromEntries(fenLeiJian.map((f) => [f, (poiSet?.fenleiSet?.[f] || []).length])),
-      xianshi,
+      counts: Object.fromEntries(fenLeiJian.map(f => [f, (poiSet?.fenleiSet?.[f] || []).length])),
+      xianshi
     });
     if (poiKey !== keysRef.current.poi) {
       keysRef.current.poi = poiKey;
@@ -274,13 +309,13 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
     }
 
     // ③ 服务盲区点位
-    const blindKey = simpleKey((report?.mangquList || []).map((m) => m.id));
+    const blindKey = simpleKey((report?.mangquList || []).map(m => m.id));
     if (blindKey !== keysRef.current.blind) {
       keysRef.current.blind = blindKey;
       clearLayer('blind');
       for (const mq of report?.mangquList || []) {
         if (mq.polygon && mq.polygon.length > 2) {
-          const pts = mq.polygon.map((p) => {
+          const pts = mq.polygon.map(p => {
             const q = Z(p);
             return new B.Point(q.lng, q.lat);
           });
@@ -291,7 +326,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
               strokeWeight: 2,
               strokeOpacity: 0.9,
               fillColor: '#ff6b6b',
-              fillOpacity: 0.3,
+              fillOpacity: 0.3
             })
           );
         } else {
@@ -304,7 +339,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
               strokeColor: '#ff6b6b',
               strokeWeight: 2,
               fillColor: '#ff6b6b',
-              fillOpacity: 0.3,
+              fillOpacity: 0.3
             })
           );
         }
@@ -329,10 +364,10 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
             ),
             new B.Size(24, 30),
             { anchor: new B.Size(12, 30) }
-          ),
+          )
         })
       );
-      pin.addEventListener('dragend', (e) => {
+      pin.addEventListener('dragend', e => {
         const ll = (e && (e.latLng || e.point)) || pin.getPoint();
         if (!ll) return;
         const p = bd09ZhuanWgs84(ll.lng, ll.lat);
@@ -344,7 +379,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
     }
 
     // ④′ 盲区补建点：绿色 ✚ 图钉
-    const buJianKey = simpleKey((report?.mangquList || []).map((m) => m.buJianDian));
+    const buJianKey = simpleKey((report?.mangquList || []).map(m => m.buJianDian));
     if (buJianKey !== keysRef.current.buJian) {
       keysRef.current.buJian = buJianKey;
       clearLayer('buJian');
@@ -361,7 +396,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
               new B.Size(22, 22),
               { anchor: new B.Size(11, 11) }
             ),
-            title: `补建点 ${mq.id}`,
+            title: `补建点 ${mq.id}`
           })
         );
       }
@@ -372,7 +407,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
     if (gzKey !== keysRef.current.guanZhu) {
       keysRef.current.guanZhu = gzKey;
       clearLayer('guanZhu');
-      const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+      const mq = (report?.mangquList || []).find(m => m.id === guanZhuId);
       if (mq && mq.zhongxin) {
         const q = Z(mq.zhongxin);
         addTo(
@@ -385,18 +420,21 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
               ),
               new B.Size(24, 30),
               { anchor: new B.Size(12, 30) }
-            ),
+            )
           })
         );
       }
     }
 
     // ⑤ 步行路线：点击设施后沿真实路网的虚线折线（官方 Polyline 写法，见技能文档 references/polyline.md）
-    const buXingKey = buXing ? `${buXing.uid}|${buXing.zhuangTai}|${(buXing.polyline || []).length}` : '';    if (buXingKey !== keysRef.current.buXing) {
+    const buXingKey = buXing
+      ? `${buXing.uid}|${buXing.zhuangTai}|${(buXing.polyline || []).length}`
+      : '';
+    if (buXingKey !== keysRef.current.buXing) {
       keysRef.current.buXing = buXingKey;
       clearLayer('buXing');
       if (buXing && buXing.zhuangTai === 'ok' && buXing.polyline && buXing.polyline.length > 1) {
-        const pts = buXing.polyline.map((p) => {
+        const pts = buXing.polyline.map(p => {
           const q = Z(p);
           return new B.Point(q.lng, q.lat);
         });
@@ -409,7 +447,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
             strokeStyle: 'dashed',
             dashArray: [10, 6],
             strokeLineCap: 'round',
-            strokeLineJoin: 'round',
+            strokeLineJoin: 'round'
           })
         );
       }
@@ -447,7 +485,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
         ok.type = 'button';
         ok.className = 'pick-ok';
         ok.textContent = '设为中心点';
-        ok.addEventListener('click', (ev) => {
+        ok.addEventListener('click', ev => {
           ev.stopPropagation();
           if (queRenRef.current) queRenRef.current();
         });
@@ -455,7 +493,7 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
         no.type = 'button';
         no.className = 'pick-no';
         no.textContent = '取消';
-        no.addEventListener('click', (ev) => {
+        no.addEventListener('click', ev => {
           ev.stopPropagation();
           huLveRef.current = Date.now();
           setDaiXuan(null);
@@ -506,8 +544,22 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
         title="回到体检中心"
         aria-label="回到体检中心"
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="7" /><line x1="12" y1="1" x2="12" y2="5" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="1" y1="12" x2="5" y2="12" /><line x1="19" y1="12" x2="23" y2="12" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
+        <svg
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="7" />
+          <line x1="12" y1="1" x2="12" y2="5" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="1" y1="12" x2="5" y2="12" />
+          <line x1="19" y1="12" x2="23" y2="12" />
+          <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
         </svg>
       </button>
       {engine === 'loading' && (
@@ -517,7 +569,10 @@ export const MapCanvas = React.memo(function MapCanvas({ report, center, onPick,
       )}
       {engine === 'error' && (
         <div className="map-loading">
-          <span>百度地图加载失败：请检查 .env 中 VITE_BMAP_AK 配置、百度控制台 Referer 白名单及网络，然后刷新重试。</span>
+          <span>
+            百度地图加载失败：请检查 .env 中 VITE_BMAP_AK 配置、百度控制台 Referer
+            白名单及网络，然后刷新重试。
+          </span>
           <button type="button" className="link-btn" onClick={() => window.location.reload()}>
             刷新重试
           </button>

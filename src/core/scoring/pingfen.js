@@ -21,11 +21,21 @@ export function pingFen(zhongXin, fenleiSet, dengShiQuan, peiZhi) {
   let total = 0;
   // 参评维度 = 内置六类 + 管理员自定义维度（各自携带基准数/权重/名称）
   const canPing = [
-    ...Object.keys(FENLEI_QUANZHONG).map((f) => ({ f, biaoZhunZhi: biaoZhun[f] || 3, quanZhongZhi: quanZhong[f] || 0, ming: (cfg.mingGai && cfg.mingGai[f]) || FENLEI_MING[f] })),
-    ...(cfg.ziDing || []).map((z) => ({ f: z.f, biaoZhunZhi: z.biaoZhun || 1, quanZhongZhi: z.quanZhong || 0, ming: z.ming })),
+    ...Object.keys(FENLEI_QUANZHONG).map(f => ({
+      f,
+      biaoZhunZhi: biaoZhun[f] || 3,
+      quanZhongZhi: quanZhong[f] || 0,
+      ming: (cfg.mingGai && cfg.mingGai[f]) || FENLEI_MING[f]
+    })),
+    ...(cfg.ziDing || []).map(z => ({
+      f: z.f,
+      biaoZhunZhi: z.biaoZhun || 1,
+      quanZhongZhi: z.quanZhong || 0,
+      ming: z.ming
+    }))
   ];
   for (const { f, biaoZhunZhi, quanZhongZhi, ming } of canPing) {
-    const list = (fenleiSet[f] || []).filter((p) => liangDianJuLi(zhongXin, p) <= r0);
+    const list = (fenleiSet[f] || []).filter(p => liangDianJuLi(zhongXin, p) <= r0);
     const shuliang = list.length;
     // C 覆盖率
     const C = Math.min(1, shuliang / (biaoZhunZhi || 3));
@@ -37,7 +47,7 @@ export function pingFen(zhongXin, fenleiSet, dengShiQuan, peiZhi) {
     }
     const A = nearestSec === Infinity ? 0 : 1 - Math.min(nearestSec / T_MUBIAO, 1);
     // D 多样性：按品牌前缀去重计数 → Shannon
-    const brands = new Set(list.map((p) => (p.name || '').slice(0, 3)));
+    const brands = new Set(list.map(p => (p.name || '').slice(0, 3)));
     const subN = Math.max(1, brands.size);
     const D = Math.min(1, Math.log(subN) / Math.log(6));
     // B 均衡性：四象限标准差倒数
@@ -72,12 +82,12 @@ export function shengChengJianYi(fenleiPingfen) {
     gouwu: '购物',
     yanglao: '养老',
     jiaotong: '交通',
-    xiuxian: '休闲',
+    xiuxian: '休闲'
   };
   return sorted
     .slice(0, 2)
     .map(
-      (x) =>
+      x =>
         `${x.ming || mingzi[x.fenlei]}维度得分偏低(${x.score})，建议补建${x.ming || mingzi[x.fenlei]}类设施、提升圈内覆盖与可达性`
     );
 }

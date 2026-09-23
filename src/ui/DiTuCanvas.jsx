@@ -8,8 +8,9 @@ const TILE = 256;
 
 // 瓦片源（按国内可用性排序：高德最快且有中文注记，失败自动切 OSM）
 const WA_YUAN = [
-  (z, x, y) => `https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=${x}&y=${y}&z=${z}`,
-  (z, x, y) => `https://a.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png`,
+  (z, x, y) =>
+    `https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x=${x}&y=${y}&z=${z}`,
+  (z, x, y) => `https://a.tile.openstreetmap.fr/hot/${z}/${x}/${y}.png`
 ];
 
 // 与 App.jsx 的 COLOR 保持一致（图层开关色 = 地图散点色）
@@ -19,7 +20,7 @@ const COLOR = {
   gouwu: '#3ddc97',
   yanglao: '#b18cff',
   jiaotong: '#2f9bff',
-  xiuxian: '#e64980',
+  xiuxian: '#e64980'
 };
 const MI_CAISE = { 300: '#22a06b', 600: '#2f9bff', 900: '#ff6b6b' };
 const MI_OPA = { 300: 0.3, 600: 0.2, 900: 0.11 };
@@ -81,7 +82,7 @@ function lngLatToWorld(lng, lat, z) {
   const s = Math.sin((lat * Math.PI) / 180);
   return {
     x: ((lng + 180) / 360) * scale,
-    y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale,
+    y: (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale
   };
 }
 function worldToLngLat(x, y, z) {
@@ -89,11 +90,20 @@ function worldToLngLat(x, y, z) {
   const n = Math.PI - (2 * Math.PI * y) / scale;
   return {
     lng: (x / scale) * 360 - 180,
-    lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))),
+    lat: (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
   };
 }
 
-export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xianshi, juJiao = 0, guanZhuId }) {
+export function DiTuCanvas({
+  report,
+  center,
+  onPick,
+  onPoiDianJi,
+  buXing,
+  xianshi,
+  juJiao = 0,
+  guanZhuId
+}) {
   const wrapRef = useRef(null);
   const cvsRef = useRef(null);
   const stRef = useRef({ z: 15, cx: 0, cy: 0, yuan: 0 });
@@ -174,7 +184,7 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
     }
 
     // ② 等时圈（外→内叠加，形成热力分层）
-    const toXY = (p) => {
+    const toXY = p => {
       const w = lngLatToWorld(p.lng, p.lat, z);
       return { x: w.x - ox, y: w.y - oy };
     };
@@ -201,7 +211,9 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
     // ③ 设施散点（内置六类 + 管理员自定义维度，未知类别回退圆形中性色）
     const poiSet = report?.poiSet;
     if (poiSet) {
-      const fenLeiJian = [...new Set([...Object.keys(COLOR), ...Object.keys(poiSet.fenleiSet || {})])];
+      const fenLeiJian = [
+        ...new Set([...Object.keys(COLOR), ...Object.keys(poiSet.fenleiSet || {})])
+      ];
       for (const f of fenLeiJian) {
         if (xianshi && xianshi[f] === false) continue;
         for (const p of (poiSet.fenleiSet?.[f] || []).slice(0, 120)) {
@@ -375,7 +387,9 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
     const z = ziFaRef.current;
     const ziFa =
       juJiao === 0 &&
-      z && Math.abs(z.lng - center.lng) < 1e-9 && Math.abs(z.lat - center.lat) < 1e-9;
+      z &&
+      Math.abs(z.lng - center.lng) < 1e-9 &&
+      Math.abs(z.lat - center.lat) < 1e-9;
     if (!ziFa) {
       const st = stRef.current;
       const w = lngLatToWorld(center.lng, center.lat, st.z);
@@ -392,7 +406,7 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
   // 用户在清单里标记某盲区 → 瓦片视图飞到该盲区中心
   useEffect(() => {
     if (!guanZhuId) return undefined;
-    const mq = (report?.mangquList || []).find((m) => m.id === guanZhuId);
+    const mq = (report?.mangquList || []).find(m => m.id === guanZhuId);
     if (mq && mq.zhongxin) {
       const st = stRef.current;
       const w = lngLatToWorld(mq.zhongxin.lng, mq.zhongxin.lat, st.z);
@@ -440,7 +454,7 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
       y: e.clientY,
       moved: false,
       mode: mingZhongTuDing(cx, cy) ? 'pin' : 'map',
-      cur: null,
+      cur: null
     };
     if (dragRef.current.mode === 'pin' && cvsRef.current) cvsRef.current.style.cursor = 'grabbing';
   }
@@ -486,7 +500,7 @@ export function DiTuCanvas({ report, center, onPick, onPoiDianJi, buXing, xiansh
     const st = stRef.current;
     // 设施点命中检测：点击位置 10px 内存在可见设施 → 触发步行路线查询，不再当作选中心点
     if (onPoiDianJi && report?.poiSet) {
-      const toXY2 = (p) => {
+      const toXY2 = p => {
         const w = lngLatToWorld(p.lng, p.lat, st.z);
         return { x: w.x - ox, y: w.y - oy };
       };

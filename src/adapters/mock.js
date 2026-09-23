@@ -16,12 +16,14 @@ const MINGZI = {
   gouwu: ['惠民菜市场', '鲜丰生鲜', '利群超市', '便利商店'],
   yanglao: ['怡养养老院', '日间照料中心', '老年活动站'],
   jiaotong: ['公交总站', '地铁口', '共享单车点', '停车场'],
-  xiuxian: ['中央公园', '市民广场', '健身中心', '文化馆'],
+  xiuxian: ['中央公园', '市民广场', '健身中心', '文化馆']
 };
 
 // 各方向绕路系数（制造非圆形，体现真实路网各向异性）
 function raoLuXiShu(bearing) {
-  return 1.2 + 0.25 * Math.sin((bearing * Math.PI) / 180) + 0.1 * Math.cos((bearing * Math.PI) / 90);
+  return (
+    1.2 + 0.25 * Math.sin((bearing * Math.PI) / 180) + 0.1 * Math.cos((bearing * Math.PI) / 90)
+  );
 }
 
 export function chuangJianMock() {
@@ -41,7 +43,7 @@ export function chuangJianMock() {
         lat: p.lat,
         type: fenlei,
         brand: ming.slice(0, 2),
-        address: '样例地址',
+        address: '样例地址'
       });
     }
   }
@@ -70,7 +72,7 @@ export function chuangJianMock() {
         const t = s / steps;
         const p = {
           lng: origin.lng + (dest.lng - origin.lng) * t,
-          lat: origin.lat + (dest.lat - origin.lat) * t,
+          lat: origin.lat + (dest.lat - origin.lat) * t
         };
         polyline.push(p);
       }
@@ -78,8 +80,8 @@ export function chuangJianMock() {
     },
     // 批量距离矩阵
     async routeMatrix(origins, dests) {
-      return origins.map((o) =>
-        dests.map((d) => {
+      return origins.map(o =>
+        dests.map(d => {
           const dist = liangDianJuLi(o, d);
           const fw = fangWeiJiao(o, d);
           const k = raoLuXiShu(fw);
@@ -90,16 +92,14 @@ export function chuangJianMock() {
     // POI 检索
     async searchPoi(center, keywords, banjingMi) {
       this._ensure(center);
-      const fenlei = Object.keys(FENLEI_GUANJIANCI).find((f) =>
-        FENLEI_GUANJIANCI[f].some((kw) => keywords.includes(kw))
+      const fenlei = Object.keys(FENLEI_GUANJIANCI).find(f =>
+        FENLEI_GUANJIANCI[f].some(kw => keywords.includes(kw))
       );
-      return this._poiKu.filter(
-        (p) => p.type === fenlei && liangDianJuLi(center, p) <= banjingMi
-      );
+      return this._poiKu.filter(p => p.type === fenlei && liangDianJuLi(center, p) <= banjingMi);
     },
     // 逆地理：默认居住
     async reverseGeocode() {
       return { address: '样例地址', aoi: 'residential', poiType: 'residential' };
-    },
+    }
   };
 }

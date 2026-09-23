@@ -42,17 +42,29 @@ export const FENLEI_QUANZHONG = {
   gouwu: 0.2,
   yanglao: 0.15,
   jiaotong: 0.15,
-  xiuxian: 0.1,
+  xiuxian: 0.1
 };
 
 // 设施检索同义词表（关键词 → 维度）。同义词越全，检索覆盖越接近底图标注的真实密度
 export const FENLEI_GUANJIANCI = {
-  yiliao: ['社区卫生服务中心', '社区医院', '诊所', '医院', '卫生服务站', '药店', '药房', '门诊部', '卫生院', '中医馆', '体检中心'],
+  yiliao: [
+    '社区卫生服务中心',
+    '社区医院',
+    '诊所',
+    '医院',
+    '卫生服务站',
+    '药店',
+    '药房',
+    '门诊部',
+    '卫生院',
+    '中医馆',
+    '体检中心'
+  ],
   jiaoyu: ['小学', '幼儿园', '九年一贯制', '教育', '中学', '托儿所'],
   gouwu: ['菜市场', '农贸市场', '生鲜', '超市', '便利店', '商场', '水果店', '百货', '副食'],
   yanglao: ['养老院', '日间照料', '老年活动中心', '养老服务', '敬老院', '老年公寓', '康复中心'],
   jiaotong: ['公交站', '地铁站', '地铁', '共享单车', '停车场', '客运站'],
-  xiuxian: ['公园', '广场', '健身', '文化', '体育', '体育场馆', '图书馆', '博物馆', '游乐场'],
+  xiuxian: ['公园', '广场', '健身', '文化', '体育', '体育场馆', '图书馆', '博物馆', '游乐场']
 };
 
 // 三项必备（盲区判定）
@@ -65,7 +77,7 @@ export const BIAOZHUN = {
   gouwu: 4,
   yanglao: 2,
   jiaotong: 4,
-  xiuxian: 3,
+  xiuxian: 3
 };
 
 // 默认体检配置（管理员控制面板读取/覆盖的唯一来源）
@@ -78,7 +90,7 @@ export const MOREN_PEI_ZHI = {
     caiShiChangMiao: 900, // 菜市场：超过 15 分钟步行即算缺口
     yaoDianMiao: 900, // 药店
     xiaoXueMiao: 900, // 小学
-    cuShaiMi: 800, // 直线距离超过此值才进入精算候选
+    cuShaiMi: 800 // 直线距离超过此值才进入精算候选
   },
   // 自定义评分维度（管理员自由新增/删除，内置六类不可删）：
   // { f: 维度键, ming: 名称, guanJianCi: '逗号分隔检索词', biaoZhun: 圈内基准数, quanZhong: 权重 }
@@ -92,8 +104,8 @@ export const MOREN_PEI_ZHI = {
     moXing: '',
     miYao: '',
     // 常用配置档案：多个服务商的 {ming, apiDiZhi, miYao, moXing} 整组存档，点击整组填入
-    aiKu: [],
-  },
+    aiKu: []
+  }
 };
 
 // 维度的中文名（跨端共用展示）
@@ -103,5 +115,5 @@ export const FENLEI_MING = {
   gouwu: '购物',
   yanglao: '养老',
   jiaotong: '交通',
-  xiuxian: '休闲',
+  xiuxian: '休闲'
 };

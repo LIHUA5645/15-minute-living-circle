@@ -8,7 +8,9 @@ const V = 80; // 米/分钟（用于把秒换算成分钟描述）
 
 // 接口地址规整：兼容「完整 Chat Completions URL」与「.../v1 基础地址」两种填法
 export function duiHuaJieKouZhi(apiDiZhi) {
-  const u = String(apiDiZhi || '').trim().replace(/\/+$/, '');
+  const u = String(apiDiZhi || '')
+    .trim()
+    .replace(/\/+$/, '');
   if (/\/chat\/completions$/i.test(u)) return u;
   if (/\/completions$/i.test(u)) return u.replace(/\/completions$/i, '/chat/completions');
   if (/\/v\d+$/i.test(u)) return u + '/chat/completions';
@@ -23,16 +25,16 @@ function yaoDian(report) {
   return {
     zongFen: report.total,
     dengJi: report.dengji,
-    weiDu: fps.map((x) => ({ ming: x.ming || x.fenlei, fen: x.score, shu: x.shuliang })),
-    mangQu: mq.map((m) => ({
+    weiDu: fps.map(x => ({ ming: x.ming || x.fenlei, fen: x.score, shu: x.shuliang })),
+    mangQu: mq.map(m => ({
       id: m.id,
       ji: m.level === 'red' ? '重度' : '轻度',
       quekou: (m.quekou || []).join('、'),
       mianJiWan: Math.round((m.areaM2 || 0) / 10000),
       renKou: m.yujiFugaiRenkou || 0,
-      buJian: m.buJianDian ? `${m.buJianDian.lng.toFixed(5)},${m.buJianDian.lat.toFixed(5)}` : '',
+      buJian: m.buJianDian ? `${m.buJianDian.lng.toFixed(5)},${m.buJianDian.lat.toFixed(5)}` : ''
     })),
-    renKou,
+    renKou
   };
 }
 
@@ -42,23 +44,26 @@ export function benDiZhenDuan(report) {
   const paiXu = [...y.weiDu].sort((a, b) => b.fen - a.fen);
   const you = paiXu[0];
   const duan = paiXu.slice(-2).reverse();
-  const miaoshu = (fen) => (fen >= 85 ? '充裕' : fen >= 70 ? '基本满足' : fen >= 55 ? '偏紧' : '明显不足');
-  const duanMiao = (fen) => (fen >= 70 ? '基本满足' : fen >= 55 ? '偏紧' : '明显不足');
+  const miaoshu = fen =>
+    fen >= 85 ? '充裕' : fen >= 70 ? '基本满足' : fen >= 55 ? '偏紧' : '明显不足';
+  const duanMiao = fen => (fen >= 70 ? '基本满足' : fen >= 55 ? '偏紧' : '明显不足');
   const mangJu = y.mangQu.length
-    ? `识别出 ${y.mangQu.length} 个服务盲区（${y.mangQu.filter((m) => m.ji === '重度').length} 个重度），影响约 ${y.renKou} 名居民，缺口集中在${[...new Set(y.mangQu.flatMap((m) => (m.quekou || '').split('、')))].join('、')}。`
+    ? `识别出 ${y.mangQu.length} 个服务盲区（${y.mangQu.filter(m => m.ji === '重度').length} 个重度），影响约 ${y.renKou} 名居民，缺口集中在${[...new Set(y.mangQu.flatMap(m => (m.quekou || '').split('、')))].join('、')}。`
     : '未识别明显服务盲区，设施覆盖均衡。';
   const buJian = y.mangQu
-    .filter((m) => m.buJian)
+    .filter(m => m.buJian)
     .slice(0, 3)
-    .map((m) => `盲区${m.id}建议在 (${m.buJian}) 补建${m.quekou}，覆盖约 ${m.renKou} 人`)
+    .map(m => `盲区${m.id}建议在 (${m.buJian}) 补建${m.quekou}，覆盖约 ${m.renKou} 人`)
     .join('；');
   return [
     `综合得分 ${y.zongFen} 分（${y.dengJi} 级），该社区 15 分钟生活圈服务水平${y.zongFen >= 70 ? '总体达标' : '存在明显短板'}。`,
     `${you ? `优势维度为${you.ming}（${you.fen} 分，圈内 ${you.shu} 处设施，供给${miaoshu(you.fen)}）` : ''}`,
-    duan.length ? `短板集中在${duan.map((d) => `${d.ming}（${d.fen} 分，${duanMiao(d.fen)}）`).join('与')}。` : '',
+    duan.length
+      ? `短板集中在${duan.map(d => `${d.ming}（${d.fen} 分，${duanMiao(d.fen)}）`).join('与')}。`
+      : '',
     mangJu,
     buJian ? `补建建议：${buJian}。` : '',
-    '以上结论基于真实路网步行可达性计算，可在管理员面板调整阈值后重新体检复核。',
+    '以上结论基于真实路网步行可达性计算，可在管理员面板调整阈值后重新体检复核。'
   ]
     .filter(Boolean)
     .join('');
@@ -70,7 +75,7 @@ async function yuanChengZhenDuan(report, ai) {
   const tiShi = [
     `以下是某社区「15 分钟生活圈」体检结果（JSON）：`,
     JSON.stringify(y),
-    `请以社区规划专家口吻写一段 250 字以内的中文诊断，结构：①总评一句话；②优势维度；③短板维度；④盲区与影响人口；⑤补建建议与预期改善。不要罗列原始数据，直接给结论与建议。`,
+    `请以社区规划专家口吻写一段 250 字以内的中文诊断，结构：①总评一句话；②优势维度；③短板维度；④盲区与影响人口；⑤补建建议与预期改善。不要罗列原始数据，直接给结论与建议。`
   ].join('\n');
   const r = await fetch('/airelay', {
     method: 'POST',
@@ -82,11 +87,14 @@ async function yuanChengZhenDuan(report, ai) {
         model: ai.moXing,
         temperature: 0.6,
         messages: [
-          { role: 'system', content: '你是资深的社区规划专家，擅长把数据转译为给街道办与居民看的诊断结论。' },
-          { role: 'user', content: tiShi },
-        ],
-      },
-    }),
+          {
+            role: 'system',
+            content: '你是资深的社区规划专家，擅长把数据转译为给街道办与居民看的诊断结论。'
+          },
+          { role: 'user', content: tiShi }
+        ]
+      }
+    })
   });
   const j = await r.json();
   if (!r.ok) throw new Error(j.xinxi || `接口返回 ${r.status}`);

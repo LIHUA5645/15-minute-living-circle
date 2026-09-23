@@ -6,9 +6,24 @@ import { liangDianJuLi } from './geo/jichu.js';
 
 // 可步行道路类型
 const KE_ZOUXING = new Set([
-  'footway', 'path', 'residential', 'service', 'pedestrian', 'living_street',
-  'steps', 'track', 'unclassified', 'tertiary', 'tertiary_link', 'secondary',
-  'secondary_link', 'primary', 'primary_link', 'cycleway', 'corridor', 'road',
+  'footway',
+  'path',
+  'residential',
+  'service',
+  'pedestrian',
+  'living_street',
+  'steps',
+  'track',
+  'unclassified',
+  'tertiary',
+  'tertiary_link',
+  'secondary',
+  'secondary_link',
+  'primary',
+  'primary_link',
+  'cycleway',
+  'corridor',
+  'road'
 ]);
 // 禁止步行（高速/快速路）
 const JIN_ZHI = new Set(['motorway', 'motorway_link', 'trunk', 'trunk_link']);
@@ -88,7 +103,8 @@ export function gouJianTu(elements) {
     const ids = e.nodes || [];
     const geo = e.geometry || [];
     for (let i = 0; i < ids.length && i < geo.length; i++) {
-      if (geo[i] && typeof geo[i].lat === 'number') nodes.set(ids[i], { lat: geo[i].lat, lon: geo[i].lon });
+      if (geo[i] && typeof geo[i].lat === 'number')
+        nodes.set(ids[i], { lat: geo[i].lat, lon: geo[i].lon });
     }
     for (let i = 0; i + 1 < ids.length && i + 1 < geo.length; i++) {
       const A = nodes.get(ids[i]);

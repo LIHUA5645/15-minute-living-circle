@@ -14,9 +14,9 @@ async function tiJiao(lu, body, token) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      ...(token ? { Authorization: 'Bearer ' + token } : {})
     },
-    body: JSON.stringify(body || {}),
+    body: JSON.stringify(body || {})
   });
   if (r.status === 401) return { ok: false, xinxi: '请先以管理员身份登录' };
   return r.json();
@@ -34,7 +34,13 @@ export async function dengLuYongHu(zhangHao, miMa) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(j.yongHu));
     return { ok: true, yongHu: j.yongHu };
   }
-  return { ok: false, xinxi: j.xinxi, suoDing: j.suoDing, shengYuMiao: j.shengYuMiao, leiJi: j.leiJi };
+  return {
+    ok: false,
+    xinxi: j.xinxi,
+    suoDing: j.suoDing,
+    shengYuMiao: j.shengYuMiao,
+    leiJi: j.leiJi
+  };
 }
 
 export function dangQianYongHu() {
@@ -71,8 +77,8 @@ export async function dengLuGuanLiYuan(zhangHao, miMa) {
 
 export function yongHuLieBiao() {
   return fetch('/api/guanliyuan/yongHuLieBiao', {
-    headers: { Authorization: 'Bearer ' + guanLiYuanLingPai() },
-  }).then((r) => r.json());
+    headers: { Authorization: 'Bearer ' + guanLiYuanLingPai() }
+  }).then(r => r.json());
 }
 
 export function shanChuYongHu(id) {
