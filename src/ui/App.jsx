@@ -352,9 +352,16 @@ export function App() {
       if (mode === 'server' && isElectron) provider = chuangJianIpc();
       else if (mode === 'osm') provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
       else if (mode === 'bmap') {
-        // 双 AK 架构：数据层走服务端 AK（Web 服务 API 经 /bmapapi 代理，AK 由服务端注入），
-        // 支持批量距离矩阵；REST 异常时由下方 catch 降级 OSM
-        provider = chuangJianBmapServer({ api: '/bmapapi' });
+        // 双 AK 架构：
+        // ① 开发态（vite dev）→ 服务端 AK：Web 服务 API 经 /bmapapi 本地代理，支持批量距离矩阵；
+        // ② 生产静态部署（GitHub Pages / Gitee Pages 等）→ 没有 /bmapapi 中间件，
+        //    改用浏览器端 BMap GL SDK（LocalSearch / DirectionService）检索，仍为百度真实数据。
+        // 两种路径都是百度开放能力，符合赛道要求；REST 异常时由下方 catch 降级 OSM
+        if (import.meta.env.DEV) {
+          provider = chuangJianBmapServer({ api: '/bmapapi' });
+        } else {
+          provider = chuangJianBmapWeb();
+        }
       } else {
         provider = chuangJianOsm({ zhongXin: c, banJingMi: 1500 });
       }
