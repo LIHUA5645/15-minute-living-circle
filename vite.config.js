@@ -28,6 +28,13 @@ export default defineConfig(({ mode }) => {
         name: 'baidu-web-api-proxy',
         configureServer(server) {
           server.middlewares.use('/bmapapi', (req, res, next) => {
+            // 跨域：允许静态部署页面直连本机服务
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+            if (req.method === 'OPTIONS') {
+              res.statusCode = 204;
+              return res.end();
+            }
             const ak = env.BAIDU_SERVER_AK || '';
             const u = new URL(req.url, 'http://localhost');
             if (ak) u.searchParams.set('ak', ak);
@@ -69,6 +76,13 @@ export default defineConfig(({ mode }) => {
             return stdout;
           }
           server.middlewares.use('/airelay', (req, res) => {
+            // 跨域：允许静态部署页面直连本机的 AI 中转
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+            if (req.method === 'OPTIONS') {
+              res.statusCode = 204;
+              return res.end();
+            }
             let s = '';
             req.on('data', (c) => (s += c));
             req.on('end', async () => {

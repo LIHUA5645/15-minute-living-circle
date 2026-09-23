@@ -5,6 +5,7 @@
 //      ②未配置 / 调用失败 → 本地规则兜底：意图关键词定类别，直线距离最近且可信度较高者优先。
 import { liangDianJuLi } from './geo/jichu.js';
 import { duiHuaJieKouZhi } from './zhenduan.js';
+import { fuWuUrl } from './fuwuDiZhi.js';
 
 // 意图关键词 → 评分维度（本地规则用）
 const YI_TU = [
@@ -75,7 +76,7 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
         `用户需求：「${wen}」。请从候选中选出最符合需求的 1 个设施（序号 i）。`,
         '只输出 JSON，格式：{"i": 序号, "liYou": "20字以内选择理由"}，不要输出其他内容。'
       ].join('\n');
-      const r = await fetch('/airelay', {
+      const r = await fetch(fuWuUrl('/airelay'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

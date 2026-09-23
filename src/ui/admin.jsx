@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { FENLEI_MING, MOREN_PEI_ZHI } from '../core/types.js';
 import { savePeiZhi, loadReports } from './peiZhi.js';
+import { fuWuUrl, fuWuDiZhi, sheZhiFuWuDiZhi } from '../core/fuwuDiZhi.js';
 import {
   dengLuGuanLiYuan,
   yongHuLieBiao,
@@ -463,7 +464,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     }
     setMoXingZhong(true);
     try {
-      const r = await fetch('/airelay', {
+      const r = await fetch(fuWuUrl('/airelay'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1206,6 +1207,29 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
                 登录保护：密码连续错 3 次锁定 10 分钟，错 5 次锁定 20 分钟，12 小时内累计错 12
                 次封禁 12 小时（按来源 IP 计数，登录成功自动清零）。
               </div>
+              <div className="a-field">
+                <label className="a-label">
+                  服务端地址（可选：把本机 Node 服务暴露成 https
+                  域名后填写，静态部署的页面也能用登录 / 管理员 / AI）
+                </label>
+                <div className="a-row">
+                  <input
+                    className="a-input"
+                    defaultValue={fuWuDiZhi()}
+                    placeholder="留空=同域，如 https://xxx.trycloudflare.com"
+                    onBlur={e => sheZhiFuWuDiZhi(e.target.value)}
+                  />
+                  <button className="a-btn a-btn-ghost" onClick={() => sheZhiFuWuDiZhi('')}>
+                    清空
+                  </button>
+                </div>
+                <div className="a-tip">
+                  本机跑 <code>npm run dev</code> 后，用 cloudflared / ngrok 之类的内网穿透把 5173
+                  端口暴露成 https 地址，填到这里即可让线上静态页面调用本机后端（MySQL 与 AI
+                  中转都在本机）。本机服务已允许跨域。
+                </div>
+              </div>
+
               <div className="a-field">
                 <label className="a-label">本地存储维护</label>
                 <div className="a-row">

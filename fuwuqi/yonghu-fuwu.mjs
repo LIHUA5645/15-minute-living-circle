@@ -51,6 +51,13 @@ function xianZhiQingChu(ip) {
   xianZhi.delete(ip);
 }
 
+// 跨域响应头：静态部署页面直连本机服务时用（管理员可在前端设置服务端地址）
+function kaiKuaYu(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+}
+
 function hui(res, code, obj) {
   res.statusCode = code;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -121,6 +128,9 @@ export function chuangJianYongHuFuWu(cfg) {
   async function chuLi(req, res) {
     const lu = req.url.split('?')[0];
     const ip = ipOf(req);
+    // 跨域支持：允许静态部署的页面（GitHub Pages / Gitee Pages）调用本机服务
+    kaiKuaYu(res);
+    if (req.method === 'OPTIONS') return hui(res, 204, {});
     try {
       // —— 用户注册 ——
       if (lu === '/zhuCe' && req.method === 'POST') {

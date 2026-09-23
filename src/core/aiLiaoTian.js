@@ -4,6 +4,7 @@
 // 模型能结合当前社区体检结果回答「看病方便吗」「盲区是什么意思」等问题。
 // 经 /airelay 中转调用（与 AI 诊断 / AI 导航同路），密钥不落库。
 import { duiHuaJieKouZhi } from './zhenduan.js';
+import { fuWuUrl } from './fuwuDiZhi.js';
 
 // 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；ai 管理员 AI 配置
 export async function aiLiaoTian(lishi, wen, report, ai) {
@@ -57,7 +58,7 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
   const changShi = [
     {
       ming: '服务端中转',
-      url: '/airelay',
+      url: fuWuUrl('/airelay'),
       ti: {
         url: duiHuaJieKouZhi(ai.apiDiZhi),
         tou: { Authorization: 'Bearer ' + ai.miYao },

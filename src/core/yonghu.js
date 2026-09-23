@@ -9,8 +9,11 @@ const ADMIN_TOKEN_KEY = 'sq_admin_token';
 // 管理员令牌存 localStorage（跨标签页共享，控制台可独立开新页）；用户会话仍在 sessionStorage（关页即失效）。
 // 令牌有效期由服务端控制（2 小时），本地只作缓存，不引入额外安全风险。
 
+import { fuWuUrl } from './fuwuDiZhi.js';
+
 async function tiJiao(lu, body, token) {
-  const r = await fetch('/api' + lu, {
+  // 走可配置的服务端地址：未配置时即同域 /api
+  const r = await fetch(fuWuUrl('/api' + lu), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -4,6 +4,8 @@
 //   1) 大模型路：管理员在面板配置接口地址/模型/密钥（OpenAI Chat Completions 兼容格式），
 //      经服务端 /airelay 中转调用（解决 CORS，密钥由请求携带不落后端日志）
 //   2) 本地规则路：无 AI 配置或调用失败时自动回退，基于评分与盲区数据模板生成，演示零风险
+import { fuWuUrl } from './fuwuDiZhi.js';
+
 const V = 80; // 米/分钟（用于把秒换算成分钟描述）
 
 // 接口地址规整：兼容「完整 Chat Completions URL」与「.../v1 基础地址」等填法；
@@ -81,7 +83,7 @@ async function yuanChengZhenDuan(report, ai) {
     JSON.stringify(y),
     `请以社区规划专家口吻写一段 250 字以内的中文诊断，结构：①总评一句话；②优势维度；③短板维度；④盲区与影响人口；⑤补建建议与预期改善。不要罗列原始数据，直接给结论与建议。`
   ].join('\n');
-  const r = await fetch('/airelay', {
+  const r = await fetch(fuWuUrl('/airelay'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
