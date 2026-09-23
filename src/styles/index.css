@@ -868,7 +868,12 @@ body {
   pointer-events: none;
 }
 
-/* 面板标题与静态分区 */
+/* ===== 面板标题与静态分区 ===== */
+/* 悬浮面板标题栏可拖动：抓手光标 + 禁止选中文字（拖拽逻辑在 App.jsx 的 yongMianBanTuoDong） */
+.float-card > .panel-title {
+  cursor: grab;
+  user-select: none;
+}
 .panel-title {
   display: flex;
   align-items: center;

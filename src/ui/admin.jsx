@@ -217,6 +217,9 @@ function tuiDaoMoXingDiZhi(apiDiZhi) {
   const u = String(apiDiZhi || '')
     .trim()
     .replace(/\/+$/, '');
+  if (/\/responses$/i.test(u)) return u.replace(/\/responses$/i, '/models');
+  if (/\/responses\/chat\/completions$/i.test(u))
+    return u.replace(/\/responses(\/chat)?\/completions$/i, '/models');
   if (/\/chat\/completions$/i.test(u)) return u.replace(/\/chat\/completions$/i, '/models');
   if (/\/models$/i.test(u)) return u;
   if (/\/v\d+$/i.test(u)) return u + '/models';

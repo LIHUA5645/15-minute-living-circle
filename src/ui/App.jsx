@@ -38,6 +38,64 @@ import {
   NavigationOff
 } from 'lucide';
 
+// 悬浮面板自由拖动：按住面板标题栏整块拖动。首次拖动时把 CSS 的 left/bottom/right/top
+// 定位统一换算为内联 left/top（不影响显隐动画用的 transform），拖动范围限制在地图容器内，
+// 标题栏上的按钮 / 输入框按下不触发拖动。返回 ref 挂到对应面板上。
+function yongMianBanTuoDong() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const ka = ref.current;
+    const biao = ka && ka.querySelector(':scope > .panel-title');
+    if (!ka || !biao) return undefined;
+    biao.style.cursor = 'grab';
+    biao.style.touchAction = 'none';
+    let qi = null;
+    const xia = e => {
+      if (e.button !== 0 || e.target.closest('button, input, select, textarea, a')) return;
+      const fu = ka.offsetParent;
+      if (!fu) return;
+      qi = {
+        x: e.clientX,
+        y: e.clientY,
+        l: ka.offsetLeft,
+        t: ka.offsetTop,
+        w: ka.offsetWidth,
+        fw: fu.clientWidth,
+        fh: fu.clientHeight
+      };
+      biao.setPointerCapture(e.pointerId);
+      biao.style.cursor = 'grabbing';
+      ka.style.zIndex = 40;
+      e.preventDefault();
+    };
+    const dong = e => {
+      if (!qi) return;
+      const xl = Math.min(Math.max(qi.l + e.clientX - qi.x, -qi.w + 90), qi.fw - 90);
+      const yt = Math.min(Math.max(qi.t + e.clientY - qi.y, 0), qi.fh - 52);
+      ka.style.left = `${xl}px`;
+      ka.style.top = `${yt}px`;
+      ka.style.right = 'auto';
+      ka.style.bottom = 'auto';
+    };
+    const song = () => {
+      qi = null;
+      biao.style.cursor = 'grab';
+      ka.style.zIndex = '';
+    };
+    biao.addEventListener('pointerdown', xia);
+    biao.addEventListener('pointermove', dong);
+    biao.addEventListener('pointerup', song);
+    biao.addEventListener('pointercancel', song);
+    return () => {
+      biao.removeEventListener('pointerdown', xia);
+      biao.removeEventListener('pointermove', dong);
+      biao.removeEventListener('pointerup', song);
+      biao.removeEventListener('pointercancel', song);
+    };
+  }, []);
+  return ref;
+}
+
 // AI 助手徽章：渐变蓝底 + 星芒 SVG（本项目 lucide 导出的是节点数据非组件，故手写内联 SVG）
 function AiHuiZhang({ da }) {
   return (
@@ -597,6 +655,10 @@ export function App() {
 
   // —— AI 在线问答：用户与大模型自由聊天，自动带本轮体检摘要上下文 ——
   const [liaoTianLieBiao, setLiaoTianLieBiao] = useState([]);
+  // 三个悬浮面板（体检控制 / AI 导航 / 体检报告）的自由拖拽
+  const zuoTuoRef = yongMianBanTuoDong();
+  const daoHangTuoRef = yongMianBanTuoDong();
+  const youTuoRef = yongMianBanTuoDong();
   const [liaoTianWen, setLiaoTianWen] = useState('');
   const [liaoTianZhong, setLiaoTianZhong] = useState(false);
   const ltGunRef = useRef(null);
@@ -616,7 +678,7 @@ export function App() {
     setLiaoTianZhong(false);
     setLiaoTianLieBiao([
       ...xinLie,
-      j.ok ? { role: 'ai', wen: j.huiFu } : { role: 'cuo', wen: j.xinxi }
+      j.ok ? { role: 'ai', wen: j.hui } : { role: 'cuo', wen: j.xinxi }
     ]);
   }
 
@@ -792,7 +854,7 @@ export function App() {
       </div>
 
       {/* 左下控制卡片：整块显隐由顶栏开关控制 */}
-      <div className={`float-card left-bottom ${kai.zuo ? '' : 'hidden'}`}>
+      <div ref={zuoTuoRef} className={`float-card left-bottom ${kai.zuo ? '' : 'hidden'}`}>
         <div className="panel-title">体检控制</div>
 
         <div className="sec">
@@ -929,7 +991,7 @@ export function App() {
       </div>
 
       {/* AI 导航：独立悬浮卡（不挤在体检控制面板里），显隐由顶栏「AI 导航」开关控制 */}
-      <div className={`float-card ai-nav-card ${kai.ai ? '' : 'hidden'}`}>
+      <div ref={daoHangTuoRef} className={`float-card ai-nav-card ${kai.ai ? '' : 'hidden'}`}>
         <div className="panel-title">
           AI 导航
           {peiZhi?.ai?.qiYong && <span className="sec-tag">大模型选点</span>}
@@ -1056,7 +1118,7 @@ export function App() {
       </div>
 
       {/* 右侧面板：整块显隐由顶栏开关控制 */}
-      <div className={`float-card right-panel ${kai.you ? '' : 'hidden'}`}>
+      <div ref={youTuoRef} className={`float-card right-panel ${kai.you ? '' : 'hidden'}`}>
         <div className="panel-title">
           体检报告{report ? ` · ${report.total} 分 ${report.dengji} 级` : ''}
         </div>

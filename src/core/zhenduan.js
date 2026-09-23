@@ -6,12 +6,16 @@
 //   2) 本地规则路：无 AI 配置或调用失败时自动回退，基于评分与盲区数据模板生成，演示零风险
 const V = 80; // 米/分钟（用于把秒换算成分钟描述）
 
-// 接口地址规整：兼容「完整 Chat Completions URL」与「.../v1 基础地址」两种填法
+// 接口地址规整：兼容「完整 Chat Completions URL」与「.../v1 基础地址」等填法；
+// 火山方舟的 /responses（Responses 端点）不兼容 Chat Completions 请求体，自动纠正为 /chat/completions
 export function duiHuaJieKouZhi(apiDiZhi) {
   const u = String(apiDiZhi || '')
     .trim()
     .replace(/\/+$/, '');
+  if (/\/responses\/chat\/completions$/i.test(u))
+    return u.replace(/\/responses\/chat\/completions$/i, '/chat/completions');
   if (/\/chat\/completions$/i.test(u)) return u;
+  if (/\/responses$/i.test(u)) return u.replace(/\/responses$/i, '/chat/completions');
   if (/\/completions$/i.test(u)) return u.replace(/\/completions$/i, '/chat/completions');
   if (/\/v\d+$/i.test(u)) return u + '/chat/completions';
   return u + '/chat/completions';
