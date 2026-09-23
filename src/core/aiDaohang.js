@@ -16,6 +16,18 @@ const YI_TU = [
   { f: 'xiuxian', ci: ['休闲', '锻炼', '健身', '公园', '散步', '玩', '遛弯'] }
 ];
 
+// 导航意图判定：聊天输入里出现「类别词 + 选点动作」才算导航（如「帮我找最近的医院」「去购物」），
+// 纯疑问句（看病方便吗？散步适合吗？）不算，仍走在线问答
+export function shiDaoHangYiTu(wen) {
+  const s = String(wen || '').trim();
+  if (!s) return false;
+  // 句尾是疑问语气的不导航（但「最近的医院在哪 / 怎么去」这类路线问句仍算）
+  if (/[吗呢吧？?]\s*$/.test(s) && !/怎么去|怎么走|在哪|路线/.test(s)) return false;
+  const leiCi = YI_TU.flatMap(y => y.ci);
+  const youDongZuo = /去|找|导航|带我去|送我去|最近的?|哪家|哪个|推荐/;
+  return leiCi.some(c => s.includes(c)) && youDongZuo.test(s);
+}
+
 // 本地规则选点：意图定类别 → 距离与可信度加权排序
 function benDiXuanDian(wen, houXuan, zhongXin) {
   const yi = YI_TU.find(y => y.ci.some(c => wen.includes(c)));

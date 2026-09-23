@@ -14,7 +14,7 @@ import { dangQianYongHu, yongHuTuiChu } from '../core/yonghu.js';
 import { loadPeiZhi, saveReport } from './peiZhi.js';
 import { loadBmap } from './loadBmap.js';
 import { shengChengZhenDuan } from '../core/zhenduan.js';
-import { aiXuanDian } from '../core/aiDaohang.js';
+import { aiXuanDian, shiDaoHangYiTu } from '../core/aiDaohang.js';
 import { aiLiaoTian } from '../core/aiLiaoTian.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
@@ -641,17 +641,10 @@ export function App() {
     }
   }
 
-  // —— AI 导航：一句话选点（如「去购物」）→ AI/规则选最佳设施 → 自动画步行路线 ——
-  const [daoHangWen, setDaoHangWen] = useState('');
+  // —— AI 导航：不再有独立输入框，统一走下方对话输入 ——
+  // 对话里出现导航意图（如「帮我找最近的医院」）时自动选点并画步行路线，
+  // 结果展示在本区，同时回一条聊天气泡；普通问题仍走在线问答
   const [daoHangJie, setDaoHangJie] = useState(null);
-  async function faQiDaoHang() {
-    const wen = daoHangWen.trim();
-    if (!wen || !report || runningRef.current) return;
-    setDaoHangJie({ zhuangTai: 'loading' });
-    const j = await aiXuanDian(wen, report, center, peiZhi && peiZhi.ai);
-    setDaoHangJie(j);
-    if (j.ok) dianJiSheShi(j.poi, true);
-  }
 
   // —— AI 在线问答：用户与大模型自由聊天，自动带本轮体检摘要上下文 ——
   const [liaoTianLieBiao, setLiaoTianLieBiao] = useState([]);
@@ -674,6 +667,23 @@ export function App() {
     setLiaoTianLieBiao(xinLie);
     setLiaoTianWen('');
     setLiaoTianZhong(true);
+    // 导航意图（如「帮我找最近的医院」）：直接 AI 选点 + 自动画步行路线，结果同步回聊天
+    if (report && !runningRef.current && shiDaoHangYiTu(wen)) {
+      const dh = await aiXuanDian(wen, report, center, peiZhi && peiZhi.ai);
+      setDaoHangJie(dh);
+      if (dh.ok) dianJiSheShi(dh.poi, true);
+      setLiaoTianZhong(false);
+      setLiaoTianLieBiao([
+        ...xinLie,
+        dh.ok
+          ? {
+              role: 'ai',
+              wen: `🧭 带你去「${dh.poi.name}」：${dh.liYou}。步行路线已画在地图上，点地图上其他设施可随时换目的地。`
+            }
+          : { role: 'cuo', wen: dh.xinxi }
+      ]);
+      return;
+    }
     const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai);
     setLiaoTianZhong(false);
     setLiaoTianLieBiao([
@@ -996,20 +1006,8 @@ export function App() {
           AI 导航
           {peiZhi?.ai?.qiYong && <span className="sec-tag">大模型选点</span>}
         </div>
-        <div className="a-row">
-          <input
-            className="a-input"
-            placeholder="说一句要去哪，如：去购物 / 去看病 / 去锻炼"
-            value={daoHangWen}
-            onChange={e => setDaoHangWen(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') faQiDaoHang();
-            }}
-            disabled={!report || running}
-          />
-          <button className="locate-btn" onClick={faQiDaoHang} disabled={!report || running}>
-            出发
-          </button>
+        <div className="a-tip">
+          在下方对话框说一句要去哪（如「帮我找最近的医院」「去购物」），会自动从本轮体检的真实设施里选最佳目的地并画出步行路线；普通问题则正常问答。
         </div>
         {daoHangJie && daoHangJie.zhuangTai === 'loading' && (
           <div className="empty-tip">正在从本轮体检的设施里挑选最佳目的地…</div>
@@ -1045,7 +1043,7 @@ export function App() {
               <b>你好，我是 AI 助手</b>
               <span>能结合本轮体检结果聊聊你关心的问题</span>
               <div className="lt-tui">
-                {['我这个社区看病方便吗？', '盲区是什么意思？', '附近适合散步锻炼吗？'].map(t => (
+                {['帮我找最近的医院', '我这个社区看病方便吗？', '盲区是什么意思？', '附近适合散步锻炼吗？'].map(t => (
                   <button
                     key={t}
                     className="lt-tuiXiang"
