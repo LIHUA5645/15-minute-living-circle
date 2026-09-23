@@ -144,6 +144,8 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
   const [dangBeiZhu, setDangBeiZhu] = useState('');
   const [bianJiIdx, setBianJiIdx] = useState(-1);
   const [bianJiZhi, setBianJiZhi] = useState(null);
+  // 管理员是否亲手动过「启用」开关关掉：亲手关掉后保存时不自动启用
+  const [shouDongGuanBi, setShouDongGuanBi] = useState(false);
 
   if (!open) return null;
 
@@ -192,8 +194,17 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
   }
 
   function save() {
-    savePeiZhi(draft);
-    onChange(draft);
+    // 填好了地址与密钥就视为可用：保存时自动启用，管理员不用再单独拨开关；
+    // 只有管理员刚才亲手动过开关关掉（shouDongGuanBi）才尊重手动关闭
+    let ai = draft.ai;
+    if (ai.apiDiZhi && ai.miYao && !ai.qiYong && !shouDongGuanBi) {
+      ai = { ...ai, qiYong: true };
+    }
+    const zuiZhong = { ...draft, ai };
+    setDraft(zuiZhong);
+    setShouDongGuanBi(false);
+    savePeiZhi(zuiZhong);
+    onChange(zuiZhong);
     alert('配置已保存并立即生效');
   }
 
@@ -725,7 +736,12 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
                 <div className="a-card-ming">AI 诊断服务</div>
                 <button
                   className={`a-kaiGuan ${draft.ai.qiYong ? 'on' : ''}`}
-                  onClick={() => setDraft({ ...draft, ai: { ...draft.ai, qiYong: !draft.ai.qiYong } })}
+                  onClick={() => {
+                    // 记录管理员是否亲手关开关：亲手关掉后保存不再自动启用
+                    if (draft.ai.qiYong) setShouDongGuanBi(true);
+                    else setShouDongGuanBi(false);
+                    setDraft({ ...draft, ai: { ...draft.ai, qiYong: !draft.ai.qiYong } });
+                  }}
                   title={draft.ai.qiYong ? '点击关闭' : '点击启用'}
                 >
                   <i />
@@ -736,6 +752,11 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
                 配置兼容 OpenAI Chat Completions 格式的任意大模型服务商（OpenAI / DeepSeek / 通义千问 / 智谱等）。
                 启用后体检报告自动生成 AI 诊断叙述；未启用或调用失败时自动回退本地规则引擎，不影响体检流程。
               </div>
+              {draft.ai.apiDiZhi && draft.ai.miYao && !draft.ai.qiYong && (
+                <div className="a-tip">
+                  已填写接口地址与密钥：点「保存配置」时会自动启用，无需手动拨开关；如需停用，请先把开关切到「已关闭」再保存。
+                </div>
+              )}
               <div className="a-field">
                 <label className="a-label">接口地址（Chat Completions 完整 URL）</label>
                 <input

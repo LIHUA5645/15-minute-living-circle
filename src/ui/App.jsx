@@ -152,6 +152,14 @@ export function App() {
   const [report, setReport] = useState(null);
   const [offline, setOffline] = useState(false);
   const [peiZhi, setPeiZhi] = useState(() => loadPeiZhi());
+  // 管理员控制台在独立标签页保存配置后，本页通过 storage 事件实时同步，无需刷新
+  useEffect(() => {
+    function tongBuPeiZhi(e) {
+      if (!e.key || e.key === 'sq_admin_conf') setPeiZhi(loadPeiZhi());
+    }
+    window.addEventListener('storage', tongBuPeiZhi);
+    return () => window.removeEventListener('storage', tongBuPeiZhi);
+  }, []);
   const [adminOpen, setAdminOpen] = useState(false);
   const [dengLuKai, setDengLuKai] = useState(false);
   const [geRenKai, setGeRenKai] = useState(false); // 个人主页弹窗（点头像进入）

@@ -9,7 +9,17 @@ const RKEY = 'sq_reports';
 export function loadPeiZhi() {
   try {
     const s = localStorage.getItem(KEY);
-    if (s) return { ...MOREN_PEI_ZHI, ...JSON.parse(s) };
+    let p = s ? { ...MOREN_PEI_ZHI, ...JSON.parse(s) } : { ...MOREN_PEI_ZHI };
+    // 一次性迁移：老版本填了地址与密钥但启用开关默认关闭的存量配置，自动视为已启用；
+    // 迁移后管理员手动关闭的开关不受影响（迁移标记落地后不再改写）
+    if (!localStorage.getItem('sq_ai_qiyong_migrated')) {
+      if (p.ai && p.ai.apiDiZhi && p.ai.miYao && !p.ai.qiYong) {
+        p = { ...p, ai: { ...p.ai, qiYong: true } };
+        localStorage.setItem(KEY, JSON.stringify(p));
+      }
+      localStorage.setItem('sq_ai_qiyong_migrated', '1');
+    }
+    return p;
   } catch {
     /* 忽略 */
   }

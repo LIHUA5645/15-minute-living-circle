@@ -7,8 +7,18 @@ import { duiHuaJieKouZhi } from './zhenduan.js';
 
 // 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；ai 管理员 AI 配置
 export async function aiLiaoTian(lishi, wen, report, ai) {
-  if (!(ai && ai.qiYong && ai.apiDiZhi && ai.miYao)) {
-    return { ok: false, xinxi: '管理员尚未启用大模型，请先在管理员控制台「AI 设置」里配置接口地址与密钥。' };
+  // 先区分「没配置」和「配置了但没开启用开关」，给用户可执行的提示
+  if (!(ai && ai.apiDiZhi && ai.miYao)) {
+    return { ok: false, xinxi: '管理员尚未配置大模型的接口地址与密钥，请在管理员控制台「AI 设置」里填写并点「保存配置」。' };
+  }
+  if (!ai.qiYong) {
+    return {
+      ok: false,
+      xinxi: '大模型已配置，但「启用」开关还没打开——请到管理员控制台「AI 设置」，把「AI 诊断服务」右上角的开关切到「已启用」，再点「保存配置」。',
+    };
+  }
+  if (!ai.moXing) {
+    return { ok: false, xinxi: '还没填写模型名称——请在管理员控制台「AI 设置」里点「自动获取」选择模型，或手填模型 ID 后保存。' };
   }
 
   // 体检摘要塞进系统提示，让模型「看得见」本轮结果
@@ -32,25 +42,66 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
     { role: 'user', content: wen },
   ];
 
-  try {
-    const r = await fetch('/airelay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+  // 双路尝试：①服务端 /airelay 中转（防 CORS）→ ②浏览器直连（过 Cloudflare 等防火墙的真实 TLS 指纹）。
+  // 哪条路先拿到合法回答就走哪条；都失败时把两条路的错误拼在一起供排查。
+  const moXingTi = { model: ai.moXing, temperature: 0.5, messages: xiaoXi };
+  const changShi = [
+    {
+      ming: '服务端中转',
+      url: '/airelay',
+      ti: {
         url: duiHuaJieKouZhi(ai.apiDiZhi),
         tou: { Authorization: 'Bearer ' + ai.miYao },
-        body: {
-          model: ai.moXing,
-          temperature: 0.5,
-          messages: xiaoXi,
-        },
-      }),
-    });
-    const j = await r.json();
-    const hui = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
-    if (!hui) return { ok: false, xinxi: '模型没有返回内容，请稍后再试。' };
-    return { ok: true, hui: hui.trim() };
-  } catch {
-    return { ok: false, xinxi: '调用大模型失败，请检查网络与管理员 AI 配置。' };
+        body: moXingTi,
+      },
+    },
+    {
+      ming: '浏览器直连',
+      url: duiHuaJieKouZhi(ai.apiDiZhi),
+      ti: moXingTi,
+    },
+  ];
+  const cuoLieBiao = [];
+  for (const lu of changShi) {
+    try {
+      const r = await fetch(lu.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ai.miYao },
+        body: JSON.stringify(lu.ti),
+      });
+      const yuan = await r.text();
+      let j = null;
+      try {
+        j = JSON.parse(yuan);
+      } catch {
+        // 返回网页：多半是 Cloudflare 拦截页，换下一条路试
+        cuoLieBiao.push(`${lu.ming}：接口返回了网页而非 JSON（HTTP ${r.status}）`);
+        continue;
+      }
+      if (!r.ok) {
+        const fuWuShangCuo =
+          (j && j.error && (j.error.message || j.error.code)) || j.xinxi || j.message || `HTTP ${r.status}`;
+        cuoLieBiao.push(`${lu.ming}：服务商返回错误：${fuWuShangCuo}`);
+        // 密钥/模型/余额类错误换路径也没用，直接停下报错
+        if ([401, 402, 404].includes(r.status)) break;
+        continue;
+      }
+      const hui = (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '';
+      if (!hui) {
+        cuoLieBiao.push(`${lu.ming}：模型没有返回内容`);
+        continue;
+      }
+      return { ok: true, hui: hui.trim() };
+    } catch (e) {
+      // 浏览器直连被 CORS 拦时这里会收到 Failed to fetch
+      cuoLieBiao.push(`${lu.ming}：${(e && e.message) || '网络请求失败'}`);
+    }
   }
+  return {
+    ok: false,
+    xinxi:
+      '调用大模型失败，两条路都试过了：' +
+      cuoLieBiao.join('；') +
+      '。若两条路都是 403 / 返回网页 / Failed to fetch，说明该服务商开启了 Cloudflare 防护且不允许跨域直连，建议更换服务商接口地址。',
+  };
 }
