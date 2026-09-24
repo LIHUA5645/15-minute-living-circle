@@ -75,9 +75,16 @@ export const MapCanvas = React.memo(function MapCanvas({
   ditu = 'baidu',
   onDitu,
   guanZhuId,
+  yongHuMangQu,
+  biaoJiKai,
+  onBiaoJiDianJi,
+  juJiaoYongHu,
   daoHang,
   gongJu,
-  gongJuSheZhi
+  gongJuSheZhi,
+  luXianZu,
+  yinLiangXian,
+  chuXing
 }) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
@@ -89,7 +96,8 @@ export const MapCanvas = React.memo(function MapCanvas({
     center: [],
     buJian: [],
     buXing: [],
-    guanZhu: []
+    guanZhu: [],
+    yongHu: []
   });
   const keysRef = useRef({
     iso: '',
@@ -98,15 +106,20 @@ export const MapCanvas = React.memo(function MapCanvas({
     center: '',
     buJian: '',
     buXing: '',
-    guanZhu: ''
+    guanZhu: '',
+    yongHu: ''
   });
   const onPickRef = useRef(onPick);
   const onPoiRef = useRef(onPoiDianJi);
+  const biaoJiRef = useRef(biaoJiKai); // 盲区标记模式：点地图落标记而非选中心
+  const onBiaoJiRef = useRef(onBiaoJiDianJi);
+  biaoJiRef.current = biaoJiKai;
+  onBiaoJiRef.current = onBiaoJiDianJi;
   const ziFaRef = useRef(null); // 由地图点击产生的中心点，避免重复居中造成视图跳动
   const [engine, setEngine] = useState(ditu === 'tile' ? 'tile' : 'loading');
   const drawTimerRef = useRef(0);
-  // 选中确认机制：单击地图只落一个「待确认点」（气泡 + 确认按钮），点确认才回写中心点，避免误触即搬走体检中心；
-  // 体检中心图钉本身可拖拽，拖动松手直接生效（拖拽本身就是明确意图）
+  // 选中确认机制：双击地图才落一个「待确认点」（气泡 + 确认按钮），点确认才回写中心点，
+  // 单击只用于浏览/点设施/点盲区图钉，不会误触搬走体检中心；体检中心图钉本身可拖拽，拖动松手直接生效
   const [daiXuan, setDaiXuan] = useState(null); // 待确认的体检中心（WGS-84）
   const ballonRef = useRef(null); // 确认气泡（BMapGL.CustomOverlay，跟随地图移动）
   const huLveRef = useRef(0); // 忽略时间戳：点设施 / 点气泡按钮时，紧随其后的地图 click 不算选点
@@ -143,14 +156,42 @@ export const MapCanvas = React.memo(function MapCanvas({
         map.enableScrollWheelZoom(true);
         map.centerAndZoom(new B.Point(center.lng, center.lat), 15);
         mapRef.current = { map, B };
+        // 双击缩放关闭：双击专用于「设为中心点」确认，避免确认前视角突跳
+        try {
+          map.disableDoubleClickZoom();
+        } catch {
+          /* 个别版本无此 API 时忽略 */
+        }
         map.addEventListener('click', e => {
-          // 点设施标记 / 点气泡按钮时也会走到这里，300ms 内一律忽略，避免「点一下就被搬走中心点」
+          // 单击不再弹「设为中心点」确认框（单击设施 / 盲区图钉曾被误触或 300ms 防抖吞掉，
+          // 用户反馈体验差）——确认框改为双击弹出（下方 dblclick）；盲区标记模式下单击仍直接落标记
           if (Date.now() - huLveRef.current < 300) return;
           const ll = e.latlng || e.point;
           if (!ll) return;
-          // 百度返回 BD-09，转回内部 WGS-84 后作为「待确认点」，等用户点气泡里的确认按钮再生效
-          setDaiXuan(bd09ZhuanWgs84(ll.lng, ll.lat));
+          const wgs = bd09ZhuanWgs84(ll.lng, ll.lat);
+          if (biaoJiRef.current && onBiaoJiRef.current) onBiaoJiRef.current(wgs);
         });
+        // GL 的 map 级 dblclick 事件在部分版本不派发（双击被内部缩放流程吞掉），
+        // 改监听容器原生 dblclick：双击点相对中心的像素偏移 + pointToPixel/pixelToPoint 反算经纬度
+        const shuangJi = ev => {
+          console.log('[mq-dbg] native dblclick', huLveRef.current, Date.now() - huLveRef.current);
+          if (Date.now() - huLveRef.current < 300) return;
+          if (!mapDivRef.current) return;
+          const rct = mapDivRef.current.getBoundingClientRect();
+          const dx = ev.clientX - (rct.left + rct.width / 2);
+          const dy = ev.clientY - (rct.top + rct.height / 2);
+          try {
+            const cPx = map.pointToPixel(map.getCenter());
+            // pixelToPoint 接收的是 Pixel（容器像素），误传 Point 会被当经纬度解析出 (0,0)
+            const dian = map.pixelToPoint(new B.Pixel(cPx.x + dx, cPx.y + dy));
+            if (!dian) return;
+            setDaiXuan(bd09ZhuanWgs84(dian.lng, dian.lat));
+          } catch {
+            /* 个别版本缺 pixelToPoint 时忽略 */
+          }
+        };
+        // GL 内部层会对 dblclick stopPropagation 拦截冒泡，故用捕获阶段监听（先于 GL 处理）
+        mapDivRef.current.addEventListener('dblclick', shuangJi, true);
         const ro = new ResizeObserver(() => {
           // 只对仍挂载在 mapRef 上的当前实例 resize，防止销毁后误触发（曾致 GL 画布被搞崩白屏）
           if (mapRef.current && mapRef.current.map === map && map.resize) map.resize();
@@ -213,7 +254,7 @@ export const MapCanvas = React.memo(function MapCanvas({
     clearTimeout(drawTimerRef.current);
     drawTimerRef.current = setTimeout(() => drawBaidu(), 80);
     return () => clearTimeout(drawTimerRef.current);
-  }, [engine, report, center, xianshi, buXing, guanZhuId]);
+  }, [engine, report, center, xianshi, buXing, guanZhuId, yongHuMangQu]);
 
   // 用户在清单里标记某盲区 → 地图飞到该盲区中心
   useEffect(() => {
@@ -226,6 +267,77 @@ export const MapCanvas = React.memo(function MapCanvas({
       map.setCenter(new B.Point(q.lng, q.lat));
     }
   }, [guanZhuId, engine]);
+
+  // 自标盲区清单点「定位」→ 飞到该点（dian + ci 计数，同一标记可反复定位）
+  useEffect(() => {
+    if (!juJiaoYongHu || engine !== 'baidu' || !mapRef.current) return;
+    const { map, B } = mapRef.current;
+    const q = Z(juJiaoYongHu.dian);
+    ziFaRef.current = null;
+    map.setCenter(new B.Point(q.lng, q.lat));
+    if (map.getZoom() < 16) map.setZoom(16);
+  }, [juJiaoYongHu, engine]);
+
+  // —— 多方式路线组：非当前采用方式的路线以各方式颜色半透明显示（选中的走 buXing 加粗蓝线） ——
+  const LU_SE = { walk: '#f59f00', riding: '#12b76a', driving: '#7c5cf0', transit: '#e8590c' };
+  const qiTaRef = useRef([]);
+  useEffect(() => {
+    const mb = mapRef.current;
+    if (engine !== 'baidu' || !mb) {
+      qiTaRef.current.forEach(o => {
+        try {
+          o.map && o.map.removeOverlay(o.line);
+        } catch {
+          /* 忽略 */
+        }
+      });
+      qiTaRef.current = [];
+      return;
+    }
+    const { map, B } = mb;
+    // 清旧
+    qiTaRef.current.forEach(x => {
+      try {
+        map.removeOverlay(x.line);
+      } catch {
+        /* 忽略 */
+      }
+    });
+    qiTaRef.current = [];
+    Object.entries(luXianZu || {}).forEach(([mode, x]) => {
+      if (mode === chuXing || !x || x.zhuangTai !== 'ok' || !x.polyline || x.polyline.length < 2)
+        return;
+      const pts = x.polyline.map(p => {
+        const q = Z(p);
+        return new B.Point(q.lng, q.lat);
+      });
+      const line = new B.Polyline(pts, {
+        strokeColor: LU_SE[mode] || '#2f86f7',
+        strokeWeight: 4,
+        strokeOpacity: 0.55,
+        strokeStyle: mode === 'walk' ? 'dashed' : 'solid'
+      });
+      map.addOverlay(line);
+      qiTaRef.current.push({ line, map });
+    });
+    // 阴凉路段：绿色加粗半透明叠在当前路线之上（仅步行 / 骑行）
+    if (yinLiangXian && yinLiangXian.duan && (chuXing === 'walk' || chuXing === 'riding')) {
+      yinLiangXian.duan.forEach(duan => {
+        if (duan.length < 2) return;
+        const pts = duan.map(p => {
+          const q = Z(p);
+          return new B.Point(q.lng, q.lat);
+        });
+        const line = new B.Polyline(pts, {
+          strokeColor: '#3a9e58',
+          strokeWeight: 9,
+          strokeOpacity: 0.55
+        });
+        map.addOverlay(line);
+        qiTaRef.current.push({ line, map });
+      });
+    }
+  }, [luXianZu, chuXing, yinLiangXian, engine]);
 
   // 一键回到体检中心：地图乱滑后找不回位置时使用
   function huiDaoDingWei() {
@@ -590,6 +702,53 @@ export const MapCanvas = React.memo(function MapCanvas({
       }
     }
 
+    // ④‴ 用户自标盲区：红色图钉（与体检盲区绿 ✚、清单标记橙旗区分），点击弹信息窗看详情
+    const yhKey = simpleKey(yongHuMangQu || []);
+    if (yhKey !== keysRef.current.yongHu) {
+      keysRef.current.yongHu = yhKey;
+      clearLayer('yongHu');
+      for (const m of yongHuMangQu || []) {
+        const q = Z(m.weiZhi);
+        const mk = addTo(
+          'yongHu',
+          new B.Marker(new B.Point(q.lng, q.lat), {
+            title: `自标盲区：${m.beiZhu}`,
+            icon: new B.Icon(
+              svgIcon(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#e5484d' stroke='#ffffff' stroke-width='1.5'/><path d='M12 7.2c-.9 0-1.6.7-1.5 1.6l.3 3.4c0 .7.5 1.2 1.2 1.2s1.2-.5 1.2-1.2l.3-3.4c.1-.9-.6-1.6-1.5-1.6z' fill='#ffffff'/><circle cx='12' cy='15.4' r='1' fill='#ffffff'/></svg>`
+              ),
+              new B.Size(24, 30),
+              { anchor: new B.Size(12, 30) }
+            )
+          })
+        );
+        // 点击图钉：信息窗展示这是什么盲点、谁标的、何时、坐标
+        mk.addEventListener('click', () => {
+          huLveRef.current = Date.now(); // 点图钉不要被当成地图选点
+          const shi = m.shiJian
+            ? new Date(m.shiJian).toLocaleString('zh-CN', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })
+            : '';
+          const neiRong =
+            '<div style="font-size:13px;line-height:1.7;max-width:230px">' +
+            '<b style="font-size:13.5px">📍 用户标记的盲区</b><br/>' +
+            `${m.beiZhu}<br/>` +
+            `<span style="color:#8a93a3;font-size:11.5px">标注：${m.zhangHao || '匿名'} · ${shi}<br/>(${m.weiZhi.lng.toFixed(5)}, ${m.weiZhi.lat.toFixed(5)})</span>` +
+            '</div>';
+          try {
+            const chuang = new B.InfoWindow(neiRong, { width: 0, enableAutoPan: true });
+            map.openInfoWindow(chuang, mk.getPosition());
+          } catch {
+            /* 个别版本不支持时忽略，图钉仍有 hover 提示 */
+          }
+        });
+      }
+    }
+
     // ⑤ 步行路线：点击设施后沿真实路网的虚线折线（官方 Polyline 写法，见技能文档 references/polyline.md）
     const buXingKey = buXing
       ? `${buXing.uid}|${buXing.zhuangTai}|${(buXing.polyline || []).length}`
@@ -687,7 +846,7 @@ export const MapCanvas = React.memo(function MapCanvas({
   }, [daiXuan, engine]);
 
   return (
-    <div className="map-view">
+    <div className={`map-view ${biaoJiKai ? 'map-biaoJi' : ''}`}>
       {/* 百度底图容器必须常驻：初始化时需要它已经有尺寸，否则会一直卡在加载中 */}
       {engine !== 'tile' && <div ref={mapDivRef} className="map-inner" />}
       {/* 地图工具条：百度地图同款（路况 / 卫星 / 3D） */}

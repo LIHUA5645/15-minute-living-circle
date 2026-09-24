@@ -64,6 +64,21 @@ export function yongHuGaiMiMa(zhangHao, jiuMiMa, xinMiMa) {
   return tiJiao('/yonghu/gaiMiMa', { zhangHao, jiuMiMa, xinMiMa });
 }
 
+// —— 用户标记盲区：登录后可用，MySQL 存储、全员实时共享（读公开，删仅限本人） ——
+export function mangQuBiaoJi(zhangHao, weiZhi, beiZhu) {
+  return tiJiao('/mangqu/biaoJi', { zhangHao, lng: weiZhi.lng, lat: weiZhi.lat, beiZhu });
+}
+
+export async function mangQuLieBiao() {
+  const r = await fetch(fuWuUrl('/api/mangqu/lieBiao'));
+  return r.json();
+}
+
+export function mangQuShanChu(id, zhangHao, guanLiYuanLingPai) {
+  // 管理员传令牌（Authorization Bearer）可删任意标记；普通用户靠 zhangHao 限本人
+  return tiJiao('/mangqu/shanChu', { id, zhangHao }, guanLiYuanLingPai);
+}
+
 // —— 管理员（独立令牌体系，与用户隔离） ——
 export function guanLiYuanLingPai() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) || '';

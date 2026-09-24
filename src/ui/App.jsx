@@ -10,12 +10,19 @@ import { BaoGao } from './BaoGao.jsx';
 import { GuanLiYuan } from './admin.jsx';
 import { DengLu } from './dengLu.jsx';
 import { GeRen } from './geRen.jsx';
-import { dangQianYongHu, yongHuTuiChu } from '../core/yonghu.js';
+import {
+  dangQianYongHu,
+  yongHuTuiChu,
+  guanLiYuanLingPai,
+  mangQuBiaoJi,
+  mangQuLieBiao,
+  mangQuShanChu
+} from '../core/yonghu.js';
 import { loadPeiZhi, saveReport } from './peiZhi.js';
 import { loadBmap } from './loadBmap.js';
 import { shengChengZhenDuan } from '../core/zhenduan.js';
-import { aiXuanDian, shiDaoHangYiTu } from '../core/aiDaohang.js';
-import { guiHuaLuXian } from './luxian.js';
+import { aiXuanDian, shiDaoHangYiTu, tiQuMuDiDi } from '../core/aiDaohang.js';
+import { guiHuaLuXian, guiHuaJiaoTong } from './luxian.js';
 import { aiLiaoTian } from '../core/aiLiaoTian.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
@@ -371,6 +378,131 @@ export function App() {
   const [geRenKai, setGeRenKai] = useState(false); // 个人主页弹窗（点头像进入）
   const [guanZhuM, setGuanZhuM] = useState(null); // 用户在盲区清单里标记（高亮）的盲区 id
   const [yongHu, setYongHu] = useState(() => dangQianYongHu());
+  // —— 用户标记盲区：算法盲区之外，用户在地图上补标真实缺设施的位置（红图钉 + 备注，按账号持久化） ——
+  const [yongHuMangQu, setYongHuMangQu] = useState([]);
+  const [biaoJiZhong, setBiaoJiZhong] = useState(false); // 标记模式：点地图落标记
+  const [daiBiaoMangQu, setDaiBiaoMangQu] = useState(null); // 已点下、待填备注的坐标
+  const [yongHuBeiZhu, setYongHuBeiZhu] = useState('');
+  const [juJiaoYongHu, setJuJiaoYongHu] = useState(null); // {dian, ci} 清单点「定位」时飞到该点
+  const [mqCunZhong, setMqCunZhong] = useState(false); // 标记保存中
+  const [mqCunCuo, setMqCunCuo] = useState(''); // 标记保存失败原因（输入卡内展示）
+  const [mqFuWuCuo, setMqFuWuCuo] = useState(false); // 盲区共享服务未连接
+  const [mqDwZhong, setMqDwZhong] = useState(false); // 浏览器定位中
+  const [mqDwCuo, setMqDwCuo] = useState(''); // 定位失败原因
+  // 「标在我的位置」：浏览器 GPS（WGS-84，与系统内部坐标系一致，无需换算）→ 地图飞过去 → 弹备注卡
+  function biaoJiWoDeWeiZhi() {
+    if (!yongHu) {
+      setDengLuKai(true); // 与地图标记一致：必须登录
+      return;
+    }
+    if (!navigator.geolocation) {
+      setMqDwCuo('当前浏览器不支持定位，请改用地图点选');
+      return;
+    }
+    setMqDwZhong(true);
+    setMqDwCuo('');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const dian = { lng: pos.coords.longitude, lat: pos.coords.latitude };
+        setMqDwZhong(false);
+        setDaiBiaoMangQu(dian);
+        setYongHuBeiZhu('');
+        setMqCunCuo('');
+        setJuJiaoYongHu({ dian, ci: Date.now() }); // 地图飞到我所在位置，确认落点
+      },
+      err => {
+        setMqDwZhong(false);
+        setMqDwCuo(
+          err && err.code === 1
+            ? '定位被拒绝：请允许浏览器获取位置权限后重试'
+            : '定位失败：请稍后重试，或用「📍 标记盲区」在地图上点选'
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }
+  // 从服务端拉取共享盲区标记（读公开）；失败时置服务不可用提示
+  function jiaZaiYongHuMangQu() {
+    mangQuLieBiao()
+      .then(j => {
+        setYongHuMangQu(j && j.ok ? j.list || [] : []);
+        setMqFuWuCuo(!(j && j.ok));
+      })
+      .catch(() => {
+        setYongHuMangQu([]);
+        setMqFuWuCuo(true);
+      });
+  }
+  // 只显示离当前地图中心 10 公里内的共享标记：换城市 / 挪位置后，
+  // 远处的标记自动从清单与地图上隐藏，不干扰当前位置的阅读
+  const fuJinMangQu = yongHuMangQu.filter(
+    m => m.weiZhi && Number.isFinite(m.weiZhi.lng) && liangDianJuLi(center, m.weiZhi) <= 10000
+  );
+  const yinCangShu = yongHuMangQu.length - fuJinMangQu.length;
+  // 初次加载 + 每 10 秒轮询：所有人的标记实时共享
+  useEffect(() => {
+    jiaZaiYongHuMangQu();
+    const ding = setInterval(jiaZaiYongHuMangQu, 10000);
+    return () => clearInterval(ding);
+  }, []);
+  // 登录态变化：退出标记模式与待填卡
+  useEffect(() => {
+    setBiaoJiZhong(false);
+    setDaiBiaoMangQu(null);
+  }, [yongHu && yongHu.zhangHao]);
+  // 地图标记模式下点击：记下坐标，弹备注输入卡
+  function biaoJiDianJi(p) {
+    setDaiBiaoMangQu(p);
+    setYongHuBeiZhu('');
+    setMqCunCuo('');
+    setMqDwCuo('');
+  }
+  // 保存标记：走服务端 MySQL，按登录账号落库，全员可见
+  function baoCunYongHuMangQu() {
+    if (!daiBiaoMangQu || !yongHu || mqCunZhong) return;
+    setMqCunZhong(true);
+    setMqCunCuo('');
+    mangQuBiaoJi(yongHu.zhangHao, daiBiaoMangQu, (yongHuBeiZhu || '').trim() || '（未填写备注）')
+      .then(j => {
+        setMqCunZhong(false);
+        if (j && j.ok) {
+          const luoDian = daiBiaoMangQu;
+          setDaiBiaoMangQu(null);
+          setYongHuBeiZhu('');
+          setBiaoJiZhong(false);
+          setJuJiaoYongHu({ dian: luoDian, ci: Date.now() }); // 保存后地图飞到标记点，一眼确认落点
+          jiaZaiYongHuMangQu();
+        } else {
+          setMqCunCuo((j && j.xinxi) || '保存失败，请稍后再试');
+        }
+      })
+      .catch(() => {
+        setMqCunZhong(false);
+        setMqCunCuo('服务未连接，无法保存标记');
+      });
+  }
+  function shanYongHuMangQu(id) {
+    // 管理员（本浏览器已登录管理员）持令牌可删任意标记；普通用户仅限本人
+    const guanLi = guanLiYuanZai && guanLiYuanLingPai();
+    if (!guanLi && !yongHu) return;
+    mangQuShanChu(id, guanLi ? '' : yongHu.zhangHao, guanLi || null)
+      .then(j => {
+        if (j && j.ok) jiaZaiYongHuMangQu();
+      })
+      .catch(() => {});
+  }
+  // 标记模式 Esc 退出
+  useEffect(() => {
+    if (!biaoJiZhong) return undefined;
+    const an = e => {
+      if (e.key === 'Escape') {
+        setBiaoJiZhong(false);
+        setDaiBiaoMangQu(null);
+      }
+    };
+    window.addEventListener('keydown', an);
+    return () => window.removeEventListener('keydown', an);
+  }, [biaoJiZhong]);
   // 管理员登录态（与用户会话分离，存 localStorage 以便控制台独立标签页共享）：管理员面板关闭时同步一次
   const [guanLiYuanZai, setGuanLiYuanZai] = useState(
     () => localStorage.getItem('sq_admin_session') === '1'
@@ -591,9 +723,23 @@ export function App() {
     return null;
   }
 
+  // 中心点变更统一入口：定位/选点/改坐标后，旧体检报告与旧路线都属于旧位置，一并失效——
+  // 否则 AI 问答、导航还会拿着旧位置的数据说事（用户重新定位了，程序却不知道）
+  const qieHuanZhongXin = useCallback((p, ming) => {
+    jiaoHuRef.current = true;
+    setCenter(p);
+    if (ming) setCurName(ming);
+    setBuXingLuXian(null);
+    setDaoHangJie(null);
+    setLuXianZu({});
+    muDiRef.current = null;
+    setYinLiangXian(null);
+    tingZhiBoFang();
+    setReport(prev => (prev ? null : prev));
+  }, []);
+
   function yingYong(c) {
-    setCenter(c);
-    setCurName(souSuoWenBen.trim());
+    qieHuanZhongXin(c, souSuoWenBen.trim());
     run(c);
   }
 
@@ -692,8 +838,7 @@ export function App() {
         }
         // 应用内部统一使用 WGS-84（OSM 与 GPS 原生坐标系），渲染时按底图再转换
         const c = { lng: pos.coords.longitude, lat: pos.coords.latitude };
-        setCenter(c);
-        setCurName('当前位置');
+        qieHuanZhongXin(c, '当前位置');
         setDingWeiTai('ok');
         tuijianZhouBian(c); // 定位成功后推荐周边可体检点
         if (!ziDong) run(c);
@@ -724,8 +869,7 @@ export function App() {
   }, []);
 
   function tiaoZhuanDian(p) {
-    setCenter({ lng: p.lng, lat: p.lat });
-    setCurName(p.name);
+    qieHuanZhongXin({ lng: p.lng, lat: p.lat }, p.name);
     run({ lng: p.lng, lat: p.lat });
   }
 
@@ -743,39 +887,82 @@ export function App() {
   }
 
   // 地图选点确认 / 拖动图钉落点：只有用户明确确认后才回写中心点，避免误触就搬走体检中心
-  const xuanZeZhongXin = useCallback(p => {
-    jiaoHuRef.current = true;
-    setCenter(p);
-    setCurName('地图选点');
-    setBuXingLuXian(null); // 中心点变了，旧路线不再成立
-  }, []);
+  const xuanZeZhongXin = useCallback(
+    p => {
+      qieHuanZhongXin(p, '地图选点');
+    },
+    [qieHuanZhongXin]
+  );
 
-  // 点击设施：沿真实路网计算「中心点 → 该设施」步行路线并展示（再次点击同一设施取消；qiangZhi 用于 AI 导航强制重算）
-  async function dianJiSheShi(p, qiangZhi = false) {
+  // 点击设施 / AI 选点：确定目的地后四种出行方式并行规划——步行走服务端真实路网，
+  // 骑行/驾车/公交走浏览器端百度 JS API；各方式路线陆续画上地图（不同颜色），
+  // 「路线方案」窗口里点方式标签即切换采用的路线
+  function dianJiSheShi(p, qiangZhi = false) {
     const prov = providerRef.current;
     if (!prov || runningRef.current) return;
     if (!qiangZhi) setChuXing('walk'); // 手动点设施默认回到步行
-    setBuXingLuXian(prev =>
-      !qiangZhi && prev && prev.uid && prev.uid === p.uid
-        ? null
-        : { uid: p.uid, dian: p, zhuangTai: 'loading', chuXing: 'walk' }
-    );
-    try {
-      const r = await prov.walkingRoute(center, p);
-      setBuXingLuXian(prev =>
-        prev && prev.uid === p.uid
-          ? {
-              ...prev,
-              zhuangTai: 'ok',
-              chuXing: 'walk',
-              polyline: r.polyline,
-              distanceM: r.distanceM,
-              durationSec: r.durationSec
-            }
-          : prev
+    muDiRef.current = { uid: p.uid || 'dest', dian: p };
+    setBuXingLuXian({ uid: p.uid || 'dest', dian: p, zhuangTai: 'loading', chuXing });
+    setLuXianZu({});
+    guiHuaQuanBu(p);
+  }
+  // 全方式并行规划（结果陆续写入 luXianZu，谁先算完谁先上地图）
+  async function guiHuaQuanBu(dian) {
+    if (!providerRef.current) return;
+    setLuXianZu(s => ({ ...s, walk: { zhuangTai: 'loading' } }));
+    providerRef.current
+      .walkingRoute(center, dian)
+      .then(r =>
+        setLuXianZu(s => ({
+          ...s,
+          walk: {
+            zhuangTai: 'ok',
+            polyline: r.polyline,
+            distanceM: r.distanceM,
+            durationSec: r.durationSec
+          }
+        }))
+      )
+      .catch(() => setLuXianZu(s => ({ ...s, walk: { zhuangTai: 'fail' } })));
+    setLuXianZu(s => ({
+      ...s,
+      riding: { zhuangTai: 'loading' },
+      driving: { zhuangTai: 'loading' },
+      transit: { zhuangTai: 'loading', fangAn: null, xuan: 0 }
+    }));
+    guiHuaLuXian('riding', center, dian)
+      .then(r => setLuXianZu(s => ({ ...s, riding: { zhuangTai: 'ok', ...r } })))
+      .catch(() => setLuXianZu(s => ({ ...s, riding: { zhuangTai: 'fail' } })));
+    guiHuaLuXian('driving', center, dian, { policy: jiaShiCe })
+      .then(r => setLuXianZu(s => ({ ...s, driving: { zhuangTai: 'ok', ...r } })))
+      .catch(() => setLuXianZu(s => ({ ...s, driving: { zhuangTai: 'fail' } })));
+    guiHuaJiaoTong(center, dian, { policy: gongJiaoCe })
+      .then(r =>
+        setLuXianZu(s => ({ ...s, transit: { zhuangTai: 'ok', fangAn: r.fangAn, xuan: 0 } }))
+      )
+      .catch(() =>
+        setLuXianZu(s => ({ ...s, transit: { zhuangTai: 'fail', fangAn: null, xuan: 0 } }))
       );
+  }
+  // 偏好变更：重规划单一方式（驾车策略 / 公交策略）
+  async function chongXinGuiHuaDan(mode) {
+    const mu = muDiRef.current;
+    if (!mu || zaiGuiHuaRef.current) return;
+    zaiGuiHuaRef.current = true;
+    try {
+      if (mode === 'driving') {
+        setLuXianZu(s => ({ ...s, driving: { zhuangTai: 'loading' } }));
+        const r = await guiHuaLuXian('driving', center, mu.dian, { policy: jiaShiCe });
+        setLuXianZu(s => ({ ...s, driving: { zhuangTai: 'ok', ...r } }));
+      } else if (mode === 'transit') {
+        setLuXianZu(s => ({ ...s, transit: { zhuangTai: 'loading', fangAn: null, xuan: 0 } }));
+        const r = await guiHuaJiaoTong(center, mu.dian, { policy: gongJiaoCe });
+        setLuXianZu(s => ({ ...s, transit: { zhuangTai: 'ok', fangAn: r.fangAn, xuan: 0 } }));
+      }
     } catch {
-      setBuXingLuXian(prev => (prev && prev.uid === p.uid ? { ...prev, zhuangTai: 'fail' } : prev));
+      setLuXianZu(s => ({ ...s, [mode]: { zhuangTai: 'fail' } }));
+    } finally {
+      zaiGuiHuaRef.current = false;
     }
   }
 
@@ -795,10 +982,43 @@ export function App() {
   };
   const buXingRef = useRef(null);
   buXingRef.current = buXing;
+  const muDiRef = useRef(null); // 当前目的地引用（uid + 设施点）
+  const chongFangRef = useRef(false); // 方式切换后路线就绪需重放导航
   const zaiGuiHuaRef = useRef(false); // 出行方式重规划进行中（防重复触发）
   const daiDaoHangRef = useRef(null); // 体检期间收到的导航请求，体检完成后自动执行
   // 出行方式：步行（默认，走服务端真实路网）/ 骑行 / 驾车 / 公交（走浏览器端 JS API 规划）
   const [chuXing, setChuXing] = useState('walk');
+  // 四方式路线组：{ walk|riding|driving: {zhuangTai, polyline, distanceM, durationSec},
+  //   transit: {zhuangTai, fangAn, xuan} }——并行规划、地图同时显示，chuXing 为当前采用方式
+  const [luXianZu, setLuXianZu] = useState({});
+  const luXianZuRef = useRef({});
+  luXianZuRef.current = luXianZu;
+  const [jiaShiCe, setJiaShiCe] = useState(0); // 驾车偏好：0常规 1躲避拥堵 2高速优先 3少收费
+  const [gongJiaoCe, setGongJiaoCe] = useState(0); // 公交偏好：0推荐 1地铁优先 2少换乘 3少步行 4不坐地铁
+  const [yinLiangKai, setYinLiangKai] = useState(true); // 步行/骑行阴凉路段高亮
+  const [yinLiangXian, setYinLiangXian] = useState(null); // 阴凉路段分段（绿色叠层）
+  const [jiaoTongKai, setJiaoTongKai] = useState(false); // 路线方案弹窗
+  // 点选某套公交方案：换画到地图上的路线，导航中则重放
+  function xuanJiaoTongFangAn(i) {
+    const zu = luXianZuRef.current.transit;
+    if (!zu || !zu.fangAn || !zu.fangAn[i]) return;
+    const mu = muDiRef.current;
+    if (!mu) return;
+    setLuXianZu(s => ({ ...s, transit: { ...s.transit, xuan: i } }));
+    const f = zu.fangAn[i];
+    const xin = {
+      uid: mu.uid,
+      dian: mu.dian,
+      zhuangTai: 'ok',
+      chuXing: 'transit',
+      polyline: f.polyline,
+      distanceM: f.juLiMi,
+      durationSec: f.haoShiMiao
+    };
+    setBuXingLuXian(xin);
+    setJiaoTongKai(false); // 选好方案收起弹窗，回卡片看摘要
+    if (daoHangTai || daoHangPing) kaiShiDaiLu(xin);
+  }
   const CHU_XING = [
     { jian: 'walk', biao: '🚶 步行' },
     { jian: 'riding', biao: '🚲 骑行' },
@@ -817,64 +1037,16 @@ export function App() {
     tingZhiBoFang();
     setDaoHangPing(false);
   }
-  // 切换出行方式：以当前路线目的地为准重新规划；导航中切换则规划成功后自动重新开始带路
-  async function qieHuanChuXing(mode) {
+  // 切换出行方式：只是「切换采用的路线」——各方式路线早已并行规划好并画在地图上；
+  // 若该方式还没规划好（极少数），补一次全量规划。导航中切换自动重放新路线
+  function qieHuanChuXing(mode) {
     if (mode === chuXing) return;
-    const lu = buXingRef.current;
-    if (!lu || !lu.dian || zaiGuiHuaRef.current) return;
-    setChuXing(mode);
-    if (mode === 'walk') {
-      // 步行走回原服务端真实路网链路（带缓存）
-      const zaiNav = !!daoHangTai;
-      tingZhiBoFang();
-      zaiGuiHuaRef.current = true;
-      setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'loading', chuXing: 'walk' });
-      try {
-        const prov = providerRef.current;
-        if (!prov) throw new Error('地图数据源未就绪');
-        const r = await prov.walkingRoute(center, lu.dian);
-        const xin = {
-          uid: lu.uid,
-          dian: lu.dian,
-          zhuangTai: 'ok',
-          chuXing: 'walk',
-          polyline: r.polyline,
-          distanceM: r.distanceM,
-          durationSec: r.durationSec
-        };
-        setBuXingLuXian(xin);
-        if (zaiNav || daoHangPing) kaiShiDaiLu(xin);
-      } catch {
-        setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'fail', chuXing: 'walk' });
-      } finally {
-        zaiGuiHuaRef.current = false;
-      }
-      return;
-    }
     const zaiNav = !!daoHangTai || daoHangPing;
     tingZhiBoFang();
-    zaiGuiHuaRef.current = true;
-    setBuXingLuXian({ uid: lu.uid, dian: lu.dian, zhuangTai: 'loading', chuXing: mode });
-    try {
-      const r = await guiHuaLuXian(mode, center, lu.dian);
-      const xin = {
-        uid: lu.uid,
-        dian: lu.dian,
-        zhuangTai: 'ok',
-        chuXing: mode,
-        polyline: r.polyline,
-        distanceM: r.distanceM,
-        durationSec: r.durationSec
-      };
-      setBuXingLuXian(xin);
-      if (zaiNav) kaiShiDaiLu(xin);
-    } catch (e) {
-      // 规划失败：回到原路线，并在对话区给出可读原因
-      setBuXingLuXian(lu);
-      setDaoHangJie({ ok: false, xinxi: (e && e.message) || '路线规划失败' });
-    } finally {
-      zaiGuiHuaRef.current = false;
-    }
+    setChuXing(mode);
+    setJiaoTongKai(true); // 弹「路线方案」窗口（公交多方案 / 其他单路线）
+    chongFangRef.current = zaiNav; // 路线就绪后若在导航中则自动重放
+    if (muDiRef.current && !luXianZuRef.current[mode]) guiHuaQuanBu(muDiRef.current.dian);
   }
   // 按方向变化把折线切成若干「步」（八方位），生成转向提示用
   function shengChengBuZou(xian) {
@@ -982,6 +1154,72 @@ export function App() {
     if (!buXing || buXing.zhuangTai !== 'ok') tingZhiBoFang();
   }, [buXing]);
   useEffect(() => () => tingZhiBoFang(), []);
+  // 当前采用方式的路线就绪后同步到 buXing（导航 / 地图高亮用它）；方式切换后导航中自动重放
+  useEffect(() => {
+    const x = luXianZu[chuXing];
+    const mu = muDiRef.current;
+    if (!mu || !x || x.zhuangTai !== 'ok') return;
+    const f = chuXing === 'transit' && x.fangAn ? x.fangAn[x.xuan || 0] : null;
+    const polyline = chuXing === 'transit' ? (f ? f.polyline : null) : x.polyline;
+    if (!polyline) return;
+    const xin = {
+      uid: mu.uid,
+      dian: mu.dian,
+      zhuangTai: 'ok',
+      chuXing,
+      polyline,
+      distanceM: chuXing === 'transit' ? f.juLiMi : x.distanceM,
+      durationSec: chuXing === 'transit' ? f.haoShiMiao : x.durationSec
+    };
+    const tong =
+      buXingRef.current &&
+      buXingRef.current.chuXing === chuXing &&
+      buXingRef.current.polyline === polyline;
+    if (tong) return;
+    setBuXingLuXian(xin);
+    if (chongFangRef.current) {
+      chongFangRef.current = false;
+      kaiShiDaiLu(xin);
+    }
+  }, [luXianZu, chuXing, daoHangTai, daoHangPing]);
+  // 步行 / 骑行的阴凉路段：路线点 45 米内有绿地休闲类设施即视为阴凉，聚成绿色分段
+  useEffect(() => {
+    if (
+      !(chuXing === 'walk' || chuXing === 'riding') ||
+      !yinLiangKai ||
+      !buXing ||
+      buXing.zhuangTai !== 'ok' ||
+      !report
+    ) {
+      setYinLiangXian(null);
+      return;
+    }
+    const lvDian = (
+      (report.poiSet && report.poiSet.fenleiSet && report.poiSet.fenleiSet.xiuxian) ||
+      []
+    ).slice();
+    const xian = buXing.polyline || [];
+    if (!lvDian.length || xian.length < 2) {
+      setYinLiangXian({ duan: [], mi: 0 });
+      return;
+    }
+    const duanZu = [];
+    let duan = [];
+    let yinMi = 0;
+    for (let i = 0; i < xian.length; i++) {
+      const pt = xian[i];
+      const youYin = lvDian.some(p => liangDianJuLi(pt, p) <= 45);
+      if (youYin) {
+        duan.push(pt);
+        if (i > 0) yinMi += liangDianJuLi(xian[i - 1], pt);
+      } else if (duan.length) {
+        if (duan.length > 1) duanZu.push(duan);
+        duan = [];
+      }
+    }
+    if (duan.length > 1) duanZu.push(duan);
+    setYinLiangXian({ duan: duanZu, mi: Math.round(yinMi) });
+  }, [buXing, chuXing, yinLiangKai, report]);
   // 体检完成后自动执行体检期间挂起的导航请求（用户说「带我去xx」，体检完自动选点带路）
   useEffect(() => {
     if (!daiDaoHangRef.current) return;
@@ -1083,6 +1321,99 @@ export function App() {
   useEffect(() => {
     if (ltGunRef.current) ltGunRef.current.scrollTop = ltGunRef.current.scrollHeight;
   }, [liaoTianLieBiao, liaoTianZhong]);
+  // 执行导航（目的地名称由大模型语义判断给出，或词元兜底抽取）：
+  // ①体检设施里按名称匹配最近的；②匹配不到走百度 POI 检索（不依赖体检结果）
+  async function zhiXingDaoHang(muMing, wen, xinLie) {
+    if (!muMing) {
+      setLiaoTianZhong(false);
+      const cuoTiao = {
+        role: 'cuo',
+        wen: '没听清要去哪，试试「带我去最近的医院」或「我想去广西博物馆」。'
+      };
+      setLiaoTianLieBiao([...xinLie, cuoTiao]);
+      ltBaoCun([{ role: 'user', wen }, cuoTiao], wen);
+      return;
+    }
+    // 体检进行中：先挂起进度卡，等体检完成后自动执行（与词元路径同一体验）
+    if (runningRef.current) {
+      daiDaoHangRef.current = wen;
+      setLiaoTianZhong(false);
+      setLiaoTianLieBiao([...liaoTianLieBiao.filter(m => m.role !== 'dai'), { role: 'dai', wen }]);
+      ltBaoCun(
+        [
+          { role: 'user', wen },
+          {
+            role: 'ai',
+            wen: '收到！体检进行中，完成后会自动按你的要求选点并带你去，不用再发一遍。'
+          }
+        ],
+        wen
+      );
+      return;
+    }
+    // ① 体检设施名称匹配
+    if (report && report.poiSet && report.poiSet.fenleiSet) {
+      const quanBu = Object.values(report.poiSet.fenleiSet)
+        .flat()
+        .filter(p => p && p.name && Number.isFinite(p.lng) && Number.isFinite(p.lat));
+      const xiang = quanBu
+        .filter(p => (p.name || '').includes(muMing))
+        .map(p => ({ ...p, zhiXianJu: liangDianJuLi(center, p) }))
+        .sort((a, b) => a.zhiXianJu - b.zhiXianJu);
+      if (xiang.length) {
+        const muBiao = xiang[0];
+        setJiaoTongKai(true);
+        dianJiSheShi(muBiao, true);
+        setLiaoTianZhong(false);
+        const huiTiao = {
+          role: 'ai',
+          wen: `🧭 已按你的要求规划到「${muBiao.name}」的路线：直线约 ${Math.round(muBiao.zhiXianJu)} 米。四种出行方式路线已同时画在地图上，点「开始导航」即可出发。`
+        };
+        setLiaoTianLieBiao([...xinLie, huiTiao]);
+        ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
+        return;
+      }
+    }
+    // ② 任意地名：百度 POI 检索（30 公里，不依赖体检结果）
+    try {
+      let prov = providerRef.current;
+      if (!prov) {
+        // 体检还没启动时数据源尚未创建：按需建一个浏览器端百度适配器——
+        // 地名检索（LocalSearch）只依赖 BMapGL，不需要等体检
+        try {
+          prov = chuangJianBmapWeb();
+          providerRef.current = prov;
+        } catch {
+          throw new Error('百度地图尚未加载完成，稍等几秒再试，或先完成一轮体检');
+        }
+      }
+      if (!prov.searchPoi) throw new Error('当前数据源不支持按地名检索目的地');
+      const lie = await prov.searchPoi(center, [muMing], 30000);
+      const houXuan = (lie || [])
+        .map(p => {
+          const w = bd09ZhuanWgs84(p.lng, p.lat);
+          return { ...p, lng: w.lng, lat: w.lat, zhiXianJu: liangDianJuLi(center, w) };
+        })
+        .sort((a, b) => a.zhiXianJu - b.zhiXianJu);
+      const muBiao = houXuan.find(p => (p.name || '').includes(muMing)) || houXuan[0];
+      if (!muBiao) throw new Error(`周边 30 公里内没有找到「${muMing}」`);
+      setJiaoTongKai(true);
+      dianJiSheShi(muBiao, true);
+      setLiaoTianZhong(false);
+      const huiTiao = {
+        role: 'ai',
+        wen: `🧭 已为你规划到「${muBiao.name}」的路线：直线约 ${Math.round(muBiao.zhiXianJu)} 米。四种出行方式路线已同时画在地图上，点「开始导航」即可出发。`
+      };
+      setLiaoTianLieBiao([...xinLie, huiTiao]);
+      ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
+    } catch (e) {
+      setLiaoTianZhong(false);
+      const cuoTiao = { role: 'cuo', wen: (e && e.message) || '目的地检索失败' };
+      setLiaoTianLieBiao([...xinLie, cuoTiao]);
+      ltBaoCun([{ role: 'user', wen }, cuoTiao], wen);
+    }
+  }
+
   // zhiDing 可传推荐问法文本（点击芯片直接发送），不传则用输入框内容
   async function faQiLiaoTian(zhiDing) {
     const wen = (typeof zhiDing === 'string' ? zhiDing : liaoTianWen).trim();
@@ -1091,54 +1422,107 @@ export function App() {
     setLiaoTianLieBiao(xinLie);
     setLiaoTianWen('');
     setLiaoTianZhong(true);
-    // 导航意图（如「帮我找最近的医院」「带我去吧」）：直接 AI 选点 + 自动画步行路线，结果同步回聊天
-    if (shiDaoHangYiTu(wen)) {
-      // 体检进行中：先应答并挂起请求（聊天里放实时进度卡，随体检进度自动刷新），完成后自动选点带路
-      if (runningRef.current) {
-        daiDaoHangRef.current = wen;
+    // 体检进行中：词元判定导航意图先挂起（进度卡实时显示体检进度），大模型裁决等体检完成后进行
+    if (runningRef.current && shiDaoHangYiTu(wen)) {
+      daiDaoHangRef.current = wen;
+      setLiaoTianZhong(false);
+      setLiaoTianLieBiao([...liaoTianLieBiao.filter(m => m.role !== 'dai'), { role: 'dai', wen }]);
+      ltBaoCun(
+        [
+          { role: 'user', wen },
+          {
+            role: 'ai',
+            wen: '收到！体检进行中，完成后会自动按你的要求选点并带你去，不用再发一遍。'
+          }
+        ],
+        wen
+      );
+      return;
+    }
+    // 大模型在场：语义判断交给 AI 自己——它回一行「【导航】地名」就是要导航，否则是正常回答。
+    // 词元规则只在大模型未启用或调用失败时兜底
+    const aiKai = !!(
+      peiZhi &&
+      peiZhi.ai &&
+      peiZhi.ai.qiYong &&
+      peiZhi.ai.apiDiZhi &&
+      peiZhi.ai.miYao &&
+      peiZhi.ai.moXing
+    );
+    if (aiKai) {
+      let j = null;
+      try {
+        j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai, {
+          lng: center.lng,
+          lat: center.lat,
+          ming: curName
+        });
+      } catch {
+        j = null; // 网络异常：掉到词元兜底
+      }
+      if (j && j.ok) {
+        const hui = (j.hui || '').trim();
         setLiaoTianZhong(false);
-        setLiaoTianLieBiao([
-          ...liaoTianLieBiao.filter(m => m.role !== 'dai'),
-          { role: 'dai', wen }
-        ]);
-        ltBaoCun(
-          [
-            { role: 'user', wen },
-            {
-              role: 'ai',
-              wen: '收到！体检进行中，完成后会自动按你的要求选点并带你去，不用再发一遍。'
-            }
-          ],
-          wen
-        );
+        if (hui.startsWith('【导航】')) {
+          // 大模型自己判断出这是导航请求，并给出了目的地名称
+          await zhiXingDaoHang(hui.replace(/^【导航】/, '').trim(), wen, xinLie);
+          return;
+        }
+        const huiTiao = { role: 'ai', wen: hui };
+        setLiaoTianLieBiao([...xinLie, huiTiao]);
+        ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
         return;
       }
-      // 没有报告且没在体检：给明确引导（不挂起，因为不知道用户什么时候才会体检）
+      // 模型调用失败：掉到词元兜底（导航走本地规则选点，不依赖模型）
+    }
+
+    // —— 词元兜底（AI 未启用 / 模型调用失败）：关键词导航意图 → 本地规则选点 + POI 检索 ——
+    if (shiDaoHangYiTu(wen)) {
+      const muMing = tiQuMuDiDi(wen);
+      let dh = null;
+      // 有报告：本地规则选点（兜底路径强制本地，不重试已失败的大模型）
+      if (report) {
+        dh = await aiXuanDian(wen, report, center, null);
+        setDaoHangJie(dh);
+      }
+      if (dh && dh.ok) {
+        setJiaoTongKai(true);
+        dianJiSheShi(dh.poi, true);
+      }
+      if ((!dh || !dh.ok) && muMing) {
+        await zhiXingDaoHang(muMing, wen, xinLie);
+        return;
+      }
+      if (dh) {
+        setLiaoTianZhong(false);
+        const huiTiao = dh.ok
+          ? {
+              role: 'ai',
+              wen: `🧭 带你去「${dh.poi.name}」：${dh.liYou}。路线已画在地图上，点地图上其他设施可随时换目的地。`
+            }
+          : { role: 'cuo', wen: dh.xinxi };
+        setLiaoTianLieBiao([...xinLie, huiTiao]);
+        ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
+        return;
+      }
+      // 没有报告、没有明确地名：给明确引导
       if (!report) {
         const tiTiao = {
           role: 'ai',
-          wen: '还没有体检结果，无法从真实设施里选目的地——点「开始体检」完成一轮体检，我会自动按你的要求带你去；或把数据源切到「离线样例」立即体验。'
+          wen: `还没有「${curName}」的体检结果。你可以：①直接说「我想去某个地方」（如「我想去广西博物馆」），我按地名检索并规划路线；②点「开始体检」完成一轮体检，我就能从真实设施里帮你选目的地。`
         };
         setLiaoTianZhong(false);
         setLiaoTianLieBiao([...xinLie, tiTiao]);
         ltBaoCun([{ role: 'user', wen }, tiTiao], wen);
         return;
       }
-      const dh = await aiXuanDian(wen, report, center, peiZhi && peiZhi.ai);
-      setDaoHangJie(dh);
-      if (dh.ok) dianJiSheShi(dh.poi, true);
-      setLiaoTianZhong(false);
-      const huiTiao = dh.ok
-        ? {
-            role: 'ai',
-            wen: `🧭 带你去「${dh.poi.name}」：${dh.liYou}。步行路线已画在地图上，点地图上其他设施可随时换目的地。`
-          }
-        : { role: 'cuo', wen: dh.xinxi };
-      setLiaoTianLieBiao([...xinLie, huiTiao]);
-      ltBaoCun([{ role: 'user', wen }, huiTiao], wen);
-      return;
     }
-    const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai);
+    // 在线问答（AI 未启用时 aiLiaoTian 会返回配置引导）
+    const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai, {
+      lng: center.lng,
+      lat: center.lat,
+      ming: curName
+    });
     setLiaoTianZhong(false);
     const huiTiao = j.ok ? { role: 'ai', wen: j.hui } : { role: 'cuo', wen: j.xinxi };
     setLiaoTianLieBiao([...xinLie, huiTiao]);
@@ -1293,6 +1677,10 @@ export function App() {
           onPick={xuanZeZhongXin}
           onPoiDianJi={dianJiSheShi}
           guanZhuId={guanZhuM}
+          yongHuMangQu={fuJinMangQu}
+          biaoJiKai={biaoJiZhong}
+          onBiaoJiDianJi={biaoJiDianJi}
+          juJiaoYongHu={juJiaoYongHu}
           buXing={buXing}
           xianshi={xianshi}
           ditu={ditu}
@@ -1300,17 +1688,50 @@ export function App() {
           daoHang={daoHangTai}
           gongJu={diTuGongJu}
           gongJuSheZhi={diTuGongJuSheZhi}
+          luXianZu={luXianZu}
+          yinLiangXian={yinLiangXian}
         />
-        {/* 百度地图式全屏导航页：路线就绪时出「开始导航」入口，导航中铺满屏幕 */}
-        {buXing &&
-          buXing.zhuangTai === 'ok' &&
-          buXing.polyline &&
-          buXing.polyline.length > 1 &&
-          !daoHangPing && (
-            <button className="daiLu-ruKou" onClick={kaiShiDaiLu} title="进入全屏导航">
-              🧭 开始导航
-            </button>
-          )}
+        {/* 用户标记盲区：标记模式提示条 + 落点后的备注输入卡 */}
+        {biaoJiZhong && !daiBiaoMangQu && (
+          <div className="mq-biao-tiShi">📍 标记模式：点击地图上缺设施的位置 · 按 Esc 退出</div>
+        )}
+        {daiBiaoMangQu && (
+          <div className="mq-biao-ka">
+            <div className="mq-biao-biao">
+              📍 标记盲区 · {daiBiaoMangQu.lng.toFixed(5)}, {daiBiaoMangQu.lat.toFixed(5)}
+            </div>
+            <input
+              className="mq-biao-shu"
+              autoFocus
+              placeholder="这里缺什么？如：这个小区没有药店"
+              value={yongHuBeiZhu}
+              onChange={e => setYongHuBeiZhu(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') baoCunYongHuMangQu();
+                if (e.key === 'Escape') {
+                  setDaiBiaoMangQu(null);
+                  setBiaoJiZhong(false);
+                }
+              }}
+            />
+            {mqCunCuo && <div className="mq-biao-cuo">{mqCunCuo}</div>}
+            <div className="mq-biao-cao">
+              <button className="mq-biao-cun" onClick={baoCunYongHuMangQu} disabled={mqCunZhong}>
+                {mqCunZhong ? '保存中…' : '保存标记'}
+              </button>
+              <button
+                className="mq-biao-qu"
+                onClick={() => {
+                  setDaiBiaoMangQu(null);
+                  setBiaoJiZhong(false);
+                }}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+        {/* 百度地图式全屏导航页（入口在 AI 导航卡对话里，地图上不再放按钮） */}
         {daoHangPing && (
           <>
             {/* 顶部转向提示卡：八方位箭头 + 指引文字（百度导航同款蓝色大卡） */}
@@ -1416,7 +1837,8 @@ export function App() {
               没拿到设备定位：{dingWeiYin}。<br />
               当前中心点（{curName}）
               {jiaoHuRef.current ? '来自你手动选点' : '是兜底默认坐标，不是你的真实位置'}。<br />
-              可点下面「重新定位」再试；也可在地图上单击选点后点「设为中心点」确认，或直接拖动地图上的蓝色图钉。
+              可点下面「重新定位」再试；也可在地图上<b>双击</b>
+              选点后点「设为中心点」确认，或直接拖动地图上的蓝色图钉。
               <button type="button" className="link-btn" onClick={() => dingWei()}>
                 重新定位
               </button>
@@ -1471,7 +1893,7 @@ export function App() {
                 type="number"
                 step="0.0001"
                 value={center.lng}
-                onChange={e => setCenter({ ...center, lng: Number(e.target.value) })}
+                onChange={e => qieHuanZhongXin({ ...center, lng: Number(e.target.value) })}
               />
             </div>
             <div className="mini-field">
@@ -1480,7 +1902,7 @@ export function App() {
                 type="number"
                 step="0.0001"
                 value={center.lat}
-                onChange={e => setCenter({ ...center, lat: Number(e.target.value) })}
+                onChange={e => qieHuanZhongXin({ ...center, lat: Number(e.target.value) })}
               />
             </div>
             <div className="mini-field">
@@ -1618,6 +2040,36 @@ export function App() {
         {daoHangJie && !daoHangJie.ok && !daoHangJie.zhuangTai && (
           <div className="a-tip a-tip-err">{daoHangJie.xinxi}</div>
         )}
+        {/* 已选路线摘要行：所有出行方式统一，点开看方案窗口 */}
+        {buXing && buXing.zhuangTai === 'ok' && (
+          <button
+            className="jiaoTong-zhaiYao"
+            onClick={() => setJiaoTongKai(true)}
+            title="点开查看路线方案"
+          >
+            <span className="jiaoTong-zhai-shi">
+              {buXing.durationSec < 90
+                ? `${Math.max(1, Math.round(buXing.durationSec))}秒`
+                : `${Math.floor(buXing.durationSec / 3600) > 0 ? `${Math.floor(buXing.durationSec / 3600)}小时` : ''}${Math.round((buXing.durationSec % 3600) / 60)}分`}
+            </span>
+            <span className="jiaoTong-zhai-xian">
+              {(() => {
+                const zu = luXianZu.transit;
+                if (chuXing === 'transit' && zu && zu.fangAn && zu.fangAn[zu.xuan || 0]) {
+                  return zu.fangAn[zu.xuan || 0].xian
+                    .map(x => `${x.lei === 'ditie' ? '🚇' : '🚌'}${x.ming}`)
+                    .join(' → ');
+                }
+                return (CHU_XING.find(c => c.jian === chuXing) || CHU_XING[0]).biao + ' · 真实路网';
+              })()}
+            </span>
+            <span className="jiaoTong-zhai-kan">
+              {chuXing === 'transit' ? '全部方案 ›' : '路线方案 ›'}
+            </span>
+          </button>
+        )}
+
+        <div className="divider" />
 
         <div className="divider" />
         <div className="sec-title lt-biaoHang">
@@ -1680,8 +2132,18 @@ export function App() {
                   <b>
                     <span className="lt-dai-shaLou">⏳</span> 收到，体检完成后自动带你去
                   </b>
-                  <div className="lt-dai-jin">
-                    <i style={{ width: `${Math.min(100, Math.round(progress * 100))}%` }} />
+                  <div className="lt-dai-jin-wai">
+                    <div className="lt-dai-jin">
+                      <i style={{ width: `${Math.min(100, Math.round(progress * 100))}%` }} />
+                    </div>
+                    {/* 跑步小人：站在进度条上方用脚跑（外层不裁剪，避免被条内 overflow 藏掉），终点插旗 */}
+                    <span
+                      className="lt-dai-pao"
+                      style={{ left: `${Math.min(100, Math.round(progress * 100))}%` }}
+                    >
+                      🏃
+                    </span>
+                    <span className="lt-dai-zhong">🏁</span>
                   </div>
                   <span>
                     体检进行中 · {Math.min(100, Math.round(progress * 100))}% ·
@@ -1791,7 +2253,11 @@ export function App() {
 
         <div className="sec">
           <div className="sec-title">服务盲区清单（{report ? report.mangquList.length : 0}）</div>
-          {!report && !tijianCuo && <div className="empty-tip">点击「开始体检」后显示盲区</div>}
+          {!report && !tijianCuo && (
+            <div className="empty-tip">
+              算法盲区在完成一轮体检后自动生成；手动标记的盲区显示在下方「共享盲区标记」，两者相互独立。
+            </div>
+          )}
           {!report && tijianCuo && <div className="empty-tip">{tijianCuo}</div>}
           {report && report.mangquList.length === 0 && (
             <div className="empty-tip">未识别明显盲区，覆盖良好</div>
@@ -1813,7 +2279,9 @@ export function App() {
                 <div className="mq-body">
                   缺口：{m.quekou.join('、')}
                   <br />
-                  面积≈{(m.areaM2 / 10000).toFixed(1)} 万㎡ · 预计覆盖 {m.yujiFugaiRenkou} 人<br />
+                  面积≈{(m.areaM2 / 10000).toFixed(1)} 万㎡ · 预计覆盖约 {m.yujiFugaiRenkou}{' '}
+                  人（按人口密度估算）
+                  <br />
                   {m.yiJu && (
                     <>
                       判定依据：{m.yiJu}
@@ -1831,6 +2299,89 @@ export function App() {
                 </div>
               </div>
             ))}
+
+          {/* 用户共享盲区标记：算法之外的真实缺口，登录后在地图上补标，全员实时共享 */}
+          <div className="sec-title yh-mq-biao">
+            <span>共享盲区标记（{fuJinMangQu.length}）</span>
+            <span className="yh-mq-biao-an">
+              <button
+                className="mq-biao-an pos"
+                onClick={biaoJiWoDeWeiZhi}
+                disabled={mqDwZhong}
+                title={yongHu ? '用浏览器定位，把盲区标在我当前位置' : '登录后才能标记'}
+              >
+                {mqDwZhong ? '🛰 定位中…' : '🛰 我的位置'}
+              </button>
+              <button
+                className={`mq-biao-an ${biaoJiZhong ? 'on' : ''}`}
+                onClick={() => {
+                  if (!yongHu) {
+                    setDengLuKai(true); // 标记必须登录
+                    return;
+                  }
+                  setMqDwCuo('');
+                  setBiaoJiZhong(!biaoJiZhong);
+                  setDaiBiaoMangQu(null);
+                }}
+                title={yongHu ? '点地图位置补标盲区' : '登录后才能标记'}
+              >
+                {biaoJiZhong ? '点地图落标记…' : '📍 标记盲区'}
+              </button>
+            </span>
+          </div>
+          {mqDwCuo && <div className="a-tip a-tip-err">{mqDwCuo}</div>}
+          {mqFuWuCuo && <div className="empty-tip">服务未连接，共享标记功能需要本地服务在线。</div>}
+          {!mqFuWuCuo && fuJinMangQu.length === 0 && (
+            <div className="empty-tip">
+              {yongHu
+                ? '附近 10 公里内还没有标记。点「📍 标记盲区」或「🛰 我的位置」补上算法没发现的缺口。'
+                : '登录后即可在地图上标记盲区，所有人的标记实时共享显示。'}
+            </div>
+          )}
+          {yinCangShu > 0 && (
+            <div className="empty-tip">已隐藏 {yinCangShu} 个距离当前位置 10 公里外的标记。</div>
+          )}
+          {fuJinMangQu.map(m => (
+            <div className="mq-item" key={m.id}>
+              <div className="mq-head">
+                <b>📍 自标</b>
+                <span className="mq-tag user">{m.zhangHao}</span>
+                <button
+                  className="mq-biaoJi"
+                  onClick={() => setJuJiaoYongHu({ dian: m.weiZhi, ci: Date.now() })}
+                  title="在地图上定位该标记"
+                >
+                  定位
+                </button>
+                {((yongHu && m.zhangHao === yongHu.zhangHao) || guanLiYuanZai) && (
+                  <button
+                    className="mq-biaoJi"
+                    onClick={() => shanYongHuMangQu(m.id)}
+                    title={
+                      guanLiYuanZai && !(yongHu && m.zhangHao === yongHu.zhangHao)
+                        ? '管理员删除'
+                        : '删除该标记（仅限本人）'
+                    }
+                  >
+                    删除
+                  </button>
+                )}
+              </div>
+              <div className="mq-body">
+                {m.beiZhu}
+                <br />
+                <span className="mq-shiJian">
+                  {new Date(m.shiJian).toLocaleString('zh-CN', {
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}{' '}
+                  · ({m.weiZhi.lng.toFixed(5)}, {m.weiZhi.lat.toFixed(5)})
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
 
         {report && (
@@ -1857,6 +2408,205 @@ export function App() {
         peiZhi={peiZhi}
         onChange={setPeiZhi}
       />
+      {/* 路线方案弹窗：公交展示多方案卡，步行/骑行/驾车展示单张路线卡 */}
+      {jiaoTongKai && (
+        <div className="admin-mask" onClick={() => setJiaoTongKai(false)}>
+          <div className="admin-panel jiaoTong-chuang" onClick={e => e.stopPropagation()}>
+            <div className="admin-head">
+              <div className="panel-title">
+                {chuXing === 'transit' ? '🚌 公交方案' : '🧭 路线方案'}
+              </div>
+              <button className="lt-ls-guan" onClick={() => setJiaoTongKai(false)}>
+                关闭
+              </button>
+            </div>
+            {/* 方式标签：点谁就采用谁的路线（地图上同时显示全部，选中的加粗） */}
+            <div className="jiaoTong-fangShi">
+              {CHU_XING.map(c => {
+                const x = luXianZu[c.jian];
+                const zt = x ? x.zhuangTai : 'wei';
+                return (
+                  <button
+                    key={c.jian}
+                    className={`jiaoTong-fang ${chuXing === c.jian ? 'on' : ''}`}
+                    onClick={() => qieHuanChuXing(c.jian)}
+                    title={
+                      zt === 'loading'
+                        ? '规划中…'
+                        : zt === 'fail'
+                          ? '该方式规划失败'
+                          : '采用该方式的路线'
+                    }
+                  >
+                    {c.biao}
+                    <i className={`jiaoTong-dian ${zt}`} />
+                  </button>
+                );
+              })}
+            </div>
+            {(() => {
+              const x = luXianZu[chuXing];
+              const zaiJia = x && x.zhuangTai === 'loading';
+              const shiBai = x && x.zhuangTai === 'fail';
+              const ok = x && x.zhuangTai === 'ok';
+              if (zaiJia || (!x && muDiRef.current)) {
+                return (
+                  <div className="empty-tip" style={{ padding: '26px 14px' }}>
+                    正在沿真实路网规划「
+                    {(CHU_XING.find(c => c.jian === chuXing) || CHU_XING[0]).biao.slice(2)}
+                    」路线…
+                  </div>
+                );
+              }
+              if (shiBai) {
+                return (
+                  <div className="empty-tip" style={{ padding: '26px 14px' }}>
+                    该方式路线规划失败（目的地可能不在路网覆盖范围内），请换其他方式。
+                  </div>
+                );
+              }
+              if (!ok) {
+                return (
+                  <div className="empty-tip" style={{ padding: '26px 14px' }}>
+                    还没有路线——先完成体检或选择目的地。
+                  </div>
+                );
+              }
+              if (chuXing === 'transit') {
+                return (
+                  <>
+                    {/* 公交偏好：跟随百度官方枚举 */}
+                    <div className="jiaoTong-ceLue">
+                      {[
+                        [0, '综合推荐'],
+                        [1, '地铁优先'],
+                        [2, '少换乘'],
+                        [3, '少步行'],
+                        [4, '不坐地铁']
+                      ].map(([v, biao]) => (
+                        <button
+                          key={v}
+                          className={`ceLue-an ${gongJiaoCe === v ? 'on' : ''}`}
+                          onClick={() => {
+                            setGongJiaoCe(v);
+                            chongXinGuiHuaDan('transit');
+                          }}
+                          disabled={zaiGuiHuaRef.current}
+                        >
+                          {biao}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="jiaoTong-lieBiao">
+                      {x.fangAn &&
+                        x.fangAn.map((f, i) => {
+                          const h = Math.floor(f.haoShiMiao / 3600);
+                          const m = Math.round((f.haoShiMiao % 3600) / 60);
+                          const huan = f.xian.filter(y => y.lei !== 'walk').length - 1;
+                          return (
+                            <button
+                              key={i}
+                              className={`jiaoTong-ka ${(x.xuan || 0) === i ? 'on' : ''}`}
+                              onClick={() => xuanJiaoTongFangAn(i)}
+                              title="选用该方案画路线"
+                            >
+                              <div className="jiaoTong-ka-ding">
+                                <b className="jiaoTong-shi">
+                                  {f.haoShiMiao < 90
+                                    ? `${Math.max(1, Math.round(f.haoShiMiao))}秒`
+                                    : `${h > 0 ? `${h}小时` : ''}${m}分`}
+                                </b>
+                                <span className="jiaoTong-biao">
+                                  {i === 0 ? '综合最优' : `备选${i}`}
+                                </span>
+                              </div>
+                              <div className="jiaoTong-fu">
+                                步行 {Math.round(f.buXingMi)} 米 · {f.xian.length} 段
+                                {huan > 0 ? ` · 换乘 ${huan} 次` : ' · 直达'}
+                              </div>
+                              <div className="jiaoTong-xian">
+                                {f.xian.map((y, k) => (
+                                  <span key={k} className={`jiaoTong-xian-an ${y.lei}`}>
+                                    {y.lei === 'ditie' ? '🚇 ' : '🚌 '}
+                                    {y.ming}
+                                  </span>
+                                ))}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </>
+                );
+              }
+              // 步行 / 骑行 / 驾车：单张路线卡 + 偏好
+              const shiBu = chuXing === 'walk' || chuXing === 'riding';
+              return (
+                <>
+                  {chuXing === 'driving' && (
+                    <div className="jiaoTong-ceLue">
+                      {[
+                        [0, '常规'],
+                        [1, '躲避拥堵'],
+                        [2, '高速优先'],
+                        [3, '少收费']
+                      ].map(([v, biao]) => (
+                        <button
+                          key={v}
+                          className={`ceLue-an ${jiaShiCe === v ? 'on' : ''}`}
+                          onClick={() => {
+                            setJiaShiCe(v);
+                            chongXinGuiHuaDan('driving');
+                          }}
+                          disabled={zaiGuiHuaRef.current}
+                        >
+                          {biao}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {shiBu && (
+                    <div className="jiaoTong-ceLue">
+                      <button
+                        className={`ceLue-an ${yinLiangKai ? 'on' : ''}`}
+                        onClick={() => setYinLiangKai(!yinLiangKai)}
+                        title="沿路 45 米内有公园绿地即视为阴凉路段，绿色加粗显示"
+                      >
+                        🌳 阴凉路段高亮
+                      </button>
+                      <span className="ceLue-shuo">
+                        {yinLiangXian
+                          ? yinLiangXian.mi > 0
+                            ? `阴凉路段约 ${yinLiangXian.mi} 米（绿色标出）`
+                            : '本路线暂未识别到阴凉路段'
+                          : '…'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="jiaoTong-ka on" style={{ cursor: 'default' }}>
+                    <div className="jiaoTong-ka-ding">
+                      <b className="jiaoTong-shi">
+                        {x.durationSec < 90
+                          ? `${Math.max(1, Math.round(x.durationSec))}秒`
+                          : `${Math.floor(x.durationSec / 3600) > 0 ? `${Math.floor(x.durationSec / 3600)}小时` : ''}${Math.round((x.durationSec % 3600) / 60)}分`}
+                      </b>
+                      <span className="jiaoTong-biao">
+                        {(CHU_XING.find(c => c.jian === chuXing) || CHU_XING[0]).biao} · 真实路网
+                      </span>
+                    </div>
+                    <div className="jiaoTong-fu">
+                      全程 {Math.round(x.distanceM)} 米 · 点「开始导航」可模拟走完这条路线
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+            <div className="lt-ls-tiShi">
+              地图同时显示各方式路线，当前采用的加粗；选好后点「开始导航」即可出发。
+            </div>
+          </div>
+        </div>
+      )}
       <DengLu open={dengLuKai} onClose={() => setDengLuKai(false)} onDengLu={setYongHu} />
       <GeRen
         open={geRenKai}
@@ -1875,9 +2625,10 @@ export function App() {
             Number.isFinite(r.zhongXin.lng) &&
             Number.isFinite(r.zhongXin.lat)
           ) {
-            setCenter({ lng: r.zhongXin.lng, lat: r.zhongXin.lat });
-            setCurName(r.zhongXin.ming || '历史体检社区');
-            setReport(null);
+            qieHuanZhongXin(
+              { lng: r.zhongXin.lng, lat: r.zhongXin.lat },
+              r.zhongXin.ming || '历史体检社区'
+            );
             setGeRenKai(false);
           }
         }}

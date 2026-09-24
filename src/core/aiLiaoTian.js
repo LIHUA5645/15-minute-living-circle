@@ -4,10 +4,12 @@
 // 模型能结合当前社区体检结果回答「看病方便吗」「盲区是什么意思」等问题。
 // 经 /airelay 中转调用（与 AI 诊断 / AI 导航同路），密钥不落库。
 import { duiHuaJieKouZhi } from './zhenduan.js';
+import { liangDianJuLi } from './geo/jichu.js';
 import { fuWuUrl } from './fuwuDiZhi.js';
 
-// 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；ai 管理员 AI 配置
-export async function aiLiaoTian(lishi, wen, report, ai) {
+// 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；
+// ai 管理员 AI 配置；zhongXin 用户当前地图中心 {lng, lat, ming}（可选，用于位置感知）
+export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
   // 先区分「没配置」和「配置了但没开启用开关」，给用户可执行的提示
   if (!(ai && ai.apiDiZhi && ai.miYao)) {
     return {
@@ -31,10 +33,42 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
     };
   }
 
-  // 体检摘要塞进系统提示，让模型「看得见」本轮结果
-  const zhaiYao = report
-    ? `本轮体检结果：综合得分 ${report.total} 分（${report.dengji} 级），体检中心坐标 ${Number(report.zhongXin && report.zhongXin.lng).toFixed(4)},${Number(report.zhongXin && report.zhongXin.lat).toFixed(4)}，服务盲区 ${report.mangquList ? report.mangquList.length : 0} 个。`
-    : '用户尚未完成体检。';
+  // 体检摘要塞进系统提示，让模型「看得见」本轮结果；
+  // 同时注入用户当前地图中心——若报告中心与当前中心相距超过 500m，明确告知模型「报告已过期」，
+  // 避免用户重新定位后 AI 还拿着旧位置的坐标说事
+  const baoZuo = report && report.zhongXin;
+  const baoMiao =
+    report &&
+    `本轮体检结果：综合得分 ${report.total} 分（${report.dengji} 级），体检中心坐标 ${Number(baoZuo && baoZuo.lng).toFixed(4)},${Number(baoZuo && baoZuo.lat).toFixed(4)}，服务盲区 ${report.mangquList ? report.mangquList.length : 0} 个。`;
+  let zhaiYao;
+  if (report && zhongXin && baoZuo && Number.isFinite(baoZuo.lng)) {
+    const ju = liangDianJuLi(zhongXin, baoZuo);
+    if (ju > 500) {
+      zhaiYao =
+        baoMiao +
+        ` 注意：该报告是旧位置的数据；用户当前地图中心在「${zhongXin.ming || '新位置'}」（坐标 ${zhongXin.lng.toFixed(4)},${zhongXin.lat.toFixed(4)}），距报告位置约 ${Math.round(ju)} 米。回答请以用户当前所在位置为准，并提醒旧报告已过期、建议重新体检。`;
+    } else {
+      zhaiYao = baoMiao + ' 用户当前就在该体检中心附近。';
+    }
+  } else if (report) {
+    zhaiYao = baoMiao;
+  } else if (zhongXin) {
+    zhaiYao = `用户尚未完成体检。当前地图中心在「${zhongXin.ming || '未命名位置'}」（坐标 ${zhongXin.lng.toFixed(4)},${zhongXin.lat.toFixed(4)}）。`;
+  } else {
+    zhaiYao = '用户尚未完成体检。';
+  }
+
+  // 设施清单（名称去重，最多 40 个）注入提示——让大模型自己语义判断用户想去哪、能否匹配到设施
+  let sheShiMiao = '';
+  if (report && report.poiSet && report.poiSet.fenleiSet) {
+    const ming = [];
+    Object.values(report.poiSet.fenleiSet).forEach(lie =>
+      (lie || []).forEach(p => {
+        if (p && p.name && !ming.includes(p.name) && ming.length < 40) ming.push(p.name);
+      })
+    );
+    if (ming.length) sheShiMiao = `本轮体检检索到的设施（部分清单）：${ming.join('、')}。`;
+  }
 
   const xiaoXi = [
     {
@@ -42,7 +76,12 @@ export async function aiLiaoTian(lishi, wen, report, ai) {
       content:
         '你是「15 分钟生活圈智能体检助手」的在线问答助手，用简体中文简洁、口语化地回答，' +
         '话题围绕社区生活圈、设施配套、体检报告解读。回答控制在 200 字以内。当前上下文：' +
-        zhaiYao
+        zhaiYao +
+        (sheShiMiao ? ' ' + sheShiMiao : '') +
+        ' —— 你需要自己语义判断用户这句话是想导航去某地，还是在提问：' +
+        '①若用户想导航/前往某个地方（例如「我想去广西博物馆」「带我去最近的医院」「导航到人民公园」「送我去超市」），' +
+        '无论目的地是否在设施清单里，都只回复一行：【导航】目的地名称（剥掉客套词后的可检索地名，如「【导航】广西博物馆」），不要输出任何其他文字；' +
+        '②其余情况正常回答（此时绝不要出现【导航】字样）。语义判断由你完成，不要拘泥于具体关键词。'
     },
     // 只带最近 8 条，防上下文超长
     ...lishi.slice(-8).map(m => ({

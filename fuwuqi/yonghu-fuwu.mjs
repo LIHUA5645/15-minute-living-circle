@@ -9,14 +9,18 @@ import mysql from 'mysql2/promise';
 import crypto from 'node:crypto';
 
 const GUIZE = {
-  suo1Ci: 3, suo1: 10 * 60 * 1000,
-  suo2Ci: 5, suo2: 20 * 60 * 1000,
-  fengCi: 12, feng: 12 * 60 * 60 * 1000,
+  suo1Ci: 3,
+  suo1: 10 * 60 * 1000,
+  suo2Ci: 5,
+  suo2: 20 * 60 * 1000,
+  fengCi: 12,
+  feng: 12 * 60 * 60 * 1000
 };
 const LING_PAI_YOU_XIAO = 2 * 60 * 60 * 1000; // 管理员令牌 2 小时
 
 const xianZhi = new Map(); // ip -> {fails, shouCi, suoZhi}
 const lingPai = new Map(); // token -> daoQi
+const mqJieZou = new Map(); // ip -> [timestamps] 自标盲区轻节流（每分钟 20 条）
 let chi = null; // 连接池
 
 function haXi(miMa, yan) {
@@ -64,9 +68,9 @@ function hui(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 function duBody(req) {
-  return new Promise((jie) => {
+  return new Promise(jie => {
     let s = '';
-    req.on('data', (c) => (s += c));
+    req.on('data', c => (s += c));
     req.on('end', () => {
       try {
         jie(JSON.parse(s || '{}'));
@@ -77,7 +81,11 @@ function duBody(req) {
   });
 }
 function ipOf(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  return (
+    (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+    req.socket.remoteAddress ||
+    'unknown'
+  );
 }
 
 export function chuangJianYongHuFuWu(cfg) {
@@ -99,6 +107,16 @@ export function chuangJianYongHuFuWu(cfg) {
       mi_ma_hash VARCHAR(200) NOT NULL,
       yan VARCHAR(64) NOT NULL
     )`);
+    // 用户标记盲区：登录用户在地图上手动补标的真实缺口，全员实时共享
+    await lian.query(`CREATE TABLE IF NOT EXISTS mangqu_biaoji (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      zhang_hao VARCHAR(50) NOT NULL,
+      lng DOUBLE NOT NULL,
+      lat DOUBLE NOT NULL,
+      bei_zhu VARCHAR(200) NOT NULL DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_zh (zhang_hao)
+    )`);
     // 种子管理员 admin/admin（scrypt 哈希），首次初始化时写入
     const [rows] = await lian.query('SELECT id FROM admins LIMIT 1');
     if (!rows.length) {
@@ -106,7 +124,7 @@ export function chuangJianYongHuFuWu(cfg) {
       await lian.query('INSERT INTO admins (zhang_hao, mi_ma_hash, yan) VALUES (?, ?, ?)', [
         'admin',
         haXi('admin', yan),
-        yan,
+        yan
       ]);
     }
     await lian.end();
@@ -137,19 +155,20 @@ export function chuangJianYongHuFuWu(cfg) {
         const { zhangHao, miMa } = await duBody(req);
         const hao = String(zhangHao || '').trim();
         if (hao.length < 3) return hui(res, 200, { ok: false, xinxi: '账号至少 3 个字符' });
-        if (!/^[A-Za-z0-9_\u4e00-\u9fa5]+$/.test(hao)) return hui(res, 200, { ok: false, xinxi: '账号只能含中英文、数字、下划线' });
-        if (String(miMa || '').length < 6) return hui(res, 200, { ok: false, xinxi: '密码至少 6 位' });
+        if (!/^[A-Za-z0-9_\u4e00-\u9fa5]+$/.test(hao))
+          return hui(res, 200, { ok: false, xinxi: '账号只能含中英文、数字、下划线' });
+        if (String(miMa || '').length < 6)
+          return hui(res, 200, { ok: false, xinxi: '密码至少 6 位' });
         const yan = suiJiYan();
         try {
-          await chi.query('INSERT INTO users (zhang_hao, mi_ma_hash, yan, role) VALUES (?, ?, ?, ?)', [
-            hao,
-            haXi(miMa, yan),
-            yan,
-            'user',
-          ]);
+          await chi.query(
+            'INSERT INTO users (zhang_hao, mi_ma_hash, yan, role) VALUES (?, ?, ?, ?)',
+            [hao, haXi(miMa, yan), yan, 'user']
+          );
           return hui(res, 200, { ok: true });
         } catch (e) {
-          if (String(e.message).includes('UNIQUE')) return hui(res, 200, { ok: false, xinxi: '该账号已被注册' });
+          if (String(e.message).includes('UNIQUE'))
+            return hui(res, 200, { ok: false, xinxi: '该账号已被注册' });
           throw e;
         }
       }
@@ -157,9 +176,18 @@ export function chuangJianYongHuFuWu(cfg) {
       // —— 用户登录 ——
       if (lu === '/dengLu' && req.method === 'POST') {
         const suo = xianZhiJianCha(ip);
-        if (!suo.yunXu) return hui(res, 200, { ok: false, suoDing: true, shengYuMiao: suo.shengYuMiao, leiJi: suo.leiJi, xinxi: `失败次数过多已锁定，请 ${suo.shengYuMiao} 秒后再试` });
+        if (!suo.yunXu)
+          return hui(res, 200, {
+            ok: false,
+            suoDing: true,
+            shengYuMiao: suo.shengYuMiao,
+            leiJi: suo.leiJi,
+            xinxi: `失败次数过多已锁定，请 ${suo.shengYuMiao} 秒后再试`
+          });
         const { zhangHao, miMa } = await duBody(req);
-        const [rows] = await chi.query('SELECT * FROM users WHERE zhang_hao = ? LIMIT 1', [String(zhangHao || '').trim()]);
+        const [rows] = await chi.query('SELECT * FROM users WHERE zhang_hao = ? LIMIT 1', [
+          String(zhangHao || '').trim()
+        ]);
         const yh = rows[0];
         if (!yh || haXi(miMa, yh.yan) !== yh.mi_ma_hash) {
           const ji = xianZhiJiLu(ip);
@@ -168,41 +196,142 @@ export function chuangJianYongHuFuWu(cfg) {
             xinxi: '账号不存在或密码错误',
             suoDing: ji.suoDing,
             shengYuMiao: ji.shengYuMiao,
-            leiJi: ji.leiJi,
+            leiJi: ji.leiJi
           });
         }
         xianZhiQingChu(ip);
-        return hui(res, 200, { ok: true, yongHu: { zhangHao: yh.zhang_hao, role: yh.role, zhuCeShiJian: yh.created_at, t: Date.now() } });
+        return hui(res, 200, {
+          ok: true,
+          yongHu: {
+            zhangHao: yh.zhang_hao,
+            role: yh.role,
+            zhuCeShiJian: yh.created_at,
+            t: Date.now()
+          }
+        });
       }
 
       // —— 用户自助修改密码（验旧密码 + 独立限流） ——
       if (lu === '/yonghu/gaiMiMa' && req.method === 'POST') {
         const suo = xianZhiJianCha(ip + '|gm');
-        if (!suo.yunXu) return hui(res, 200, { ok: false, xinxi: `操作过于频繁已锁定，请 ${suo.shengYuMiao} 秒后再试` });
+        if (!suo.yunXu)
+          return hui(res, 200, {
+            ok: false,
+            xinxi: `操作过于频繁已锁定，请 ${suo.shengYuMiao} 秒后再试`
+          });
         const { zhangHao, jiuMiMa, xinMiMa } = await duBody(req);
-        if (String(xinMiMa || '').length < 6) return hui(res, 200, { ok: false, xinxi: '新密码至少 6 位' });
-        const [rows] = await chi.query('SELECT * FROM users WHERE zhang_hao = ? LIMIT 1', [String(zhangHao || '').trim()]);
+        if (String(xinMiMa || '').length < 6)
+          return hui(res, 200, { ok: false, xinxi: '新密码至少 6 位' });
+        const [rows] = await chi.query('SELECT * FROM users WHERE zhang_hao = ? LIMIT 1', [
+          String(zhangHao || '').trim()
+        ]);
         const yh = rows[0];
         if (!yh || haXi(jiuMiMa, yh.yan) !== yh.mi_ma_hash) {
           const ji = xianZhiJiLu(ip + '|gm');
-          return hui(res, 200, { ok: false, xinxi: '原密码错误', suoDing: ji.suoDing, shengYuMiao: ji.shengYuMiao, leiJi: ji.leiJi });
+          return hui(res, 200, {
+            ok: false,
+            xinxi: '原密码错误',
+            suoDing: ji.suoDing,
+            shengYuMiao: ji.shengYuMiao,
+            leiJi: ji.leiJi
+          });
         }
         const yan = suiJiYan();
-        await chi.query('UPDATE users SET mi_ma_hash = ?, yan = ? WHERE id = ?', [haXi(xinMiMa, yan), yan, yh.id]);
+        await chi.query('UPDATE users SET mi_ma_hash = ?, yan = ? WHERE id = ?', [
+          haXi(xinMiMa, yan),
+          yan,
+          yh.id
+        ]);
         xianZhiQingChu(ip + '|gm');
+        return hui(res, 200, { ok: true });
+      }
+
+      // —— 用户标记盲区：全员共享（读公开），写需登录身份，删仅限本人 ——
+      if (lu === '/mangqu/biaoJi' && req.method === 'POST') {
+        // 轻节流：单 IP 每分钟最多 20 条，防刷
+        const now = Date.now();
+        const ji = (mqJieZou.get(ip) || []).filter(t => now - t < 60000);
+        if (ji.length >= 20) return hui(res, 200, { ok: false, xinxi: '标记太频繁，请稍后再试' });
+        ji.push(now);
+        mqJieZou.set(ip, ji);
+        const { zhangHao, lng, lat, beiZhu } = await duBody(req);
+        const hao = String(zhangHao || '').trim();
+        const bz = String(beiZhu || '')
+          .trim()
+          .slice(0, 200);
+        const L = Number(lng);
+        const W = Number(lat);
+        if (!hao || !Number.isFinite(L) || !Number.isFinite(W)) {
+          return hui(res, 200, { ok: false, xinxi: '参数不完整' });
+        }
+        const [yh] = await chi.query('SELECT id FROM users WHERE zhang_hao = ? LIMIT 1', [hao]);
+        if (!yh.length) return hui(res, 200, { ok: false, xinxi: '请先登录后再标记' });
+        const [jie] = await chi.query(
+          'INSERT INTO mangqu_biaoji (zhang_hao, lng, lat, bei_zhu) VALUES (?, ?, ?, ?)',
+          [hao, L, W, bz]
+        );
+        return hui(res, 200, { ok: true, id: jie.insertId });
+      }
+
+      if (lu === '/mangqu/lieBiao' && req.method === 'GET') {
+        const [rows] = await chi.query(
+          'SELECT id, zhang_hao, lng, lat, bei_zhu, UNIX_TIMESTAMP(created_at)*1000 AS shi_jian FROM mangqu_biaoji ORDER BY id DESC LIMIT 200'
+        );
+        return hui(res, 200, {
+          ok: true,
+          list: rows.map(r => ({
+            id: r.id,
+            zhangHao: r.zhang_hao,
+            weiZhi: { lng: r.lng, lat: r.lat },
+            beiZhu: r.bei_zhu,
+            shiJian: Number(r.shi_jian)
+          }))
+        });
+      }
+
+      if (lu === '/mangqu/shanChu' && req.method === 'POST') {
+        const { id, zhangHao } = await duBody(req);
+        // 管理员（有效令牌）可删除任何人的标记；普通用户仅限本人
+        if (lingPaiYouXiao(req)) {
+          const [gl] = await chi.query('DELETE FROM mangqu_biaoji WHERE id = ?', [Number(id) || 0]);
+          if (!gl.affectedRows) return hui(res, 200, { ok: false, xinxi: '标记不存在或已删除' });
+          return hui(res, 200, { ok: true, guanLiYuan: true });
+        }
+        const hao = String(zhangHao || '').trim();
+        if (!hao) return hui(res, 200, { ok: false, xinxi: '请先登录' });
+        const [jie] = await chi.query('DELETE FROM mangqu_biaoji WHERE id = ? AND zhang_hao = ?', [
+          Number(id) || 0,
+          hao
+        ]);
+        if (!jie.affectedRows) return hui(res, 200, { ok: false, xinxi: '只能删除自己标记的盲区' });
         return hui(res, 200, { ok: true });
       }
 
       // —— 管理员登录 ——
       if (lu === '/guanliyuan/dengLu' && req.method === 'POST') {
         const suo = xianZhiJianCha(ip + '|admin');
-        if (!suo.yunXu) return hui(res, 200, { ok: false, suoDing: true, shengYuMiao: suo.shengYuMiao, leiJi: suo.leiJi, xinxi: `失败次数过多已锁定，请 ${suo.shengYuMiao} 秒后再试` });
+        if (!suo.yunXu)
+          return hui(res, 200, {
+            ok: false,
+            suoDing: true,
+            shengYuMiao: suo.shengYuMiao,
+            leiJi: suo.leiJi,
+            xinxi: `失败次数过多已锁定，请 ${suo.shengYuMiao} 秒后再试`
+          });
         const { zhangHao, miMa } = await duBody(req);
-        const [rows] = await chi.query('SELECT * FROM admins WHERE zhang_hao = ? LIMIT 1', [String(zhangHao || 'admin').trim()]);
+        const [rows] = await chi.query('SELECT * FROM admins WHERE zhang_hao = ? LIMIT 1', [
+          String(zhangHao || 'admin').trim()
+        ]);
         const gl = rows[0];
         if (!gl || haXi(miMa, gl.yan) !== gl.mi_ma_hash) {
           const ji = xianZhiJiLu(ip + '|admin');
-          return hui(res, 200, { ok: false, xinxi: '账号或密码错误', suoDing: ji.suoDing, shengYuMiao: ji.shengYuMiao, leiJi: ji.leiJi });
+          return hui(res, 200, {
+            ok: false,
+            xinxi: '账号或密码错误',
+            suoDing: ji.suoDing,
+            shengYuMiao: ji.shengYuMiao,
+            leiJi: ji.leiJi
+          });
         }
         xianZhiQingChu(ip + '|admin');
         const token = crypto.randomBytes(24).toString('hex');
@@ -212,10 +341,13 @@ export function chuangJianYongHuFuWu(cfg) {
 
       // —— 以下均为管理员接口：需要有效令牌 ——
       if (lu.startsWith('/guanliyuan/')) {
-        if (!lingPaiYouXiao(req)) return hui(res, 401, { ok: false, xinxi: '请先以管理员身份登录' });
+        if (!lingPaiYouXiao(req))
+          return hui(res, 401, { ok: false, xinxi: '请先以管理员身份登录' });
 
         if (lu === '/guanliyuan/yongHuLieBiao' && req.method === 'GET') {
-          const [rows] = await chi.query('SELECT id, zhang_hao, role, created_at FROM users ORDER BY id DESC LIMIT 500');
+          const [rows] = await chi.query(
+            'SELECT id, zhang_hao, role, created_at FROM users ORDER BY id DESC LIMIT 500'
+          );
           return hui(res, 200, { ok: true, list: rows });
         }
 
@@ -229,15 +361,24 @@ export function chuangJianYongHuFuWu(cfg) {
           const { id } = await duBody(req);
           const xinMiMa = 'sq' + Math.random().toString(36).slice(2, 8); // 随机 8 位临时密码
           const yan = suiJiYan();
-          await chi.query('UPDATE users SET mi_ma_hash = ?, yan = ? WHERE id = ?', [haXi(xinMiMa, yan), yan, Number(id) || 0]);
+          await chi.query('UPDATE users SET mi_ma_hash = ?, yan = ? WHERE id = ?', [
+            haXi(xinMiMa, yan),
+            yan,
+            Number(id) || 0
+          ]);
           return hui(res, 200, { ok: true, xinMiMa });
         }
 
         if (lu === '/guanliyuan/gaiMiMa' && req.method === 'POST') {
           const { miMa } = await duBody(req);
-          if (String(miMa || '').length < 6) return hui(res, 200, { ok: false, xinxi: '密码至少 6 位' });
+          if (String(miMa || '').length < 6)
+            return hui(res, 200, { ok: false, xinxi: '密码至少 6 位' });
           const yan = suiJiYan();
-          await chi.query('UPDATE admins SET mi_ma_hash = ?, yan = ? WHERE zhang_hao = ?', [haXi(miMa, yan), yan, 'admin']);
+          await chi.query('UPDATE admins SET mi_ma_hash = ?, yan = ? WHERE zhang_hao = ?', [
+            haXi(miMa, yan),
+            yan,
+            'admin'
+          ]);
           return hui(res, 200, { ok: true });
         }
       }

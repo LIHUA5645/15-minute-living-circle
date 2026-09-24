@@ -74,6 +74,96 @@ function tiQuDian(plan) {
   return dian;
 }
 
+// 公交/地铁方案规划：返回多套完整方案（高德式方案卡数据源）
+// 每套：{ haoShiMiao, juLiMi, buXingMi, xian: [{ming, lei, zhanShu, juLiMi}], polyline }
+export function guiHuaJiaoTong(from, to) {
+  return new Promise((resolve, reject) => {
+    loadBmap()
+      .then(B => {
+        if (!B || !B.TransitRoute) {
+          reject(new Error('当前地图未就绪，无法规划公交方案'));
+          return;
+        }
+        let yiWan = false;
+        const dingWei = new B.Point(from.lng, from.lat);
+        const sou = new B.TransitRoute(dingWei, {
+          onSearchComplete: r => {
+            if (yiWan) return;
+            yiWan = true;
+            try {
+              if (!r || r.Err || r.error || !r.getPlan || !r.getNumPlans || r.getNumPlans() < 1) {
+                reject(new Error('没有规划到可行的公交方案'));
+                return;
+              }
+              const fangAn = [];
+              const n = Math.min(4, r.getNumPlans());
+              for (let i = 0; i < n; i++) {
+                const p = r.getPlan(i);
+                if (!p) continue;
+                // 每条线路：标题、类型（0=公交 1=地铁）、途经站数、路径点
+                const xian = [];
+                let dianBd = [];
+                let cheJuLi = 0;
+                const nL = p.getNumLines ? p.getNumLines() : 0;
+                for (let j = 0; j < nL; j++) {
+                  const l = p.getLine(j);
+                  if (!l) continue;
+                  const lei = l.type === 1 ? 'ditie' : 'gongjiao';
+                  const juLiMi = jieXiMi((l.getDistance && l.getDistance()) || l._distance);
+                  cheJuLi += juLiMi;
+                  xian.push({
+                    ming: (l.getTitle && l.getTitle()) || '',
+                    lei,
+                    zhanShu: (l.getNumViaStops && l.getNumViaStops()) || 0,
+                    juLiMi
+                  });
+                  const pts = (l.getPoints && l.getPoints()) || l._points || [];
+                  dianBd = dianBd.concat(pts);
+                }
+                if (dianBd.length < 2) continue;
+                const polyline = dianBd.map(pt => bd09ZhuanWgs84(pt.lng, pt.lat));
+                // 总距离（含步行）减去乘车距离 ≈ 步行距离
+                const zongMi = jieXiMi(p.getDistance && p.getDistance());
+                fangAn.push({
+                  haoShiMiao: jieXiMiao(p.getDuration && p.getDuration()),
+                  juLiMi: zongMi || Math.round(distanceHe(polyline)),
+                  buXingMi: Math.max(0, (zongMi || cheJuLi) - cheJuLi),
+                  xian,
+                  polyline
+                });
+              }
+              if (!fangAn.length) {
+                reject(new Error('该出行方式在此路线上没有可用方案'));
+                return;
+              }
+              resolve({ fangAn });
+            } catch (e) {
+              reject(new Error('公交方案解析失败：' + (e && e.message)));
+            }
+          }
+        });
+        sou.search(new B.Point(from.lng, from.lat), new B.Point(to.lng, to.lat));
+        // 公交规划较慢，放宽到 20 秒
+        setTimeout(() => {
+          if (!yiWan) {
+            yiWan = true;
+            reject(new Error('公交方案规划超时，请稍后重试'));
+          }
+        }, 20000);
+      })
+      .catch(() => reject(new Error('地图未加载，无法规划公交方案')));
+  });
+}
+
+// 沿折线累计距离（米）
+function distanceHe(xian) {
+  let he = 0;
+  for (let i = 1; i < xian.length; i++) {
+    he += liangDianJuLi(xian[i - 1], xian[i]);
+  }
+  return he;
+}
+
 // 主入口：fangShi 'walk' | 'riding' | 'driving' | 'transit'；from/to 为 WGS-84 {lng, lat}
 export function guiHuaLuXian(fangShi, from, to) {
   return new Promise((resolve, reject) => {
