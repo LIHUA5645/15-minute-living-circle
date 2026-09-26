@@ -6,9 +6,12 @@
 // 两种引擎均叠加：等时圈热力分层 / 设施散点 / 服务盲区 / 体检中心
 import React, { useEffect, useRef, useState } from 'react';
 import { Cross, GraduationCap, ShoppingCart, Armchair, Bus, Trees, Shapes } from 'lucide';
+import { MorphIcon } from 'morphicons/react';
+import { Route as LuYouLuXian, Satellite, Axis3d } from 'lucide';
 import { loadBmap } from './loadBmap.js';
 import { DiTuCanvas } from './DiTuCanvas.jsx';
 import { wgs84ZhuanBd09, bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
+import { liangDianJuLi } from '../core/geo/jichu.js';
 
 // 应用内部统一 WGS-84；百度底图需要 BD-09，绘制与拾取时转换
 const Z = p => wgs84ZhuanBd09(p.lng, p.lat);
@@ -76,10 +79,13 @@ export const MapCanvas = React.memo(function MapCanvas({
   onDitu,
   guanZhuId,
   yongHuMangQu,
+  souSuoMuDi,
   biaoJiKai,
   onBiaoJiDianJi,
+  onDaoHangBiaoJi,
   juJiaoYongHu,
   daoHang,
+  xuanZhuan,
   gongJu,
   gongJuSheZhi,
   luXianZu,
@@ -97,7 +103,8 @@ export const MapCanvas = React.memo(function MapCanvas({
     buJian: [],
     buXing: [],
     guanZhu: [],
-    yongHu: []
+    yongHu: [],
+    muDiBiao: []
   });
   const keysRef = useRef({
     iso: '',
@@ -107,7 +114,8 @@ export const MapCanvas = React.memo(function MapCanvas({
     buJian: '',
     buXing: '',
     guanZhu: '',
-    yongHu: ''
+    yongHu: '',
+    muDiBiao: ''
   });
   const onPickRef = useRef(onPick);
   const onPoiRef = useRef(onPoiDianJi);
@@ -115,6 +123,8 @@ export const MapCanvas = React.memo(function MapCanvas({
   const onBiaoJiRef = useRef(onBiaoJiDianJi);
   biaoJiRef.current = biaoJiKai;
   onBiaoJiRef.current = onBiaoJiDianJi;
+  const onDaoHangBiaoRef = useRef(onDaoHangBiaoJi); // 导航途中双击地图快速标记
+  onDaoHangBiaoRef.current = onDaoHangBiaoJi;
   const ziFaRef = useRef(null); // 由地图点击产生的中心点，避免重复居中造成视图跳动
   const [engine, setEngine] = useState(ditu === 'tile' ? 'tile' : 'loading');
   const drawTimerRef = useRef(0);
@@ -152,7 +162,9 @@ export const MapCanvas = React.memo(function MapCanvas({
         return;
       }
       try {
-        const map = new B.Map(mapDivRef.current, { enableMapClick: false });
+        // enableIconClick：底图 POI 图标可点——百度瓦片内部的标注（卫生院 / 加油站等）
+        // 程序无法批量读取，但打开此开关后用户点击即由百度弹出该点名称信息，配合逆地理编码可感知"这是哪"
+        const map = new B.Map(mapDivRef.current, { enableMapClick: false, enableIconClick: true });
         map.enableScrollWheelZoom(true);
         map.centerAndZoom(new B.Point(center.lng, center.lat), 15);
         mapRef.current = { map, B };
@@ -164,7 +176,8 @@ export const MapCanvas = React.memo(function MapCanvas({
         }
         map.addEventListener('click', e => {
           // 单击不再弹「设为中心点」确认框（单击设施 / 盲区图钉曾被误触或 300ms 防抖吞掉，
-          // 用户反馈体验差）——确认框改为双击弹出（下方 dblclick）；盲区标记模式下单击仍直接落标记
+          // 用户反馈体验差）——确认框改为双击弹出（下方 dblclick）；盲区标记模式下单击仍直接落标记；
+          // 导航途中的快速标记也并入双击（单击/双击时序竞争易误触，见下方 shuangJi）
           if (Date.now() - huLveRef.current < 300) return;
           const ll = e.latlng || e.point;
           if (!ll) return;
@@ -174,8 +187,6 @@ export const MapCanvas = React.memo(function MapCanvas({
         // GL 的 map 级 dblclick 事件在部分版本不派发（双击被内部缩放流程吞掉），
         // 改监听容器原生 dblclick：双击点相对中心的像素偏移 + pointToPixel/pixelToPoint 反算经纬度
         const shuangJi = ev => {
-          console.log('[mq-dbg] native dblclick', huLveRef.current, Date.now() - huLveRef.current);
-          if (Date.now() - huLveRef.current < 300) return;
           if (!mapDivRef.current) return;
           const rct = mapDivRef.current.getBoundingClientRect();
           const dx = ev.clientX - (rct.left + rct.width / 2);
@@ -185,6 +196,7 @@ export const MapCanvas = React.memo(function MapCanvas({
             // pixelToPoint 接收的是 Pixel（容器像素），误传 Point 会被当经纬度解析出 (0,0)
             const dian = map.pixelToPoint(new B.Pixel(cPx.x + dx, cPx.y + dy));
             if (!dian) return;
+            // 普通视图：气泡提供「设为中心点 / 取消」；导航视图：气泡多一个「标记盲区」按钮
             setDaiXuan(bd09ZhuanWgs84(dian.lng, dian.lat));
           } catch {
             /* 个别版本缺 pixelToPoint 时忽略 */
@@ -201,11 +213,15 @@ export const MapCanvas = React.memo(function MapCanvas({
         setEngine('baidu');
         // 底图瓦片超时未加载完成（AK 被风控时百度瓦片会一直不来）→ 提示排查，不降级非百度底图
         // 首屏瓦片受网络影响常超过 3 秒，这里给 12 秒，避免正常加载被误判为失败
-        readyTimer = setTimeout(() => {
+        readyTimer = setTimeout(function check() {
           if (cancelled) return;
           // 画布已经出图（GL 正常渲染）就不再误报「加载失败」，慢网下瓦片晚到属正常现象
-          if (mapDivRef.current && mapDivRef.current.querySelector('canvas')) return;
+          if (mapDivRef.current && mapDivRef.current.querySelector('canvas')) {
+            setEngine('baidu'); // 失败提示后画布晚到：自动撤掉横幅自愈
+            return;
+          }
           setEngine('error');
+          readyTimer = setTimeout(check, 1500); // 每 1.5 秒复查，画布出现即自愈
         }, 12000);
         // 瓦片迟到时恢复底图状态，自动撤掉误报提示
         map.addEventListener('tilesloaded', () => {
@@ -214,6 +230,7 @@ export const MapCanvas = React.memo(function MapCanvas({
         });
       } catch (e) {
         // 百度初始化异常 → 提示错误（赛道要求必须使用百度地图，不降级第三方底图）
+        console.error('[map-init] 初始化失败：', e && e.message, e && e.stack);
         setEngine('error');
       }
     }
@@ -254,7 +271,7 @@ export const MapCanvas = React.memo(function MapCanvas({
     clearTimeout(drawTimerRef.current);
     drawTimerRef.current = setTimeout(() => drawBaidu(), 80);
     return () => clearTimeout(drawTimerRef.current);
-  }, [engine, report, center, xianshi, buXing, guanZhuId, yongHuMangQu]);
+  }, [engine, report, center, xianshi, buXing, guanZhuId, yongHuMangQu, souSuoMuDi]);
 
   // 用户在清单里标记某盲区 → 地图飞到该盲区中心
   useEffect(() => {
@@ -339,10 +356,28 @@ export const MapCanvas = React.memo(function MapCanvas({
     }
   }, [luXianZu, chuXing, yinLiangXian, engine]);
 
-  // 一键回到体检中心：地图乱滑后找不回位置时使用
+  // 一键回到体检中心：地图乱滑后找不回位置时使用；
+  // 导航中语义变为「回到导航跟随」：恢复镜头接管并立即回到小蓝点
   function huiDaoDingWei() {
     if (engine === 'baidu' && mapRef.current) {
       const { map, B } = mapRef.current;
+      if (daoHangKaiRef.current) {
+        daoHangSuiRef.current = true;
+        setDaoHangSuiTing(false);
+        try {
+          // GL 的 getZoom 偶发返回 undefined，Math.max 会得到 NaN 喂进 setZoom
+          // 触发 GL 内部 getMinZoom 报错——先做有限数兜底
+          const dqJi = Number(map.getZoom());
+          map.setZoom(Number.isFinite(dqJi) ? Math.max(dqJi, 19) : 19);
+        } catch {
+          /* 忽略 */
+        }
+        if (daoHang && daoHang.weiZhi) {
+          const h = Z(daoHang.weiZhi);
+          map.panTo(new B.Point(h.lng, h.lat));
+        }
+        return;
+      }
       const q = Z(center);
       ziFaRef.current = null;
       map.setCenter(new B.Point(q.lng, q.lat));
@@ -402,6 +437,11 @@ export const MapCanvas = React.memo(function MapCanvas({
   const daoHangLuRef = useRef([]); // 导航中的路线高亮（白边 + 蓝色实线）
   const daoHangKaiRef = useRef(false); // 是否已做过开局路线总览
   const daoHangYiRef = useRef(0); // panTo 节流时间戳（60fps 更新位置，视角每 300ms 平滑跟一次）
+  const daoHangXiangRef = useRef(0); // 当前镜头航向角（度，顺时针 0=正北）——航向朝上导航用
+  const daoHangXiangShiRef = useRef(0); // 航向旋转节流时间戳（与平移分开，各自节奏）
+  const daoHangSuiRef = useRef(true); // 导航镜头是否自动跟随（用户拖图浏览时暂停，点回中按钮恢复）
+  const [daoHangSuiTing, setDaoHangSuiTing] = useState(false); // 跟随暂停态（驱动回中按钮高亮与提示）
+  const daoHangTuoRef = useRef(null); // 导航期 dragstart 监听句柄（退出导航时摘除）
   // 摘掉导航期间的所有专属覆盖物
   function qingDaoHangFuGai() {
     if (!mapRef.current) return;
@@ -423,26 +463,70 @@ export const MapCanvas = React.memo(function MapCanvas({
     });
     daoHangLuRef.current = [];
   }
+  // 导航期间隐藏日常图层（等时圈 / 设施散点 / 盲区 / 图钉 / 普通虚线路线），
+  // 只留导航高亮路线与小蓝点——与手机地图导航一致，满屏杂物会挡住路线；
+  // 键值一并清空，退出导航后 drawBaidu 才能把这些图层原样画回来
+  function yinCangRiChangTuCeng() {
+    if (!mapRef.current) return;
+    ['iso', 'poi', 'blind', 'buJian', 'center', 'guanZhu', 'yongHu', 'buXing'].forEach(ming => {
+      clearLayer(ming);
+      keysRef.current[ming] = '';
+    });
+  }
   useEffect(() => {
     const mb = mapRef.current;
-    const zaiKai = !!(daoHang && daoHang.kai && daoHang.weiZhi && engine === 'baidu');
+    // 注意：判断的是 daoHang 对象是否存在，而不是 kai——暂停/到达只是 kai 变 false
+    // 但对象还在（进度要保留），若按 kai 判断会把暂停当退出处理：
+    // 拆掉导航画面、重画日常图层并 setCenter 回体检中心，表现为「一点暂停就跑回原位置」
+    const zaiKai = !!(daoHang && daoHang.weiZhi && engine === 'baidu');
     if (!mb || !zaiKai) {
-      // 退出导航 / 引擎切换：摘掉小蓝点与高亮路线，回正视角
+      // 退出导航 / 引擎切换：摘掉小蓝点与高亮路线，回正视角并恢复日常图层
       daoHangKaiRef.current = false;
       qingDaoHangFuGai();
+      if (daoHangTuoRef.current) {
+        try {
+          mb.map.removeEventListener('dragstart', daoHangTuoRef.current);
+        } catch {
+          /* 忽略 */
+        }
+        daoHangTuoRef.current = null;
+      }
+      daoHangSuiRef.current = true; // 跟随恢复默认开启
+      setDaoHangSuiTing(false);
       if (mb && daoHangLuRef.current.length === 0) {
         try {
           mb.map.setTilt(0);
+          mb.map.setHeading(0); // 镜头航向回正北（导航期间是航向朝上的旋转视角）
         } catch {
-          /* 个别版本无 setTilt 时忽略 */
+          /* 个别版本无 setTilt / setHeading 时忽略 */
         }
       }
+      daoHangXiangRef.current = 0;
+      // 日常图层在导航开局被清掉且键值已重置，这里延迟一拍重画恢复
+      clearTimeout(drawTimerRef.current);
+      drawTimerRef.current = setTimeout(() => {
+        if (engine === 'baidu' && mapRef.current) drawBaidu();
+      }, 100);
       return;
     }
     const { map, B } = mb;
-    // 开局：路线高亮（白边蓝实线）+ 3D 倾斜 + 总览整条路线，随后跟随视角
+    // 开局：清掉日常图层只留导航画面 → 路线高亮（白边蓝实线）+ 3D 倾斜 + 总览整条路线，随后拉近跟随
     if (!daoHangKaiRef.current) {
       daoHangKaiRef.current = true;
+      daoHangXiangRef.current = 0; // 航向记录归零，首帧按实际行进方向重新起算
+      daoHangSuiRef.current = true;
+      setDaoHangSuiTing(false);
+      // 用户拖图浏览时暂停镜头接管（平移/缩放/航向都停），点右下角回中按钮恢复跟随
+      daoHangTuoRef.current = () => {
+        daoHangSuiRef.current = false;
+        setDaoHangSuiTing(true);
+      };
+      try {
+        map.addEventListener('dragstart', daoHangTuoRef.current);
+      } catch {
+        /* 个别版本事件名差异时忽略，只是少了暂停跟随的手势 */
+      }
+      yinCangRiChangTuCeng();
       if (buXing && buXing.polyline && buXing.polyline.length > 1) {
         const dian = buXing.polyline.map(p => {
           const q = Z(p);
@@ -462,58 +546,201 @@ export const MapCanvas = React.memo(function MapCanvas({
           map.addOverlay(bai);
           map.addOverlay(lan);
           daoHangLuRef.current = [bai, lan];
+          // 路面导航箭头：沿路线等距铺白色箭头，每支按所在路段方位角自转（marker.setRotation，
+          // 顺时针 0=正北）——蓝底白箭头就是手机 / 车机导航的路面引导样式
+          const xianW = buXing.polyline;
+          const duanLu = [];
+          let quanLu = 0;
+          for (let i = 1; i < xianW.length; i++) {
+            const d = liangDianJuLi(xianW[i - 1], xianW[i]);
+            duanLu.push(d);
+            quanLu += d;
+          }
+          const zhouQi = quanLu > 4000 ? 80 : 40; // 箭头间距：短路线 40 米一支，长路线 80 米防卡顿
+          const jianTu = new B.Icon(
+            svgIcon(
+              "<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14'>" +
+                "<path d='M7 2.2 L11.8 11.8 L7 9.4 L2.2 11.8 Z' fill='#ffffff' opacity='0.92'/></svg>"
+            ),
+            new B.Size(14, 14),
+            { anchor: new B.Size(7, 7) }
+          );
+          let muBiaoLu = zhouQi;
+          let lei = 0;
+          for (let i = 0; i < duanLu.length && muBiaoLu <= quanLu - 10; i++) {
+            while (muBiaoLu <= lei + duanLu[i] && muBiaoLu <= quanLu - 10) {
+              const t = duanLu[i] ? (muBiaoLu - lei) / duanLu[i] : 0;
+              const a = xianW[i];
+              const b2 = xianW[i + 1];
+              const zw = { lng: a.lng + (b2.lng - a.lng) * t, lat: a.lat + (b2.lat - a.lat) * t };
+              const fang = (Math.atan2(b2.lng - a.lng, b2.lat - a.lat) * 180) / Math.PI;
+              const qw = Z(zw);
+              const jian = new B.Marker(new B.Point(qw.lng, qw.lat), {
+                icon: jianTu,
+                rotation: fang
+              });
+              map.addOverlay(jian);
+              daoHangLuRef.current.push(jian);
+              muBiaoLu += zhouQi;
+            }
+            lei += duanLu[i];
+          }
+          // 终点标：红色旗标图钉 + 「目的地」红底白字文字标——导航画面里最醒目的锚点
+          const zhongW = xianW[xianW.length - 1];
+          const zq = Z(zhongW);
+          const zhongBiao = new B.Marker(
+            new B.Point(zq.lng, zq.lat),
+            {
+              title: '目的地',
+              icon: new B.Icon(
+                svgIcon(
+                  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='36' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#e5484d' stroke='#ffffff' stroke-width='1.5'/><path d='M8.5 15.5h7v-6h-7z' fill='#ffffff'/><path d='M15.5 10.5l4 1.8-4 1.8z' fill='#ffffff'/></svg>`
+                ),
+                new B.Size(28, 36),
+                { anchor: new B.Size(14, 36) }
+              ),
+              zIndex: 998
+            }
+          );
+          map.addOverlay(zhongBiao);
+          daoHangLuRef.current.push(zhongBiao);
+          try {
+            const qian = new B.Label('目的地', {
+              position: new B.Point(zq.lng, zq.lat),
+              offset: new B.Size(-26, -48)
+            });
+            qian.setStyle({
+              background: '#e5484d',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '2px 9px',
+              fontSize: '12px',
+              fontWeight: '700',
+              fontFamily: 'inherit'
+            });
+            map.addOverlay(qian);
+            daoHangLuRef.current.push(qian);
+          } catch {
+            /* Label 个别版本样式差异时忽略，旗标图钉仍在 */
+          }
         } catch {
-          /* 高亮失败不影响导航 */
+          /* 高亮 / 箭头失败不影响导航 */
+        }
+        // 开局直接落到近景（不再总览），三个调用各自独立 try——
+        // 若共用一个 try，前面任何一个 API 在个别 GL 版本上抛错（如 setTilt 不认 options），
+        // 后面的 setZoom 就不会执行，表现为「导航不放大」。
+        // 全部 noAnimation 瞬切：带动画的 setZoom 会被 50ms 后跟随帧的 panTo(noAnimation)
+        // 立刻掐掉，缩放永远走不完；19 级=步行导航实用上限（瓦片最高 21 级）
+        try {
+          const kaiQ = Z(daoHang.weiZhi);
+          map.setCenter(new B.Point(kaiQ.lng, kaiQ.lat), { noAnimation: true });
+        } catch {
+          /* 忽略 */
         }
         try {
-          map.setViewport(dian);
+          map.setTilt(52, { noAnimation: true });
         } catch {
-          /* setViewport 个别版本签名差异时忽略，不影响跟随 */
+          /* 忽略 */
         }
         try {
-          map.setTilt(52);
+          map.setZoom(19, { noAnimation: true });
         } catch {
-          /* 个别版本无 setTilt 时忽略 */
+          /* 忽略 */
         }
-        setTimeout(() => {
-          if (daoHangKaiRef.current) map.setZoom(Math.max(map.getZoom(), 17));
-        }, 900);
       }
     }
-    // 小蓝点：蓝色圆 + 白圈白心（首帧创建，之后只挪位置）
+    // 用户位置标记：蓝色导航箭头 + 白描边 + 淡蓝光晕（首帧创建，之后只挪位置、转朝向）——
+    // 箭头按 fangWei（行进方位角，顺时针 0=正北）实时旋转，一眼看出当前朝向；
+    // 镜头仍保持北朝上不转，只有箭头转，不会晕
     if (!daoHangBiaoRef.current) {
       const tu = svgIcon(
-        "<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'>" +
-          "<circle cx='15' cy='15' r='11.5' fill='rgba(47,134,247,0.25)'/>" +
-          "<circle cx='15' cy='15' r='7.5' fill='#2f86f7' stroke='#ffffff' stroke-width='2.4'/>" +
-          '<circle cx="15" cy="15" r="2.6" fill="#ffffff"/></svg>'
+        "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'>" +
+          "<circle cx='20' cy='20' r='15' fill='rgba(47,134,247,0.16)'/>" +
+          "<path d='M20 5.5 L29 31 L20 25.5 L11 31 Z' fill='#2f86f7' stroke='#ffffff' " +
+            "stroke-width='2.4' stroke-linejoin='round'/></svg>"
       );
-      const biao = new B.Icon(tu, new B.Size(30, 30), { anchor: new B.Size(15, 15) });
-      daoHangBiaoRef.current = new B.Marker(new B.Point(0, 0), { icon: biao, zIndex: 999 });
+      const biao = new B.Icon(tu, new B.Size(40, 40), { anchor: new B.Size(20, 20) });
+      // zIndex 压过终点图钉（998）与「目的地」标签——GPS 模式下蓝点常与终点重合，层级低了会被盖住
+      daoHangBiaoRef.current = new B.Marker(new B.Point(0, 0), { icon: biao, zIndex: 1002 });
       map.addOverlay(daoHangBiaoRef.current);
     }
     const q = Z(daoHang.weiZhi);
     daoHangBiaoRef.current.setPosition(new B.Point(q.lng, q.lat));
+    try {
+      daoHangBiaoRef.current.setRotation(Number(daoHang.fangWei) || 0);
+    } catch {
+      /* 个别版本无 setRotation 时退化为固定朝上的箭头，不影响跟随 */
+    }
+    // —— 丝滑平移跟随：panTo 必须带 noAnimation——GL 的 panTo 默认自带飞行动画，
+    // 高频调用等于不停重启动画，观感一顿一顿；关掉动画改为高频小步跳变（50ms 一档），
+    // 步长小到肉眼不可见，跟点如丝般顺滑。缩放仍绝不在跟随帧里调（GL getMinZoom 缺陷）
     const xianZai = Date.now();
-    if (xianZai - daoHangYiRef.current > 300) {
+    if (daoHangSuiRef.current && xianZai - daoHangYiRef.current > 50) {
       daoHangYiRef.current = xianZai;
-      map.panTo(new B.Point(q.lng, q.lat));
+      // 相机看向前方 60 米引导点（App 沿路线插值好随 daoHang 传入）：
+      // 小蓝点沉到屏幕下三分之一、前方路面占视野主体；旧数据没有引导点时退回蓝点居中
+      const kan = daoHang.qianWang || daoHang.weiZhi;
+      const kq = Z(kan);
+      map.panTo(new B.Point(kq.lng, kq.lat), { noAnimation: true });
+      // 保险：级别意外低于 19（开局瞬切被 GL 内部状态吃掉、或用户缩小了）就拉回路上近景。
+      // 必须先过 Number.isFinite——GL 的 getZoom 偶发返回 undefined，NaN 进 setZoom
+      // 会触发 GL 内部 getMinZoom 报错（此前画面乱动的元凶之一）
+      try {
+        const dqJi = Number(map.getZoom());
+        if (Number.isFinite(dqJi) && dqJi < 19) map.setZoom(19, { noAnimation: true });
+      } catch {
+        /* 忽略 */
+      }
+    }
+    // —— 航向朝上旋转（手机导航同款，需用户在导航页点「🧭」开启，默认北朝上不晕）——
+    // setHeading 同样必须 noAnimation（默认动画被高频重启就会连续转圈）；
+    // 150ms 一步、每次吃掉角差的 20%（至少 1°），转弯约一秒出头顶点、收敛柔顺；
+    // 角差 0.6° 以内视为到位彻底停手；用户拖图浏览（跟随暂停）时镜头完全交还给用户
+    if (daoHangSuiRef.current && xianZai - daoHangXiangShiRef.current > 150) {
+      daoHangXiangShiRef.current = xianZai;
+      const xiang = xuanZhuan ? Number(daoHang.fangWei) : 0;
+      if (Number.isFinite(xiang)) {
+        const cha = ((xiang - daoHangXiangRef.current + 540) % 360) - 180; // 最短角差 [-180,180)
+        if (Math.abs(cha) > 0.6) {
+          daoHangXiangRef.current = (daoHangXiangRef.current + Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) + 360) % 360;
+          try {
+            map.setHeading(daoHangXiangRef.current, { noAnimation: true });
+          } catch {
+            /* 个别版本无 setHeading 时退化为北朝上，不影响跟随 */
+          }
+        }
+      }
     }
   }, [daoHang, buXing, engine]);
 
   function clearLayer(name) {
     if (!mapRef.current) return;
     const { map } = mapRef.current;
-    (layersRef.current[name] || []).forEach(o => map.removeOverlay(o));
+    (layersRef.current[name] || []).forEach(o => {
+      try {
+        map.removeOverlay(o);
+      } catch {
+        /* BMapGL 内部 remove 时偶发读 undefined（intersects）报错，属其自身渲染缺陷，
+           逐个捕获避免把 React 树整个打崩白屏 */
+      }
+    });
     layersRef.current[name] = [];
   }
   function addTo(name, o) {
     layersRef.current[name].push(o);
-    mapRef.current.map.addOverlay(o);
+    try {
+      mapRef.current.map.addOverlay(o);
+    } catch {
+      /* 与 clearLayer 同理：GL 内部异常不外抛 */
+    }
     return o; // 返回覆盖物本身，便于就地绑定事件（如中心点图钉的 dragend）
   }
 
   function drawBaidu() {
+    // 导航期间不重画日常图层：一重画就会 setCenter 拽回体检中心，跟车视角会被打断；
+    // 退出导航时由导航 effect 统一重画恢复
+    if (daoHangKaiRef.current) return;
     const { map, B } = mapRef.current;
     const c0 = Z(center);
     // 若中心点来自地图自身点击，不重复居中（否则画面会整体平移，观感为乱跳）
@@ -734,10 +961,14 @@ export const MapCanvas = React.memo(function MapCanvas({
               })
             : '';
           const neiRong =
-            '<div style="font-size:13px;line-height:1.7;max-width:230px">' +
-            '<b style="font-size:13.5px">📍 用户标记的盲区</b><br/>' +
-            `${m.beiZhu}<br/>` +
-            `<span style="color:#8a93a3;font-size:11.5px">标注：${m.zhangHao || '匿名'} · ${shi}<br/>(${m.weiZhi.lng.toFixed(5)}, ${m.weiZhi.lat.toFixed(5)})</span>` +
+            '<div style="min-width:200px;max-width:240px">' +
+            // 标题行：图钉 + 标题 + 虚线分隔，比旧版单行标题更精致
+            '<div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;margin-bottom:7px;border-bottom:1px dashed #e3e8ef">' +
+            '<span style="font-size:15px;line-height:1">📍</span>' +
+            '<b style="font-size:13.5px;color:#1f2a37">用户标记的盲区</b>' +
+            '</div>' +
+            `<div style="font-size:12.5px;color:#1f2a37;line-height:1.6">${m.beiZhu}</div>` +
+            `<div style="margin-top:6px;color:#8a93a3;font-size:11.5px;line-height:1.6">标注：${m.zhangHao || '匿名'} · ${shi}<br/>(${m.weiZhi.lng.toFixed(5)}, ${m.weiZhi.lat.toFixed(5)})</div>` +
             '</div>';
           try {
             const chuang = new B.InfoWindow(neiRong, { width: 0, enableAutoPan: true });
@@ -745,6 +976,54 @@ export const MapCanvas = React.memo(function MapCanvas({
           } catch {
             /* 个别版本不支持时忽略，图钉仍有 hover 提示 */
           }
+        });
+      }
+    }
+
+    // ④⁗ 搜索目的地旗标：搜索面板 / AI 选点确定目的地时打橙色旗标（与导航终点红旗、
+    //    盲区标记橙旗区分用更醒目的紫罗兰色），换目的地 / 换体检中心随层重建
+    const mdKey = simpleKey(souSuoMuDi || null);
+    if (mdKey !== keysRef.current.muDiBiao) {
+      keysRef.current.muDiBiao = mdKey;
+      clearLayer('muDiBiao');
+      if (souSuoMuDi && Number.isFinite(souSuoMuDi.lng)) {
+        const mq = Z(souSuoMuDi);
+        const zhen = addTo(
+          'muDiBiao',
+          new B.Marker(new B.Point(mq.lng, mq.lat), {
+            title: `目的地：${souSuoMuDi.ming || '搜索地点'}`,
+            icon: new B.Icon(
+              svgIcon(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='36' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#7c5cf0' stroke='#ffffff' stroke-width='1.5'/><path d='M8.5 15.5h7v-6h-7z' fill='#ffffff'/><path d='M15.5 10.5l4 1.8-4 1.8z' fill='#ffffff'/></svg>`
+              ),
+              new B.Size(28, 36),
+              { anchor: new B.Size(14, 36) }
+            ),
+            zIndex: 997
+          })
+        );
+        try {
+          const qian = new B.Label(souSuoMuDi.ming || '目的地', {
+            position: new B.Point(mq.lng, mq.lat),
+            offset: new B.Size(-26, -48)
+          });
+          qian.setStyle({
+            background: '#7c5cf0',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '2px 9px',
+            fontSize: '12px',
+            fontWeight: '700',
+            fontFamily: 'inherit'
+          });
+          map.addOverlay(qian);
+          layersRef.current.muDiBiao.push(qian);
+        } catch {
+          /* Label 个别版本样式差异时忽略 */
+        }
+        zhen.addEventListener('click', () => {
+          huLveRef.current = Date.now(); // 点旗标不要被当成地图选点
         });
       }
     }
@@ -798,7 +1077,9 @@ export const MapCanvas = React.memo(function MapCanvas({
         box.className = 'pick-bubble';
         const t = document.createElement('div');
         t.className = 'pick-bubble-t';
-        t.textContent = '将体检中心设到此处？';
+        // 导航途中双击：气泡多一个「标记盲区」选项（设中心点仍然保留）
+        const zaiDaoHang = daoHangKaiRef.current && onDaoHangBiaoRef.current;
+        t.textContent = zaiDaoHang ? '对这个位置做什么？' : '将体检中心设到此处？';
         const xy = document.createElement('div');
         xy.className = 'pick-bubble-c';
         xy.textContent = `${daiXuan.lng.toFixed(6)}, ${daiXuan.lat.toFixed(6)}`;
@@ -822,6 +1103,35 @@ export const MapCanvas = React.memo(function MapCanvas({
           setDaiXuan(null);
         });
         btns.appendChild(ok);
+        // 普通视图：追加「标记此处」按钮——与盲区标记模式同一入口，把双击点记成共享盲区（弹标记小窗填备注）；
+        // 导航途中已有「标记盲区」，不重复加
+        if (!zaiDaoHang && onBiaoJiRef.current) {
+          const bj = document.createElement('button');
+          bj.type = 'button';
+          bj.className = 'pick-biao';
+          bj.textContent = '标记此处';
+          bj.addEventListener('click', ev => {
+            ev.stopPropagation();
+            huLveRef.current = Date.now();
+            onBiaoJiRef.current(daiXuan);
+            setDaiXuan(null);
+          });
+          btns.appendChild(bj);
+        }
+        // 导航途中：追加「标记盲区」第三按钮——把双击点记成共享盲区（弹标记小窗填备注）
+        if (zaiDaoHang) {
+          const bz = document.createElement('button');
+          bz.type = 'button';
+          bz.className = 'pick-biao';
+          bz.textContent = '标记盲区';
+          bz.addEventListener('click', ev => {
+            ev.stopPropagation();
+            huLveRef.current = Date.now();
+            if (onDaoHangBiaoRef.current) onDaoHangBiaoRef.current(daiXuan);
+            setDaiXuan(null);
+          });
+          btns.appendChild(bz);
+        }
         btns.appendChild(no);
         box.appendChild(t);
         box.appendChild(xy);
@@ -858,7 +1168,8 @@ export const MapCanvas = React.memo(function MapCanvas({
             onClick={() => gongJuSheZhi && gongJuSheZhi.luKuang(!luKuangKai)}
             title="实时路况图层"
           >
-            🚦 路况
+            <MorphIcon icon={LuYouLuXian} size={14} spring="snappy" />
+            路况
           </button>
           <button
             type="button"
@@ -866,7 +1177,8 @@ export const MapCanvas = React.memo(function MapCanvas({
             onClick={() => gongJuSheZhi && gongJuSheZhi.weiXing(!weiXingKai)}
             title="卫星影像 / 普通地图"
           >
-            🛰 卫星
+            <MorphIcon icon={Satellite} size={14} spring="snappy" />
+            卫星
           </button>
           <button
             type="button"
@@ -874,7 +1186,8 @@ export const MapCanvas = React.memo(function MapCanvas({
             onClick={() => gongJuSheZhi && gongJuSheZhi.qingXie(!qingXieKai)}
             title="3D 倾斜视角"
           >
-            🏔 3D
+            <MorphIcon icon={Axis3d} size={14} spring="snappy" />
+            3D
           </button>
         </div>
       )}
@@ -891,10 +1204,14 @@ export const MapCanvas = React.memo(function MapCanvas({
       )}
       <button
         type="button"
-        className="map-huiWei"
+        className={`map-huiWei ${daoHangSuiTing ? 'daoSuiTing' : ''}`}
         onClick={huiDaoDingWei}
-        title="回到体检中心"
-        aria-label="回到体检中心"
+        title={
+          daoHangSuiTing
+            ? '镜头跟随已暂停（你拖动了地图），点此回到小蓝点继续导航'
+            : '回到小蓝点 / 体检中心'
+        }
+        aria-label={daoHangSuiTing ? '回到导航跟随' : '回到体检中心'}
       >
         <svg
           viewBox="0 0 24 24"

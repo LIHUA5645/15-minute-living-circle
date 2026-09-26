@@ -23,11 +23,14 @@ export default defineConfig(({ mode }) => {
     base: './',
     plugins: [
       react(),
-      // /bmapapi 中间件：转发百度 Web 服务 API 并在服务端注入服务端 AK
+      // /bmapapi 中间件：转发百度 Web 服务 API 并在服务端注入服务端 AK。
+      // 多 AK 轮换：某把 AK 当日配额超限（百度 status 302「天配额超限」）时自动换下一把重试，
+      // 全部用尽才把原因透传给前端；BAIDU_SERVER_AK2 留空则退化为单 AK
       {
         name: 'baidu-web-api-proxy',
         configureServer(server) {
-          server.middlewares.use('/bmapapi', (req, res, next) => {
+          const AK_LIE = [env.BAIDU_SERVER_AK, env.BAIDU_SERVER_AK2].filter(Boolean);
+          server.middlewares.use('/bmapapi', async (req, res) => {
             // 跨域：允许静态部署页面直连本机服务
             res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
@@ -35,11 +38,40 @@ export default defineConfig(({ mode }) => {
               res.statusCode = 204;
               return res.end();
             }
-            const ak = env.BAIDU_SERVER_AK || '';
             const u = new URL(req.url, 'http://localhost');
-            if (ak) u.searchParams.set('ak', ak);
-            req.url = `${u.pathname}?${u.searchParams.toString()}`;
-            next();
+            let zuiHou = AK_LIE.length ? '无请求' : '未配置服务端 AK';
+            let zuiHouWen = '';
+            for (const ak of AK_LIE) {
+              u.searchParams.set('ak', ak);
+              const muBiao = `https://api.map.baidu.com${u.pathname}?${u.searchParams}`;
+              try {
+                const r = await fetch(muBiao, {
+                  headers: { Accept: 'application/json' }
+                });
+                const txt = await r.text();
+                let j = null;
+                try {
+                  j = JSON.parse(txt);
+                } catch {
+                  /* 非 JSON（异常页）也当作失败换下一把 */
+                }
+                if (j && j.status === 0) {
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                  return res.end(txt);
+                }
+                // 这把 AK 不可用（配额超限 302 / 服务未开通 240 / 其他）→ 记下原因，换下一把
+                zuiHou = (j && j.message) || `HTTP ${r.status}`;
+                zuiHouWen = txt;
+              } catch (e) {
+                zuiHou = (e && e.message) || '网络异常';
+                zuiHouWen = JSON.stringify({ status: -1, message: zuiHou });
+              }
+            }
+            // 所有 AK 都失败：把最后一把的原始错误透传（前端按 status!==0 自行降级并展示原因）
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(zuiHouWen || JSON.stringify({ status: -1, message: '百度服务不可用：' + zuiHou }));
           });
         },
       },

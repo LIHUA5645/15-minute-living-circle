@@ -70,6 +70,45 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
     if (ming.length) sheShiMiao = `本轮体检检索到的设施（部分清单）：${ming.join('、')}。`;
   }
 
+  // 设施明细：每类数量 + 最近 2 个设施的直线距离与估算步行时间（按 80 米/分钟慢速步行折算）。
+  // 距离一律以体检中心为基准（设施就是绕它检索的）；有了这份数据，模型才能对
+  // 「看病方便吗」「买菜近不近」直接下结论，而不是让用户「打开手机地图自己查」
+  const BU_SU = 80; // 米/分钟
+  let mingXiMiao = '';
+  if (report && report.poiSet && report.poiSet.fenleiSet && baoZuo && Number.isFinite(baoZuo.lng)) {
+    const LEI_MING = {
+      yiliao: '医疗',
+      jiaoyu: '教育',
+      gouwu: '购物',
+      yanglao: '养老',
+      jiaotong: '交通',
+      xiuxian: '休闲'
+    };
+    const hang = [];
+    Object.entries(report.poiSet.fenleiSet).forEach(([lei, lie]) => {
+      const youXiao = (lie || []).filter(
+        p => p && p.name && Number.isFinite(p.lng) && Number.isFinite(p.lat)
+      );
+      if (!youXiao.length) {
+        hang.push(`${LEI_MING[lei] || lei} 0 个`);
+        return;
+      }
+      const jin = youXiao
+        .map(p => ({ ming: p.name, ju: liangDianJuLi(baoZuo, p) }))
+        .sort((a, b) => a.ju - b.ju)
+        .slice(0, 2)
+        .map(
+          j =>
+            `${j.ming}（直线约 ${Math.round(j.ju)} 米，步行约 ${Math.max(1, Math.round(j.ju / BU_SU))} 分钟）`
+        )
+        .join('、');
+      hang.push(`${LEI_MING[lei] || lei} ${youXiao.length} 个，最近：${jin}`);
+    });
+    if (hang.length) {
+      mingXiMiao = ` 设施明细（直线距离，步行按 80 米/分钟估算）：${hang.join('；')}。`;
+    }
+  }
+
   const xiaoXi = [
     {
       role: 'system',
@@ -78,10 +117,16 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
         '话题围绕社区生活圈、设施配套、体检报告解读。回答控制在 200 字以内。当前上下文：' +
         zhaiYao +
         (sheShiMiao ? ' ' + sheShiMiao : '') +
+        mingXiMiao +
         ' —— 你需要自己语义判断用户这句话是想导航去某地，还是在提问：' +
         '①若用户想导航/前往某个地方（例如「我想去广西博物馆」「带我去最近的医院」「导航到人民公园」「送我去超市」），' +
         '无论目的地是否在设施清单里，都只回复一行：【导航】目的地名称（剥掉客套词后的可检索地名，如「【导航】广西博物馆」），不要输出任何其他文字；' +
-        '②其余情况正常回答（此时绝不要出现【导航】字样）。语义判断由你完成，不要拘泥于具体关键词。'
+        '②其余情况正常回答（此时绝不要出现【导航】字样）。' +
+        '重要：你本身就是地图体检工具，回答「看病/买菜/上学方便吗」这类问题时，必须直接依据上面注入的设施明细下结论' +
+        '（例如「步行 15 分钟内有 2 个医疗点（最近的 XX 约 X 分钟），看病算方便」），' +
+        '严禁回复「打开手机地图搜一搜」「用高德/百度地图查一下」这类让用户自己去别的地图验证的话；' +
+        '若某类设施数量为 0 或明细缺失，就如实说体检范围内没检索到该类设施，并建议重新体检或换个位置。' +
+        '语义判断由你完成，不要拘泥于具体关键词。'
     },
     // 只带最近 8 条，防上下文超长
     ...lishi.slice(-8).map(m => ({

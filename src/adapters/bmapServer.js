@@ -6,9 +6,24 @@
 //
 // 注意：浏览器里没有 process 对象，早期版本直接读 process.env 会抛 ReferenceError，
 // 被上层的容错 catch 吞掉后表现为「静默降级」，排查成本很高。这里统一用安全读取。
+// 坐标系约定（与 bmapWeb 适配器一致）：核心引擎内部统一 WGS-84；
+//   调百度 Web API 前先 WGS-84 → BD-09，返回的路线/POI（BD-09）再转回 WGS-84。
+//   缺了这层转换，体检设施/步行路线/等时圈会整体偏移约 500~700 米（曾致路线穿河、
+//   与浏览器端适配器规划的同一条路线对不上）。
+import { wgs84ZhuanBd09, bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
+
 function duHuanJing(ming) {
   if (typeof process === 'undefined' || !process.env) return '';
   return process.env[ming] || '';
+}
+
+// WGS-84 → BD-09（出站前转）
+function qu(p) {
+  return wgs84ZhuanBd09(p.lng, p.lat);
+}
+// BD-09 → WGS-84（入站后转）
+function hui(p) {
+  return bd09ZhuanWgs84(p.lng, p.lat);
 }
 
 async function baiDuGet(api, path, params, chaoShiMs = 15000) {
@@ -66,18 +81,21 @@ export function chuangJianBmapServer(cfg = {}) {
     danGuanJianCi: true,
 
     async walkingRoute(origin, dest) {
+      const o = qu(origin);
+      const d = qu(dest);
       const json = await baiDuGet(api, '/direction/v2/walking', {
         ak,
-        // direction/v2 要求纬度在前（lat,lng）
-        origin: `${origin.lat},${origin.lng}`,
-        destination: `${dest.lat},${dest.lng}`,
+        // direction/v2 要求纬度在前（lat,lng），且坐标为 BD-09
+        origin: `${o.lat},${o.lng}`,
+        destination: `${d.lat},${d.lng}`,
         _referer: referer
       });
       const r = json.result.routes[0];
       return {
         durationSec: r.duration,
         distanceM: r.distance,
-        polyline: jieXiLuXian(r.steps?.map(s => s.path).join(';'))
+        // 返回的路线点是 BD-09，转回 WGS-84 再交给内部引擎绘制
+        polyline: jieXiLuXian(r.steps?.map(s => s.path).join(';')).map(hui)
       };
     },
 
@@ -103,8 +121,9 @@ export function chuangJianBmapServer(cfg = {}) {
           const p = pi[zhi++];
           const json = await baiDuGet(api, '/routematrix/v2/walking', {
             ak,
-            origins: p.o.map(q => `${q.lat},${q.lng}`).join('|'),
-            destinations: p.d.map(q => `${q.lat},${q.lng}`).join('|'),
+            // 起终点一律先转 BD-09（矩阵接口按 BD-09 解析坐标）
+            origins: p.o.map(q => { const w = qu(q); return `${w.lat},${w.lng}`; }).join('|'),
+            destinations: p.d.map(q => { const w = qu(q); return `${w.lat},${w.lng}`; }).join('|'),
             _referer: referer
           });
           const ge = json.result || [];
@@ -126,11 +145,12 @@ export function chuangJianBmapServer(cfg = {}) {
 
     async searchPoi(center, keywords, radiusMi) {
       const out = [];
+      const zx = qu(center); // 检索圆心也先转 BD-09
       for (const kw of keywords) {
         const json = await baiDuGet(api, '/place/v2/search', {
           ak,
           query: kw,
-          location: `${center.lat},${center.lng}`,
+          location: `${zx.lat},${zx.lng}`,
           radius: radiusMi,
           scope: 2,
           page_size: 20,
@@ -156,11 +176,12 @@ export function chuangJianBmapServer(cfg = {}) {
           }
         }
         for (const p of results) {
+          const w = hui(p.location); // BD-09 → WGS-84
           out.push({
             uid: p.uid,
             name: p.name,
-            lng: p.location.lng,
-            lat: p.location.lat,
+            lng: w.lng,
+            lat: w.lat,
             type: '',
             address: p.address || ''
           });
@@ -170,9 +191,10 @@ export function chuangJianBmapServer(cfg = {}) {
     },
 
     async reverseGeocode(point) {
+      const w = qu(point); // 逆地理编码按 BD-09 解析，先转
       const json = await baiDuGet(api, '/reverse_geocoding/v3', {
         ak,
-        location: `${point.lat},${point.lng}`,
+        location: `${w.lat},${w.lng}`,
         _referer: referer
       });
       const sem = json.result.sematic_description || '';
