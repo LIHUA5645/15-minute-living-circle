@@ -22,15 +22,14 @@
 
 | 渠道 | 地址 |
 |---|---|
-| GitHub Releases | **https://github.com/LIHUA5645/15-minute-living-circle/releases/latest** |
-| Gitee 发行版 | https://gitee.com/zhang-san-zhangshan/15-minute-living-circle/releases/latest |
+| Gitee 发行版（当前下载渠道） | **https://gitee.com/zhang-san-zhangshan/15-minute-living-circle/releases/latest** |
+| GitHub Releases | 暂未发布，后续上传后此链接自动生效：https://github.com/LIHUA5645/15-minute-living-circle/releases/latest |
 
 - 安装包：`生活圈体检助手-Setup-*.exe`（Windows 10/11 x64，约 90 MB，NSIS 安装向导、可自选安装目录、自动创建桌面快捷方式）。
 - 桌面端功能与在线版一致，另含**批量距离矩阵加速**与**磁盘缓存**（体检更快、更省配额）。
 - 说明：账号登录 / 注册功能依赖本机 MySQL（在 `.env` 配置 `DB_HOST/DB_PORT/DB_USER/DB_PASS` 即可；不装 MySQL 不影响体检、地图、导航等主功能）。
 
-> 发布方式：在 GitHub 仓库页右侧 **Releases → Draft a new release**，把 `release/生活圈体检助手-Setup-*.exe` 拖进附件即可；Gitee 同理（发行版 → 新建发行版上传附件）。
-> 自己打包：`npm run dist:win`，产物在 `release/` 目录。
+> 自己打包：`npm run dist:win`，产物在 `release/` 目录；打包后在仓库「发行版 / Releases」页新建版本并上传附件即可供下载。
 
 ---
 
