@@ -6,6 +6,9 @@ copyright: "Copyright © 2026 肖沐樑 (QQ: 3387432690)"
 directories:
   output: release
   buildResources: build
+# 关闭 asar：主进程用 ESM 动态 import 加载 src 下的适配器/服务模块，
+# Electron 不支持从 asar 内部加载 ES Module——关掉 asar 后按普通目录落盘才能加载
+asar: false
 files:
   - dist/**
   - electron/**

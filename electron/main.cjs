@@ -8,14 +8,21 @@ const fs = require('fs');
 // 服务端 AK（BAIDU_SERVER_AK）靠这里注入——没有它，IPC 数据检索/算路全部空手而归。
 // 行内 # 注释一并剥掉；已在系统环境里显式设置的变量不覆盖
 try {
-  const envWen = path.join(__dirname, '..', '.env');
-  if (fs.existsSync(envWen)) {
-    fs.readFileSync(envWen, 'utf-8').split(/\r?\n/).forEach(xing => {
+  // .env 查找顺序：①打包根目录（resources/app，dev 态即项目根）②exe 同目录（免改包即可换配置）
+  const exeMulu = path.dirname(app.getPath('exe'));
+  const envLu = [
+    path.join(__dirname, '..', '.env'),
+    path.join(exeMulu, '.env')
+  ].find(x => fs.existsSync(x));
+  if (envLu) {
+    fs.readFileSync(envLu, 'utf-8').split(/\r?\n/).forEach(xing => {
       const jing = xing.indexOf('#');
       const tou = (jing >= 0 ? xing.slice(0, jing) : xing).trim();
       const m = tou.match(/^([A-Za-z0-9_]+)\s*=\s*(.+)$/);
       if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim();
     });
+  } else {
+    console.error('[env] 未找到 .env（可复制一份放到 exe 同目录）：服务端 AK 与数据库将不可用');
   }
 } catch (e) {
   console.error('.env 读取失败（服务端 AK 将不可用）', e);
@@ -65,7 +72,7 @@ const serverAk = process.env.BAIDU_SERVER_AK || '';
 // 而 Electron 生产态用 file:// 加载页面，请求带不出合法 Referer，
 // 百度 JSAPI 会弹原生错误框「APP Referer校验失败」。
 // 这里在主进程统一给百度系域名的请求注入白名单 Referer，桌面端即可正常过校验。
-const baiDuXi = /(^|\.)(baidu\.com|bdstatic\.com|bcebos\.com)$/;
+const baiDuXi = /(^|\.)(baidu\.com|bdstatic\.com|bcebos\.com|bdimg\.com)$/; // bdimg.com 是瓦片图床（maponline0.bdimg.com），漏了它打包后底图全灰
 function zhuRuReferer() {
   try {
     const { session } = require('electron');
@@ -298,6 +305,13 @@ app.whenReady().then(async () => {
     : []; // 适配器加载失败（打包缺文件等）：数据层不可用，但窗口必须照常打开
   let AK_Xu = 0;
   const daiHuan = mingZ => async (...can) => {
+    // 一把 AK 都没有（打包后没带 .env 等）：返回可读错误，绝不抛 null 让界面看不懂
+    if (!AK_LIE.length) {
+      return {
+        ok: false,
+        xinxi: '桌面端未配置服务端 AK：请把 .env 复制到 exe 同目录后重启（体检/检索/算路需要它）'
+      };
+    }
     let zuiHou = null;
     for (let t = 0; t < AK_LIE.length; t++) {
       const x = (AK_Xu + t) % AK_LIE.length;
