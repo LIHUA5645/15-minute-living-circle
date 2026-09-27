@@ -10,11 +10,27 @@
 | 部署平台 | 访问地址 |
 |---|---|
 | GitHub Pages | **https://lihua5645.github.io/15-minute-living-circle/** |
-| Gitee Pages | https://zhang-san-zhangshan.gitee.io/15-minute-living-circle （人工审核通过后生效） |
+| Gitee Pages | **https://lihua5645.github.io/15-minute-living-circle/**  |
 
 > 使用说明：打开页面允许浏览器定位（或直接拖动地图图钉 / 搜索框输入社区名选点），点击「开始体检」即可完整复现
 > 等时圈计算 → 六类设施统计 → 盲区识别 → 可视化体检报告全流程。
 > 纯静态演示版不含账号登录与 AI 在线问答（需本地服务），本地运行方式见下文「快速运行」。
+
+---
+
+## 下载桌面版（exe 安装包）
+
+| 渠道 | 地址 |
+|---|---|
+| GitHub Releases | **https://github.com/LIHUA5645/15-minute-living-circle/releases/latest** |
+| Gitee 发行版 | https://gitee.com/zhang-san-zhangshan/15-minute-living-circle/releases/latest |
+
+- 安装包：`生活圈体检助手-Setup-*.exe`（Windows 10/11 x64，约 90 MB，NSIS 安装向导、可自选安装目录、自动创建桌面快捷方式）。
+- 桌面端功能与在线版一致，另含**批量距离矩阵加速**与**磁盘缓存**（体检更快、更省配额）。
+- 说明：账号登录 / 注册功能依赖本机 MySQL（在 `.env` 配置 `DB_HOST/DB_PORT/DB_USER/DB_PASS` 即可；不装 MySQL 不影响体检、地图、导航等主功能）。
+
+> 发布方式：在 GitHub 仓库页右侧 **Releases → Draft a new release**，把 `release/生活圈体检助手-Setup-*.exe` 拖进附件即可；Gitee 同理（发行版 → 新建发行版上传附件）。
+> 自己打包：`npm run dist:win`，产物在 `release/` 目录。
 
 ---
 
@@ -29,7 +45,39 @@
 - **账号体系**：用户注册 / 登录（MySQL 存储、密码加盐哈希）、个人主页（历史体检 / 等级分布 / 导出档案）、管理员控制台（用户管理、评分维度调参、盲区阈值、AI 配置与多套服务商档案切换）。
 - **配额与容错**：令牌桶限流 + 并发池 + 三级缓存 + 退避重试 + 离线降级，全程可跑通演示。
 
-## 二、目录结构
+## 二、应用截图
+
+### 1. 主界面 · 地图与搜索
+
+顶栏搜索地点即规划前往路线（步行 / 骑行 / 驾车 / 公交四方式并行规划，真实路网），左下控制面板一键体检。
+
+![首页搜索](./截图/首页搜索.png)
+
+### 2. 全景 · 体检控制与地图联动
+
+选点体检 → 等时圈绘制 → 圈内设施打点，右侧报告面板实时联动。
+
+![主界面全景](./截图/屏幕截图%202026-09-27%20195200.png)
+
+### 3. AI 在线问答
+
+结合本轮体检摘要作答，AI 找到的目的地一键确认即规划路线。
+
+![AI 对话](./截图/AI对话.png)
+
+### 4. 服务盲区识别与标记
+
+识别居住区 15 分钟步行圈覆盖不足的盲区并给出补建建议；登录用户可在地图上随手标记真实盲区，全员共享。
+
+![盲区标记](./截图/盲区标记.png)
+
+### 5. 管理员控制台
+
+评分模型在线调参、设施盲区阈值动态配置、AI 诊断服务一键接入、用户管理。
+
+![管理员控制台](./截图/管理员.png)
+
+## 三、目录结构
 
 ```
 src/
@@ -52,7 +100,7 @@ tests/        vitest 单元测试
 修复记录文档.md          开发修复记录
 ```
 
-## 三、环境配置（AK 脱敏）
+## 四、环境配置（AK 脱敏）
 
 复制 `.env.example` 为 `.env`，按需填写：
 
@@ -63,7 +111,7 @@ BAIDU_SERVER_AK=服务端AK      # 可选，批量距离矩阵，桌面端 Elect
 
 > AK 不硬编码进代码；未配置时自动使用**离线样例**模式，无需 AK 即可完整演示。
 
-## 四、快速运行
+## 五、快速运行
 
 ```bash
 # 1. 安装依赖
@@ -82,7 +130,7 @@ npm run test
 docker compose up -d --build   # 访问 http://localhost:8080
 ```
 
-## 五、桌面端打包（exe 安装包）
+## 六、桌面端打包（exe 安装包）
 
 ```bash
 # 构建 Web 产物并由 electron-builder 打包 NSIS 安装包
@@ -91,7 +139,7 @@ npm run dist:win       # 产物在 release/生活圈体检助手-Setup-*.exe
 
 桌面端主进程使用**服务端 AK** 通过 Web 服务 API 启用批量距离矩阵，并落盘缓存以降低配额。
 
-## 六、API 调用策略要点
+## 七、API 调用策略要点
 
 | 能力 | 接口 | 用途 |
 |---|---|---|
@@ -104,10 +152,10 @@ npm run dist:win       # 产物在 release/生活圈体检助手-Setup-*.exe
 **等时圈算法**：`r0 = v·T/k`（v=80m/min，k=1.25）≈ 960m；每个方位用割线法求"耗时=15min"边界半径；
 迭代过程采样点构造各向异性 IDW 插值场（`w=1/(d²·(1+α·Δθ))`），Marching Squares 提取等值线并吸附到采样路网。
 
-## 七、CI/CD
+## 八、CI/CD
 
 `.github/workflows/ci.yml`：lint + Prettier 格式检查 + vitest 测试 + 构建，推送即触发。
 
-## 八、许可证
+## 九、许可证
 
 MIT License，详见 `LICENSE`。

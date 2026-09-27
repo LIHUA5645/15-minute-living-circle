@@ -60,10 +60,15 @@ body {
   white-space: nowrap;
 }
 .brand-icon {
-  font-size: 18px;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
 }
 .header-center {
   flex: 1;
+  min-width: 0; /* 允许搜索区被压缩，别把右侧按钮挤出窗口 */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -237,6 +242,7 @@ body {
 }
 .time-select,
 .header select {
+  flex: 0 0 auto; /* 下拉框不参与压缩，宽度让搜索框出 */
   height: 36px;
   border: none;
   border-radius: 10px;
@@ -301,6 +307,101 @@ body {
 .tog-btn svg {
   display: block;
 }
+/* ===== 体检控制面板顶部「开源致谢条」：感谢支持 + GitHub / Gitee 仓库跳转 ===== */
+.kaiYuan-tiao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 14px 2px;
+  padding: 7px 12px;
+  background: #f6f8fb;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 12px;
+  color: #6b7684;
+}
+.kaiYuan-wen {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.kaiYuan-zi {
+  font-style: normal;
+  font-weight: 500;
+  color: #8a93a3;
+}
+.kaiYuan-an {
+  display: inline-flex;
+  gap: 6px;
+}
+.kaiYuan-lian {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: #24292f;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+.kaiYuan-lian:hover {
+  border-color: #2f86f7;
+  color: #2f86f7;
+  transform: translateY(-1px);
+}
+.kaiYuan-lian svg {
+  display: block;
+}
+/* ===== 顶栏响应式降级：窗口越窄依次让位，保证最右侧的登录 / 管理员按钮永远完整可见 =====
+   顺序：先压搜索区与间距 → 藏「底图 · 百度地图」信息徽章 → 品牌只留 logo 图标
+   （窗口标题栏本来就有全名）→ 面板切换按钮只留图标（悬停有 tooltip 说明） */
+@media (max-width: 1560px) {
+  .header {
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .header-center {
+    max-width: 520px;
+  }
+}
+@media (max-width: 1420px) {
+  .ditu-chip {
+    display: none;
+  }
+  .header-center {
+    max-width: 430px;
+  }
+}
+@media (max-width: 1320px) {
+  .brand-title {
+    display: none;
+  }
+  .header-center {
+    max-width: 360px;
+  }
+}
+@media (max-width: 1180px) {
+  .tog-btn {
+    padding: 6px 8px;
+  }
+  .tog-btn .tog-wen {
+    display: none;
+  }
+  .header-toggles {
+    gap: 4px;
+  }
+}
 .src-chip {
   font-size: 12px;
   color: #fff;
@@ -308,6 +409,15 @@ body {
   border-radius: 999px;
   padding: 5px 12px;
   white-space: nowrap;
+}
+/* 徽章内嵌小图（管理员 logo 等）：与文字同高对齐 */
+.src-chip .src-chip-tu {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  vertical-align: -3px;
+  margin-right: 4px;
+  display: inline-block;
 }
 /* 头像用户条：可点击进入个人主页 */
 .src-chip-btn {
@@ -462,6 +572,8 @@ body {
   cursor: pointer;
   font-weight: 600;
   font-size: 13px;
+  white-space: nowrap; /* 顶栏空间紧时也不许「登录 / 注册」折行 */
+  flex-shrink: 0;
   transition: 0.15s;
 }
 .admin-btn:hover {
@@ -530,6 +642,28 @@ body {
   background: rgba(255, 255, 255, 0.75);
   padding: 1px 5px;
   border-radius: 4px;
+}
+/* 指南针：显示地图朝向（针随航向转），点击回正北；全屏导航时隐藏（导航页右上角有自己的开关） */
+.map-zhiNanZhen {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 6;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  padding: 7px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(16, 32, 64, 0.18);
+}
+.daoHang-quanPing .map-zhiNanZhen {
+  display: inline-flex; /* 导航里也保留指南针（用户反馈「不知道方位」） */
+  top: 112px; /* 挪到右上角开关行的下方，不与按钮重叠 */
 }
 /* 「回到体检中心」悬浮按钮：地图乱滑后一键归位 */
 .map-huiWei {
@@ -910,25 +1044,44 @@ body {
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
+  overflow: hidden; /* AI logo 图片铺满圆形徽章 */
+}
+/* AI 徽章图片：等比完整展示，不裁切不加底 */
+.lt-jiQi img {
+  width: auto;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 0;
+  display: block;
 }
 .lt-touXiang {
   background: linear-gradient(135deg, #2f86f7, #1f5fe8);
   color: #fff;
 }
-/* AI 星芒徽章：渐变蓝底白星，替代机器人 emoji */
+/* AI 徽章：品牌 logo 图片直接展示——不再加渐变蓝底、不再圆形裁切（用户要求原图直出） */
 .lt-jiQi {
-  background: linear-gradient(135deg, #6ea6ff, #4f74f9);
+  background: none;
   color: #fff;
-  box-shadow: 0 3px 9px rgba(79, 116, 249, 0.32);
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
 }
+/* 大徽章（「你好，我是 AI 助手」处）：不再圆形裁切、不加底色——
+   原图等比直接展示（AIlogo 为 1033×1373 竖版图，cover 圆裁会把头发切掉） */
 .lt-jiQi.da {
-  width: 46px;
-  height: 46px;
+  width: auto;
+  height: auto;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
   margin-bottom: 4px;
 }
-.lt-jiQi.da svg {
-  width: 22px;
-  height: 22px;
+.lt-jiQi.da img {
+  width: auto;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 0;
 }
 .lt-qiPao {
   max-width: 78%;
@@ -1403,12 +1556,31 @@ body {
 .daoPing-ding-wen b {
   font-size: 17px;
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* 「模拟 GPS 信号」小标签：明确区分演示信号与真实定位，避免冒充 */
+.daoPing-moni-biao {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 196, 0, 0.22);
+  border: 1px solid rgba(255, 196, 0, 0.6);
+  color: #ffe08a;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 .daoPing-ding-wen span {
   font-size: 12.5px;
   opacity: 0.88;
 }
 /* 顶部左侧退出按钮 */
+/* 性能：导航页浮层压在持续重绘的 3D 地图上，backdrop-filter 每帧都要重新模糊底下画面，
+   是导航页持续掉帧的大头——一律用不透明深色底替代毛玻璃 */
 .daoPing-tui {
   position: absolute;
   top: 18px;
@@ -1420,8 +1592,7 @@ body {
   font-size: 13px;
   font-weight: 700;
   color: #fff;
-  background: rgba(17, 27, 43, 0.82);
-  backdrop-filter: blur(6px);
+  background: #111b2b;
   cursor: pointer;
   box-shadow: 0 6px 18px rgba(10, 20, 40, 0.4);
 }
@@ -1445,8 +1616,7 @@ body {
   font-size: 12.5px;
   font-weight: 700;
   color: #fff;
-  background: rgba(17, 27, 43, 0.78);
-  backdrop-filter: blur(6px);
+  background: #111b2b; /* 同上：导航页不用 backdrop-filter，避免每帧重模糊 */
   cursor: pointer;
   transition: all 0.15s ease;
   text-align: left;
@@ -1500,16 +1670,11 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
-/* 导航操控条：边走边标 + 暂停 / 继续导航 / 重新导航（悬浮在底部信息卡上方居中） */
+/* 导航操控条：两层各自定位——
+   辅助行（航向 / 路况 / 卫星 / 3D 四个小按钮）固定右上角；
+   主行（标记此处 / GPS / 暂停·继续导航）回底部居中，压在进度信息卡上方 */
 .daoPing-cao {
-  position: absolute;
-  left: 50%;
-  bottom: 96px;
-  transform: translateX(-50%);
-  z-index: 31;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: contents; /* 只当分组容器，不做盒：两行各自相对全屏导航层定位 */
 }
 .daoPing-cao button {
   border: none;
@@ -1525,6 +1690,38 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap;
+}
+/* 辅助行：右上角，小号深色胶囊，弱化层级 */
+.daoPing-cao-fu {
+  position: absolute;
+  top: 18px;
+  right: 16px;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.daoPing-cao-fu button {
+  padding: 6px 13px;
+  font-size: 12px;
+  gap: 4px;
+  background: rgba(17, 27, 43, 0.88);
+  box-shadow: 0 4px 14px rgba(10, 20, 40, 0.35);
+}
+.daoPing-cao-fu button.ok {
+  background: linear-gradient(135deg, #3b7cff, #1f6feb);
+}
+/* 主行：底部居中大按钮一排 */
+.daoPing-cao-zhu {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 /* 「边走边标」副按钮：白底深字，与主操作区分 */
 .daoPing-cao button.daoPing-biao {
@@ -1635,20 +1832,33 @@ body {
 }
 .jiaoTong-chuang .jiaoTong-fang {
   position: static;
-  background: #f5f7fa;
-  color: #3c4657;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent; /* 显式盖掉浏览器默认按钮描边，此前深色边框就是它漏出来的 */
+  background: #f3f6fa;
+  color: #4a5568;
   box-shadow: none;
-  padding: 9px 18px;
-  font-size: 13.5px;
+  padding: 9px 17px;
+  font-size: 13px;
+  font-weight: 600;
   border-radius: 999px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .jiaoTong-chuang .jiaoTong-fang:hover:not(:disabled) {
-  background: #eef2f8;
+  background: #e9eff8;
+  color: #2f6fe0;
+  transform: translateY(-1px);
 }
 .jiaoTong-chuang .jiaoTong-fang.on {
   background: linear-gradient(135deg, #3b7cff, #1f6feb);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.35);
+  box-shadow: 0 6px 16px rgba(31, 111, 235, 0.32);
+  transform: none;
 }
 .jiaoTong-chuang .jiaoTong-fang .jiaoTong-dian {
   display: none;
@@ -1685,17 +1895,97 @@ body {
   opacity: 0.55;
   cursor: wait;
 }
+/* 弹窗内策略胶囊降噪：与方式标签同族但低一档——无边框浅灰底、更小字号，
+   避免和上面一排方式标签抢视觉 */
+.jiaoTong-chuang .ceLue-an {
+  border: 1px solid transparent;
+  background: #f3f6fa;
+  color: #5a6478;
+  font-size: 12px;
+  padding: 5px 13px;
+}
+.jiaoTong-chuang .ceLue-an:hover:not(:disabled) {
+  background: #e9eff8;
+  border-color: transparent;
+  color: #2f6fe0;
+}
+.jiaoTong-chuang .ceLue-an.on {
+  background: linear-gradient(135deg, #3b7cff, #1f6feb);
+  color: #fff;
+}
 .ceLue-shuo {
   font-size: 12px;
   color: #8a93a3;
 }
 /* 弹窗内路线卡：更大内边距、时间更突出 */
 .jiaoTong-chuang .jiaoTong-ka {
-  padding: 14px 16px;
+  position: relative;
+  padding: 15px 56px 14px 16px; /* 右侧留出「开始」圆钮的位置 */
   border-radius: 14px;
+  background: linear-gradient(180deg, #fcfdff, #f7faff);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+.jiaoTong-chuang .jiaoTong-ka:hover {
+  transform: translateY(-1px);
+}
+/* 卡片右侧「开始」圆钮：给「点卡即导航」一个看得见的可点锚点 */
+.jiaoTong-ka-go {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b7cff, #1f6feb);
+  color: #fff;
+  box-shadow: 0 6px 14px rgba(31, 111, 235, 0.32);
+}
+/* 弹窗内耗时数字：渐变蓝描字，比黑字更「路线」也更醒目 */
+.jiaoTong-chuang .jiaoTong-shi {
+  font-size: 21px;
+  background: linear-gradient(135deg, #2f86f7, #1d4fd8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .jiaoTong-chuang .jiaoTong-lieBiao {
   max-height: 46vh;
+}
+/* 弹窗底部「也可以用百度地图导航」次要入口：浅底描边小字，排在提示语之后，
+   视觉层级刻意低于路线卡——主推站内导航，这里只是备用通道 */
+.jiaoTong-baiDu {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: #f6f8fb;
+  border: 1px solid var(--line);
+  color: #5a6478;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 0;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.jiaoTong-baiDu:hover {
+  border-color: #2f86f7;
+  color: #2f86f7;
+}
+/* 弹窗内底部提示语：与路线卡/次要按钮之间留出呼吸感 */
+.jiaoTong-chuang .lt-ls-tiShi {
+  margin: 12px 0 2px;
 }
 /* AI 导航卡内的已选方案摘要行：点开看全部方案 */
 .jiaoTong-zhaiYao {
@@ -1834,6 +2124,19 @@ body {
   border-radius: inherit;
   pointer-events: none;
   z-index: 5;
+}
+/* 触底水波专用：边缘椭圆渐隐遮罩——波纹涌到面板边框前先淡出，杜绝被边框硬裁一半的截断感 */
+.shuiBo-Tao.gunDi {
+  -webkit-mask-image: radial-gradient(
+    ellipse 62% 75% at 50% 88%,
+    #000 45%,
+    transparent 100%
+  );
+  mask-image: radial-gradient(
+    ellipse 62% 75% at 50% 88%,
+    #000 45%,
+    transparent 100%
+  );
 }
 /* 涟漪圆环：从碰撞点扩散，蓝色渐隐（默认全透明，避免延迟期间露出初始小圆） */
 .shuiHuan {
@@ -2824,8 +3127,17 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #2f86f7, #1f5fe8);
-  color: #fff;
+  background: none; /* 已换成品牌 logo 图片，不再用蓝色底板衬托 SVG */
+  overflow: hidden;
+}
+/* 管理员 logo 图片：铺满容器且等比缩放，圆角随容器 */
+.admin-ce-logo img,
+.admin-deng-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+  display: block;
   box-shadow: 0 4px 12px rgba(31, 111, 235, 0.4);
 }
 .admin-ce-ming {
@@ -3370,14 +3682,15 @@ body {
   background: rgba(255, 255, 255, 0.08);
 }
 .admin-deng-logo {
-  width: 46px;
-  height: 46px;
-  border-radius: 13px;
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.16);
-  margin-bottom: 18px;
+  background: none; /* 已换成品牌 logo 图片，不再需要半透明底板 */
+  overflow: hidden;
+  margin-bottom: 22px;
 }
 .admin-deng-ming {
   font-size: 20px;

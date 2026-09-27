@@ -16,6 +16,23 @@ import { liangDianJuLi } from '../core/geo/jichu.js';
 // 应用内部统一 WGS-84；百度底图需要 BD-09，绘制与拾取时转换
 const Z = p => wgs84ZhuanBd09(p.lng, p.lat);
 
+// 导航期底图样式：隐藏 POI/楼宇标签（GL 渲染大户）。
+// 注意 setMapStyleV2 会整体替换样式，且切卫星 / 开关路况也可能把样式或路况图层重置——
+// 凡是动过地图样式 / 图层类型的地方，都要按当前开关把两者补齐（见路况 / 卫星 / 导航开局三处）
+const DAO_HANG_YANG_SHI = [
+  { featureType: 'poilabel', elementType: 'all', stylers: { visibility: 'off' } },
+  { featureType: 'estatelabel', elementType: 'all', stylers: { visibility: 'off' } },
+  { featureType: 'businesstowerlabel', elementType: 'all', stylers: { visibility: 'off' } },
+  { featureType: 'companylabel', elementType: 'all', stylers: { visibility: 'off' } }
+];
+function yingYongDaoHangYangShi(map) {
+  try {
+    map.setMapStyleV2({ styleJson: DAO_HANG_YANG_SHI });
+  } catch {
+    /* 个别版本不支持个性化样式时忽略 */
+  }
+}
+
 const COLOR = {
   yiliao: '#ff6b6b',
   jiaoyu: '#ffd166',
@@ -168,6 +185,18 @@ export const MapCanvas = React.memo(function MapCanvas({
         map.enableScrollWheelZoom(true);
         map.centerAndZoom(new B.Point(center.lng, center.lat), 15);
         mapRef.current = { map, B };
+        // 比例尺：左下角，避开百度 logo（API 依据：百度 JSAPI WebGL v1.0 官方类参考 ScaleControl）。
+        // 指南针不用原生 NavigationControl3D——它自带「2D/3D」切换（与右上角 3D 开关两套状态会不同步），
+        // 且原生控件层级高，全屏导航时会压住导航操控按钮；改用自绘轻量指南针（map-zhiNanZhen）
+        try {
+          const zuoXia =
+            B.BMAP_ANCHOR_BOTTOM_LEFT != null
+              ? B.BMAP_ANCHOR_BOTTOM_LEFT
+              : window.BMAP_ANCHOR_BOTTOM_LEFT;
+          map.addControl(new B.ScaleControl({ anchor: zuoXia, offset: new B.Size(10, 28) }));
+        } catch (e) {
+          console.warn('地图控件（比例尺）加载失败，不影响其它功能', e);
+        }
         // 双击缩放关闭：双击专用于「设为中心点」确认，避免确认前视角突跳
         try {
           map.disableDoubleClickZoom();
@@ -356,6 +385,30 @@ export const MapCanvas = React.memo(function MapCanvas({
     }
   }, [luXianZu, chuXing, yinLiangXian, engine]);
 
+  // —— 指南针：轮询地图航向驱动指针旋转（GL 无可依赖的 headingchange 事件，400ms 轮询开销极低），
+  // 点一下回正北。不用原生 NavigationControl3D 的原因见地图初始化处注释
+  const [zhiNanXiang, setZhiNanXiang] = useState(0);
+  useEffect(() => {
+    if (engine !== 'baidu' || !mapRef.current) return undefined;
+    const ding = setInterval(() => {
+      try {
+        const h = Number(mapRef.current.map.getHeading()) || 0;
+        setZhiNanXiang(prev => (Math.abs(prev - h) > 0.5 ? h : prev));
+      } catch {
+        /* 忽略 */
+      }
+    }, 400);
+    return () => clearInterval(ding);
+  }, [engine]);
+  // 点指南针回正北（带动画转回去）
+  function huiZhengBei() {
+    if (!mapRef.current) return;
+    try {
+      mapRef.current.map.setHeading(0);
+    } catch {
+      /* 忽略 */
+    }
+  }
   // 一键回到体检中心：地图乱滑后找不回位置时使用；
   // 导航中语义变为「回到导航跟随」：恢复镜头接管并立即回到小蓝点
   function huiDaoDingWei() {
@@ -368,7 +421,7 @@ export const MapCanvas = React.memo(function MapCanvas({
           // GL 的 getZoom 偶发返回 undefined，Math.max 会得到 NaN 喂进 setZoom
           // 触发 GL 内部 getMinZoom 报错——先做有限数兜底
           const dqJi = Number(map.getZoom());
-          map.setZoom(Number.isFinite(dqJi) ? Math.max(dqJi, 19) : 19);
+          map.setZoom(Number.isFinite(dqJi) ? Math.max(dqJi, 21) : 21);
         } catch {
           /* 忽略 */
         }
@@ -378,9 +431,64 @@ export const MapCanvas = React.memo(function MapCanvas({
         }
         return;
       }
-      const q = Z(center);
-      ziFaRef.current = null;
-      map.setCenter(new B.Point(q.lng, q.lat));
+      // 普通视图：用户预期「定位按钮 = 看我人在哪」——优先浏览器真实定位飞过去；
+      // 拒绝授权 / 无定位设备 / 超时，桌面端用百度 IP 定位兜底（城市级），
+      // 仍拿不到再退回体检中心（老行为保底）
+      if (navigator.geolocation && navigator.geolocation.getCurrentPosition) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            const mb2 = mapRef.current;
+            if (!mb2) return;
+            const q = Z({ lng: pos.coords.longitude, lat: pos.coords.latitude });
+            if (!Number.isFinite(q.lng) || !Number.isFinite(q.lat)) return;
+            ziFaRef.current = null;
+            mb2.map.setCenter(new B.Point(q.lng, q.lat));
+            try {
+              if (Number(mb2.map.getZoom()) < 15) mb2.map.setZoom(15);
+            } catch {
+              /* 忽略 */
+            }
+          },
+          () => {
+            const mb2 = mapRef.current;
+            if (!mb2) return;
+            // 桌面端 IP 定位兜底（无需系统权限，城市/区县级）
+            if (window.api && window.api.ipDingWei) {
+              window.api
+                .ipDingWei()
+                .then(ip => {
+                  const mb3 = mapRef.current;
+                  if (!mb3) return;
+                  if (ip && ip.ok) {
+                    const w = bd09ZhuanWgs84(ip.lng, ip.lat);
+                    const q = Z(w);
+                    ziFaRef.current = null;
+                    mb3.map.setCenter(new B.Point(q.lng, q.lat));
+                    try {
+                      if (Number(mb3.map.getZoom()) < 13) mb3.map.setZoom(13);
+                    } catch {
+                      /* 忽略 */
+                    }
+                    return;
+                  }
+                  const c = Z(center);
+                  ziFaRef.current = null;
+                  mb3.map.setCenter(new B.Point(c.lng, c.lat));
+                })
+                .catch(() => {});
+              return;
+            }
+            const c = Z(center);
+            ziFaRef.current = null;
+            mb2.map.setCenter(new B.Point(c.lng, c.lat));
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+        );
+      } else {
+        const q = Z(center);
+        ziFaRef.current = null;
+        map.setCenter(new B.Point(q.lng, q.lat));
+      }
     } else if (engine === 'tile') {
       setJuJiaoCi(n => n + 1); // DiTuCanvas 监听该计数强制重新居中
     }
@@ -391,7 +499,8 @@ export const MapCanvas = React.memo(function MapCanvas({
   const luKuangKai = !!(gongJu && gongJu.luKuang);
   const weiXingKai = !!(gongJu && gongJu.weiXing);
   const qingXieKai = !!(gongJu && gongJu.qingXie);
-  // 路况图层挂/摘：GL 版官方原生 setTrafficOn / setTrafficOff
+  // 路况图层挂/摘：GL 版官方原生 setTrafficOn / setTrafficOff。
+  // 开路况后若在导航期，要把隐藏标签的样式补回去——setTrafficOn 可能重置底图样式
   useEffect(() => {
     const mb = mapRef.current;
     if (engine !== 'baidu' || !mb) return;
@@ -399,14 +508,19 @@ export const MapCanvas = React.memo(function MapCanvas({
     try {
       if (luKuangKai) {
         if (map.setTrafficOn) map.setTrafficOn();
+        if (daoHangYangShiRef.current === 'dao') yingYongDaoHangYangShi(map);
       } else if (map.setTrafficOff) {
         map.setTrafficOff();
+        if (daoHangYangShiRef.current === 'dao') yingYongDaoHangYangShi(map);
       }
     } catch {
       /* 当前 GL 版本不支持路况图层时保持原状 */
     }
   }, [luKuangKai, engine]);
-  // 卫星图 / 普通地图切换
+  // 卫星图 / 普通地图切换。
+  // GL 关键坑（实测）：setMapType(B_SATELLITE_MAP) 后矢量路网层仍盖在卫星影像上，
+  // 看起来像「没切换」——必须 hideVectorStreetLayer / hideStreetLayer 把矢量层藏掉，
+  // 切回普通地图再显示回来。切完底图类型还要按开关补走路况（setMapType 会重置路况）
   useEffect(() => {
     const mb = mapRef.current;
     if (engine !== 'baidu' || !mb) return;
@@ -416,10 +530,29 @@ export const MapCanvas = React.memo(function MapCanvas({
         ? window.BMAP_SATELLITE_MAP || (window.BMapGL && window.BMapGL.BMAP_SATELLITE_MAP)
         : window.BMAP_NORMAL_MAP || (window.BMapGL && window.BMapGL.BMAP_NORMAL_MAP);
       if (lei) map.setMapType(lei);
+      const dongZuo = weiXingKai
+        ? ['hideVectorStreetLayer', 'hideStreetLayer']
+        : ['showVectorStreetLayer', 'showStreetLayer'];
+      dongZuo.forEach(fn => {
+        if (typeof map[fn] === 'function') {
+          try {
+            map[fn]();
+          } catch {
+            /* 忽略 */
+          }
+        }
+      });
+      try {
+        map.setDisplayOptions({ street: !weiXingKai });
+      } catch {
+        /* 忽略 */
+      }
+      if (luKuangKai && map.setTrafficOn) map.setTrafficOn();
+      if (daoHangYangShiRef.current === 'dao') yingYongDaoHangYangShi(map);
     } catch {
       /* 当前 GL 版本不支持卫星图层时保持原状 */
     }
-  }, [weiXingKai, engine]);
+  }, [weiXingKai, luKuangKai, engine]);
   // 3D 倾斜 / 回正
   useEffect(() => {
     const mb = mapRef.current;
@@ -434,14 +567,160 @@ export const MapCanvas = React.memo(function MapCanvas({
 
   // —— 模拟导航带路：小蓝点沿步行路线前进，视角像手机导航一样跟着走 ——
   const daoHangBiaoRef = useRef(null); // 导航小蓝点 Marker
+  const daoHangBiaoDiRef = useRef(null); // 该 Marker 所属的地图实例：地图重初始化后旧 marker 失效需重建
   const daoHangLuRef = useRef([]); // 导航中的路线高亮（白边 + 蓝色实线）
   const daoHangKaiRef = useRef(false); // 是否已做过开局路线总览
+  const daoHangYangShiRef = useRef('mo'); // 底图样式当前态：'dao'=导航减负（隐藏标签）/'mo'=默认完整样式
   const daoHangYiRef = useRef(0); // panTo 节流时间戳（60fps 更新位置，视角每 300ms 平滑跟一次）
+  const daoHangSuoRef = useRef(0); // 缩放保险检查节流（500ms 一次，减少对 GL 渲染循环的打扰）
   const daoHangXiangRef = useRef(0); // 当前镜头航向角（度，顺时针 0=正北）——航向朝上导航用
   const daoHangXiangShiRef = useRef(0); // 航向旋转节流时间戳（与平移分开，各自节奏）
   const daoHangSuiRef = useRef(true); // 导航镜头是否自动跟随（用户拖图浏览时暂停，点回中按钮恢复）
   const [daoHangSuiTing, setDaoHangSuiTing] = useState(false); // 跟随暂停态（驱动回中按钮高亮与提示）
   const daoHangTuoRef = useRef(null); // 导航期 dragstart 监听句柄（退出导航时摘除）
+  const daoHangCiRef = useRef(0); // 已打开画面的导航局号：与 App 端局号对齐——变了就是「新一局」，整局重开（清旧路线高亮、重画、重新落到路上）
+  const xuanZhuanRef = useRef(xuanZhuan); // 航向朝上开关的实时值（事件监听只注册一次，须经 ref 读新值）
+  xuanZhuanRef.current = xuanZhuan;
+  const qingXieRef = useRef(false); // 3D 倾斜开关实时值（平滑跟随循环里校正镜头用）
+  qingXieRef.current = qingXieKai;
+
+  // —— 实时跟随帧（事件直驱 + 插值平滑）——
+  // 数据来源是离散定位（模拟 GPS 每 400ms 一拍、真实定位 1~2 秒一拍），若收到位置就直接
+  // panTo，镜头就是「冻住 → 跳一下」，观感即「卡」；手机导航之所以顺，是在两拍之间连续插值。
+  // 所以这里只把收到的位置记为「目标」，由独立 rAF 循环用指数逼近把蓝点与镜头连续推过去
+  // （时间常数 180ms、帧率无关，约覆盖 400ms 的定位间隔），到位即停循环、下一拍再启动，
+  // 静止时零开销；整个过程不经过 React 渲染，不会拖着 App 组件树重渲染。
+  const dhMuBiaoRef = useRef(null); // 当前跟随目标 {weiZhi, qianWang, fangWei}
+  const dhXianShiRef = useRef(null); // 屏幕上当前显示的位置（向目标逼近）
+  const dhHuanRef = useRef(0); // 平滑跟随 rAF 句柄（0 = 未在跑）
+  const dhShiRef = useRef(0); // 上一平滑帧时间戳（算时间常数用）
+  const dhXiuRef = useRef(0); // 缩放/倾斜校正节流时间戳
+  const dhPanRef = useRef(0); // 镜头 panTo 节流时间戳（30fps 上限——panTo 每次都触发 GL 全画面重渲染，是导航中最大的渲染开销；蓝点 marker 位移便宜，仍逐帧更新）
+
+  function dhPingHua() {
+    dhHuanRef.current = 0;
+    const mb = mapRef.current;
+    const mbiao = dhMuBiaoRef.current;
+    // 退出导航（画面拆掉）时直接收手，不再调度下一帧
+    if (!mb || !daoHangKaiRef.current || !mbiao) return;
+    const { map, B } = mb;
+    const xianZai = performance.now();
+    const dt = Math.min(64, xianZai - (dhShiRef.current || xianZai));
+    dhShiRef.current = xianZai;
+    const xian = dhXianShiRef.current || {
+      weiZhi: mbiao.weiZhi,
+      qianWang: mbiao.qianWang,
+      fangWei: mbiao.fangWei
+    };
+    // 指数逼近系数：k = 1 - e^(-dt/τ)，与帧率无关；τ 取 180ms 恰好铺满一个定位间隔
+    const k = 1 - Math.exp(-Math.max(dt, 1) / 180);
+    const wei = {
+      lng: xian.weiZhi.lng + (mbiao.weiZhi.lng - xian.weiZhi.lng) * k,
+      lat: xian.weiZhi.lat + (mbiao.weiZhi.lat - xian.weiZhi.lat) * k
+    };
+    const qian = {
+      lng: xian.qianWang.lng + (mbiao.qianWang.lng - xian.qianWang.lng) * k,
+      lat: xian.qianWang.lat + (mbiao.qianWang.lat - xian.qianWang.lat) * k
+    };
+    // 朝向走最短角路逼近，避免 359°→1° 时箭头绕一大圈
+    const chaJiao = ((mbiao.fangWei - xian.fangWei + 540) % 360) - 180;
+    const fangWei = (xian.fangWei + chaJiao * k + 360) % 360;
+    dhXianShiRef.current = { weiZhi: wei, qianWang: qian, fangWei };
+    if (daoHangBiaoRef.current) {
+      const q = Z(wei);
+      // 坐标必须有效才喂给 GL——NaN/undefined 坐标会在 GL 内部 pointToPixel 里炸掉整个渲染
+      if (Number.isFinite(q.lng) && Number.isFinite(q.lat)) {
+        daoHangBiaoRef.current.setPosition(new B.Point(q.lng, q.lat));
+        try {
+          daoHangBiaoRef.current.setRotation(fangWei);
+        } catch {
+          /* 个别版本无 setRotation 时退化为固定朝上的箭头，不影响跟随 */
+        }
+      }
+    }
+    if (daoHangSuiRef.current) {
+      const kq = Z(qian);
+      // panTo 限 30fps：骑行车速快、目标持续前移，逐帧 panTo 会让 GL 每帧全画面重渲染（卡的主因）；
+      // 33ms 一拍对人眼依然连贯，蓝点 marker 仍逐帧微移
+      if (
+        Number.isFinite(kq.lng) &&
+        Number.isFinite(kq.lat) &&
+        xianZai - dhPanRef.current >= 33
+      ) {
+        dhPanRef.current = xianZai;
+        map.panTo(new B.Point(kq.lng, kq.lat), { noAnimation: true });
+      }
+      // 缩放/倾斜校正：panTo 若把相机还原成旧视角就补回，节流 400ms 一次，避免每帧白跑
+      if (xianZai - dhXiuRef.current > 400) {
+        dhXiuRef.current = xianZai;
+        try {
+          const dqJi = Number(map.getZoom());
+          if (Number.isFinite(dqJi) && dqJi !== 21) map.setZoom(21, { noAnimation: true });
+        } catch {
+          /* 忽略 */
+        }
+        try {
+          const dqQing = Number(map.getTilt());
+          // 校正目标跟随 3D 开关：开着补回 52°，关着补回平视
+          const muBiaoQing = qingXieRef.current ? 52 : 0;
+          if (Number.isFinite(dqQing) && Math.abs(dqQing - muBiaoQing) > 2)
+            map.setTilt(muBiaoQing, { noAnimation: true });
+        } catch {
+          /* 忽略 */
+        }
+      }
+    }
+    // 未到位就继续下一帧；到位（亚像素级 + 朝向基本对齐）收手等下一拍定位
+    const chaMi = liangDianJuLi(xian.weiZhi, mbiao.weiZhi);
+    if (chaMi > 0.12 || Math.abs(chaJiao) > 0.8) dhHuanRef.current = requestAnimationFrame(dhPingHua);
+    else dhXianShiRef.current = mbiao;
+  }
+
+  function daoHangZhuZhui(xin) {
+    if (!mapRef.current || !daoHangKaiRef.current || !xin || !xin.weiZhi) return;
+    dhMuBiaoRef.current = {
+      weiZhi: xin.weiZhi,
+      qianWang: xin.qianWang || xin.weiZhi,
+      fangWei: Number(xin.fangWei) || 0
+    };
+    if (!dhHuanRef.current) dhHuanRef.current = requestAnimationFrame(dhPingHua);
+  }
+  // 航向朝上的平滑旋转同样挂进事件帧（150ms 一步、每次吃掉角差 20%），与 React 状态节奏解耦
+  function daoHangXiangZhui(xin) {
+    const mb = mapRef.current;
+    if (!mb || !daoHangKaiRef.current || !xin || !daoHangSuiRef.current) return;
+    const xianZai = Date.now();
+    if (xianZai - daoHangXiangShiRef.current <= 150) return;
+    daoHangXiangShiRef.current = xianZai;
+    const xiang = xuanZhuanRef.current ? Number(xin.fangWei) : 0;
+    if (!Number.isFinite(xiang)) return;
+    const cha = ((xiang - daoHangXiangRef.current + 540) % 360) - 180; // 最短角差 [-180,180)
+    if (Math.abs(cha) <= 0.6) return;
+    daoHangXiangRef.current =
+      (daoHangXiangRef.current + Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) + 360) % 360;
+    try {
+      mb.map.setHeading(daoHangXiangRef.current, { noAnimation: true });
+    } catch {
+      /* 个别版本无 setHeading 时退化为北朝上 */
+    }
+  }
+  // 事件监听只注册一次：跟随函数内部全走 ref，不存在闭包过期问题
+  useEffect(() => {
+    const ting = e => {
+      if (!e || !e.detail) return;
+      daoHangZhuZhui(e.detail);
+      daoHangXiangZhui(e.detail);
+    };
+    window.addEventListener('sq_dh_wei', ting);
+    return () => {
+      window.removeEventListener('sq_dh_wei', ting);
+      // 卸载时停掉平滑跟随循环，避免残留 rAF 空转
+      if (dhHuanRef.current) {
+        cancelAnimationFrame(dhHuanRef.current);
+        dhHuanRef.current = 0;
+      }
+    };
+  }, []);
   // 摘掉导航期间的所有专属覆盖物
   function qingDaoHangFuGai() {
     if (!mapRef.current) return;
@@ -479,6 +758,7 @@ export const MapCanvas = React.memo(function MapCanvas({
     // 但对象还在（进度要保留），若按 kai 判断会把暂停当退出处理：
     // 拆掉导航画面、重画日常图层并 setCenter 回体检中心，表现为「一点暂停就跑回原位置」
     const zaiKai = !!(daoHang && daoHang.weiZhi && engine === 'baidu');
+    const shiZhengZaiChai = daoHangKaiRef.current; // 是否真从「导航画面已开」拆下来（区别于初次进入/引擎切换）
     if (!mb || !zaiKai) {
       // 退出导航 / 引擎切换：摘掉小蓝点与高亮路线，回正视角并恢复日常图层
       daoHangKaiRef.current = false;
@@ -502,6 +782,41 @@ export const MapCanvas = React.memo(function MapCanvas({
         }
       }
       daoHangXiangRef.current = 0;
+      // 退出导航：恢复底图默认样式（导航期间隐藏的 POI 标签回来）。
+      // 样式替换会重置路况——按开关补走，保证「路况亮着就要显示」
+      daoHangYangShiRef.current = 'mo';
+      try {
+        if (engine === 'baidu' && mb) {
+          mb.map.setMapStyleV2({ styleJson: [] });
+          if (luKuangKai && mb.map.setTrafficOn) mb.map.setTrafficOn();
+        }
+      } catch {
+        /* 忽略 */
+      }
+      // 画面已回平视：3D 开关同步熄灭，保证按钮状态与实际视角永远一致
+      // （否则出现「按钮亮着画面却是平的」或「点了 3D 像没反应」的错位观感）。
+      // 只在「确实从导航拆下来」时同步——初次进入/引擎切换不碰用户在普通地图上自己开的 3D
+      if (shiZhengZaiChai && engine === 'baidu' && gongJuSheZhi && gongJuSheZhi.qingXie) {
+        gongJuSheZhi.qingXie(false);
+      }
+      // 缩放兜底：导航结束不该把人丢在世界地图上（缩放过小连自己在哪都看不见），
+      // 拆画面后若缩放低于街道级（<12）就拉回 15 级，配合 drawBaidu 的回体检中心定位
+      if (shiZhengZaiChai && mb) {
+        try {
+          const dqJi = Number(mb.map.getZoom());
+          if (Number.isFinite(dqJi) && dqJi < 12) mb.map.setZoom(15, { noAnimation: true });
+        } catch {
+          /* 忽略 */
+        }
+      }
+      // 退出导航：停掉平滑跟随循环并清掉目标/显示位置，下一局从新位置重新起算
+      if (dhHuanRef.current) {
+        cancelAnimationFrame(dhHuanRef.current);
+        dhHuanRef.current = 0;
+      }
+      dhMuBiaoRef.current = null;
+      dhXianShiRef.current = null;
+      dhShiRef.current = 0;
       // 日常图层在导航开局被清掉且键值已重置，这里延迟一拍重画恢复
       clearTimeout(drawTimerRef.current);
       drawTimerRef.current = setTimeout(() => {
@@ -514,6 +829,10 @@ export const MapCanvas = React.memo(function MapCanvas({
     if (!daoHangKaiRef.current) {
       daoHangKaiRef.current = true;
       daoHangXiangRef.current = 0; // 航向记录归零，首帧按实际行进方向重新起算
+      // 平滑跟随复位：开局第一帧直接用传入位置落点，不做从旧位置滑过来的动画
+      dhMuBiaoRef.current = null;
+      dhXianShiRef.current = null;
+      dhShiRef.current = 0;
       daoHangSuiRef.current = true;
       setDaoHangSuiTing(false);
       // 用户拖图浏览时暂停镜头接管（平移/缩放/航向都停），点右下角回中按钮恢复跟随
@@ -527,6 +846,12 @@ export const MapCanvas = React.memo(function MapCanvas({
         /* 个别版本事件名差异时忽略，只是少了暂停跟随的手势 */
       }
       yinCangRiChangTuCeng();
+      // 导航期间隐藏底图 POI/楼宇标签：3D 近景下成片的标签文字是 GL 渲染大户，
+      // 隐藏后画面减负明显；导航画面本该聚焦路线，退出导航时恢复默认样式
+      // （API 依据：bmap-jsapi-gl 技能文档 map-style 分册——styleJson 可按 featureType 关 visibility，
+      //   传空数组恢复默认样式）
+      yingYongDaoHangYangShi(map);
+      daoHangYangShiRef.current = 'dao';
       if (buXing && buXing.polyline && buXing.polyline.length > 1) {
         const dian = buXing.polyline.map(p => {
           const q = Z(p);
@@ -580,6 +905,13 @@ export const MapCanvas = React.memo(function MapCanvas({
                 rotation: fang
               });
               map.addOverlay(jian);
+              // 注意：BMapGL 构造参数里的 rotation 不生效（实测 + 社区反馈），必须 addOverlay
+              // 之后调 setRotation——否则路面箭头全部朝上、不沿路（正是「箭头不沿路」的来源）
+              try {
+                jian.setRotation(fang);
+              } catch {
+                /* 忽略 */
+              }
               daoHangLuRef.current.push(jian);
               muBiaoLu += zhouQi;
             }
@@ -631,7 +963,7 @@ export const MapCanvas = React.memo(function MapCanvas({
         // 若共用一个 try，前面任何一个 API 在个别 GL 版本上抛错（如 setTilt 不认 options），
         // 后面的 setZoom 就不会执行，表现为「导航不放大」。
         // 全部 noAnimation 瞬切：带动画的 setZoom 会被 50ms 后跟随帧的 panTo(noAnimation)
-        // 立刻掐掉，缩放永远走不完；19 级=步行导航实用上限（瓦片最高 21 级）
+        // 立刻掐掉，缩放永远走不完；21 级为百度 GL 瓦片最高级别（用户指定导航近景用满级）
         try {
           const kaiQ = Z(daoHang.weiZhi);
           map.setCenter(new B.Point(kaiQ.lng, kaiQ.lat), { noAnimation: true });
@@ -639,12 +971,13 @@ export const MapCanvas = React.memo(function MapCanvas({
           /* 忽略 */
         }
         try {
-          map.setTilt(52, { noAnimation: true });
+          // 倾斜跟随右上角 3D 开关（导航默认开）：开关关着就平视，不再硬编码 52 度
+          map.setTilt(qingXieKai ? 52 : 0, { noAnimation: true });
         } catch {
           /* 忽略 */
         }
         try {
-          map.setZoom(19, { noAnimation: true });
+          map.setZoom(21, { noAnimation: true });
         } catch {
           /* 忽略 */
         }
@@ -653,50 +986,72 @@ export const MapCanvas = React.memo(function MapCanvas({
     // 用户位置标记：蓝色导航箭头 + 白描边 + 淡蓝光晕（首帧创建，之后只挪位置、转朝向）——
     // 箭头按 fangWei（行进方位角，顺时针 0=正北）实时旋转，一眼看出当前朝向；
     // 镜头仍保持北朝上不转，只有箭头转，不会晕
-    if (!daoHangBiaoRef.current) {
+    if (!daoHangBiaoRef.current || daoHangBiaoDiRef.current !== map) {
+      // marker 不存在，或所属地图实例已更换（引擎切换 / 地图重初始化）：旧 marker 随旧地图失效，必须重建，
+      // 否则对失效 marker setPosition 会在 GL 内部抛「reading 'lng' of undefined」炸掉整棵组件树
+      if (daoHangBiaoRef.current) {
+        try {
+          map.removeOverlay(daoHangBiaoRef.current);
+        } catch {
+          /* 旧 marker 已随旧地图销毁时忽略 */
+        }
+        daoHangBiaoRef.current = null;
+      }
       const tu = svgIcon(
         "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'>" +
           "<circle cx='20' cy='20' r='15' fill='rgba(47,134,247,0.16)'/>" +
-          "<path d='M20 5.5 L29 31 L20 25.5 L11 31 Z' fill='#2f86f7' stroke='#ffffff' " +
-            "stroke-width='2.4' stroke-linejoin='round'/></svg>"
+          "<path d='M20 4 L29.5 21 L20 16.5 L10.5 21 Z' fill='#2f86f7' stroke='#ffffff' " +
+            "stroke-width='2' stroke-linejoin='round'/>" +
+          "<rect x='16.8' y='19' width='6.4' height='12' rx='3' fill='#2f86f7' stroke='#ffffff' " +
+            "stroke-width='2'/></svg>"
       );
       const biao = new B.Icon(tu, new B.Size(40, 40), { anchor: new B.Size(20, 20) });
       // zIndex 压过终点图钉（998）与「目的地」标签——GPS 模式下蓝点常与终点重合，层级低了会被盖住
       daoHangBiaoRef.current = new B.Marker(new B.Point(0, 0), { icon: biao, zIndex: 1002 });
       map.addOverlay(daoHangBiaoRef.current);
+      daoHangBiaoDiRef.current = map;
     }
-    const q = Z(daoHang.weiZhi);
-    daoHangBiaoRef.current.setPosition(new B.Point(q.lng, q.lat));
-    try {
-      daoHangBiaoRef.current.setRotation(Number(daoHang.fangWei) || 0);
-    } catch {
-      /* 个别版本无 setRotation 时退化为固定朝上的箭头，不影响跟随 */
-    }
-    // —— 丝滑平移跟随：panTo 必须带 noAnimation——GL 的 panTo 默认自带飞行动画，
-    // 高频调用等于不停重启动画，观感一顿一顿；关掉动画改为高频小步跳变（50ms 一档），
-    // 步长小到肉眼不可见，跟点如丝般顺滑。缩放仍绝不在跟随帧里调（GL getMinZoom 缺陷）
-    const xianZai = Date.now();
-    if (daoHangSuiRef.current && xianZai - daoHangYiRef.current > 50) {
-      daoHangYiRef.current = xianZai;
-      // 相机看向前方 60 米引导点（App 沿路线插值好随 daoHang 传入）：
-      // 小蓝点沉到屏幕下三分之一、前方路面占视野主体；旧数据没有引导点时退回蓝点居中
-      const kan = daoHang.qianWang || daoHang.weiZhi;
-      const kq = Z(kan);
-      map.panTo(new B.Point(kq.lng, kq.lat), { noAnimation: true });
-      // 保险：级别意外低于 19（开局瞬切被 GL 内部状态吃掉、或用户缩小了）就拉回路上近景。
-      // 必须先过 Number.isFinite——GL 的 getZoom 偶发返回 undefined，NaN 进 setZoom
-      // 会触发 GL 内部 getMinZoom 报错（此前画面乱动的元凶之一）
+    // 底图样式跟随跟随状态：跟随中隐藏标签减负；暂停 / 等待定位 / 结束后恢复完整样式——
+    // 否则停在原地时画面只剩路网白底，用户会以为「没加载出来」。
+    // setMapStyleV2 会把路况图层一起重置——样式切完必须按开关补走路况，「亮了就要执行」
+    const muBiaoYangShi = daoHang.kai ? 'dao' : 'mo';
+    if (daoHangYangShiRef.current !== muBiaoYangShi) {
+      daoHangYangShiRef.current = muBiaoYangShi;
       try {
-        const dqJi = Number(map.getZoom());
-        if (Number.isFinite(dqJi) && dqJi < 19) map.setZoom(19, { noAnimation: true });
+        if (muBiaoYangShi === 'dao') yingYongDaoHangYangShi(map);
+        else map.setMapStyleV2({ styleJson: [] });
+        if (luKuangKai && map.setTrafficOn) map.setTrafficOn();
       } catch {
         /* 忽略 */
+      }
+    }
+    // 位置/镜头更新统一交给 dhPingHua 平滑循环（事件直驱）。
+    // 此处只做「落到当前真实位置」的兜底：刚创建小蓝点时还没有过跟随帧，
+    // 或暂停后重新开始（状态推送但事件未到）时，先把蓝点与平滑基准摆到正确位置。
+    // 注意别在这里按状态值 panTo/摆蓝点——状态推送是低频的，直接跳过去会打断平滑插值（硬跳 5 米级）
+    if (dhMuBiaoRef.current === null && daoHang.weiZhi) {
+      const q = Z(daoHang.weiZhi);
+      if (Number.isFinite(q.lng) && Number.isFinite(q.lat)) {
+        dhXianShiRef.current = {
+          weiZhi: daoHang.weiZhi,
+          qianWang: daoHang.qianWang || daoHang.weiZhi,
+          fangWei: Number(daoHang.fangWei) || 0
+        };
+        if (daoHangBiaoRef.current) {
+          try {
+            daoHangBiaoRef.current.setPosition(new B.Point(q.lng, q.lat));
+            daoHangBiaoRef.current.setRotation(Number(daoHang.fangWei) || 0);
+          } catch {
+            /* 个别版本 setRotation / 内部状态异常时忽略，下一帧跟随会继续摆 */
+          }
+        }
       }
     }
     // —— 航向朝上旋转（手机导航同款，需用户在导航页点「🧭」开启，默认北朝上不晕）——
     // setHeading 同样必须 noAnimation（默认动画被高频重启就会连续转圈）；
     // 150ms 一步、每次吃掉角差的 20%（至少 1°），转弯约一秒出头顶点、收敛柔顺；
     // 角差 0.6° 以内视为到位彻底停手；用户拖图浏览（跟随暂停）时镜头完全交还给用户
+    const xianZai = Date.now();
     if (daoHangSuiRef.current && xianZai - daoHangXiangShiRef.current > 150) {
       daoHangXiangShiRef.current = xianZai;
       const xiang = xuanZhuan ? Number(daoHang.fangWei) : 0;
@@ -1202,6 +1557,32 @@ export const MapCanvas = React.memo(function MapCanvas({
           juJiao={juJiaoCi}
         />
       )}
+      {/* 指南针：指针随地图航向转，点一下回正北；全屏导航时隐藏（导航页右上角有自己的视角开关） */}
+      <button
+        type="button"
+        className="map-zhiNanZhen"
+        onClick={huiZhengBei}
+        title="地图朝向，点击回正北"
+        aria-label="指南针，点击回正北"
+      >
+        <svg
+          viewBox="0 0 40 40"
+          width="24"
+          height="24"
+          style={{ transform: `rotate(${-zhiNanXiang}deg)` }}
+        >
+          <circle
+            cx="20"
+            cy="20"
+            r="17"
+            fill="rgba(255,255,255,0.95)"
+            stroke="#d9dfe8"
+            strokeWidth="1.5"
+          />
+          <path d="M20 7 L24 21 L20 18.5 L16 21 Z" fill="#e5484d" />
+          <path d="M20 33 L16 19 L20 21.5 L24 19 Z" fill="#9aa7b8" />
+        </svg>
+      </button>
       <button
         type="button"
         className={`map-huiWei ${daoHangSuiTing ? 'daoSuiTing' : ''}`}
@@ -1209,7 +1590,7 @@ export const MapCanvas = React.memo(function MapCanvas({
         title={
           daoHangSuiTing
             ? '镜头跟随已暂停（你拖动了地图），点此回到小蓝点继续导航'
-            : '回到小蓝点 / 体检中心'
+            : '定位到当前位置（导航中为回到小蓝点跟随）'
         }
         aria-label={daoHangSuiTing ? '回到导航跟随' : '回到体检中心'}
       >

@@ -3,7 +3,7 @@
 // 管理员控制台（专业后台布局）：左侧导航栏 + 顶栏 + 内容卡片
 // 分区：用户管理 / 体检配置 / 盲区阈值 / AI 设置 / 账号安全 / 历史报告
 // 登录鉴权（后端 MySQL 校验 + 真实 IP 限流）；隐藏入口：连点左上角 logo 三次，或 URL 带 #guanliyuan
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FENLEI_MING, MOREN_PEI_ZHI } from '../core/types.js';
 import { savePeiZhi, loadReports } from './peiZhi.js';
 import { fuWuUrl, fuWuDiZhi, sheZhiFuWuDiZhi } from '../core/fuwuDiZhi.js';
@@ -14,6 +14,7 @@ import {
   zhongZhiMiMa,
   guanLiYuanGaiMiMa
 } from '../core/yonghu.js';
+import guanLiLogoTu from '../../管理员logo.png'; // 管理员控制台品牌 logo（登录页与左侧导航共用）
 
 const FENLEI = Object.keys(FENLEI_MING);
 
@@ -264,6 +265,19 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
   // 管理员是否亲手动过「启用」开关关掉：亲手关掉后保存时不自动启用
   const [shouDongGuanBi, setShouDongGuanBi] = useState(false);
 
+  // 令牌失效（2 小时过期）统一出口：后端返回 401 时自动清除本地登录态并回到登录页重新登录，
+  // 避免界面停留在「看似已登录、所有管理员接口却报 请先以管理员身份登录」的假登录状态
+  useEffect(() => {
+    function tuiChuChongXinDengLu() {
+      localStorage.removeItem('sq_admin_session');
+      localStorage.removeItem('sq_admin_token');
+      setAuth(false);
+      setErr('登录已过期，请重新登录');
+    }
+    window.addEventListener('sq_guanliyuan_weifa', tuiChuChongXinDengLu);
+    return () => window.removeEventListener('sq_guanliyuan_weifa', tuiChuChongXinDengLu);
+  }, []);
+
   if (!open) return null;
 
   const dangQianYe = YE_QIAN.find(y => y.id === ye) || YE_QIAN[0];
@@ -501,18 +515,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
         <div className="admin-deng-ka">
           <div className="admin-deng-pai">
             <div className="admin-deng-logo">
-              <svg
-                viewBox="0 0 24 24"
-                width="26"
-                height="26"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+              <img src={guanLiLogoTu} alt="管理员 logo" />
             </div>
             <div className="admin-deng-ming">社区体检助手</div>
             <div className="admin-deng-fu">管理员控制台 · Admin Console</div>
@@ -529,7 +532,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
             <label className="a-label">账号</label>
             <input
               className="a-input"
-              placeholder="admin"
+              placeholder="请输入管理员账号"
               value={user}
               onChange={e => setUser(e.target.value)}
             />
@@ -537,7 +540,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
             <input
               className="a-input"
               type="password"
-              placeholder="••••••••"
+              placeholder="请输入密码"
               value={pwd}
               onChange={e => setPwd(e.target.value)}
               onKeyDown={e => {
@@ -552,9 +555,6 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
             >
               {mang ? '正在校验…' : '登 录'}
             </button>
-            <div className="a-tip">
-              初始账号 admin / admin，首次登录后请立即在「账号安全」中修改密码。
-            </div>
             <button className="link-btn admin-deng-fan" onClick={onClose}>
               返回体检助手
             </button>
@@ -570,18 +570,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
       <aside className="admin-ce">
         <div className="admin-ce-brand">
           <span className="admin-ce-logo">
-            <svg
-              viewBox="0 0 24 24"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
+            <img src={guanLiLogoTu} alt="管理员 logo" />
           </span>
           <div>
             <div className="admin-ce-ming">社区体检助手</div>

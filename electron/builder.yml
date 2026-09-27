@@ -2,7 +2,7 @@
 # 完成时间：2026，09，18
 appId: com.shenghuoquan.tijian
 productName: 生活圈体检助手
-copyright: Copyright © 2026 肖沐樑 (QQ: 3387432690)
+copyright: "Copyright © 2026 肖沐樑 (QQ: 3387432690)"
 directories:
   output: release
   buildResources: build
@@ -12,6 +12,7 @@ files:
   - package.json
 win:
   target: nsis
+  icon: logo1.png
   artifactName: 生活圈体检助手-Setup-${version}.exe
 nsis:
   oneClick: false

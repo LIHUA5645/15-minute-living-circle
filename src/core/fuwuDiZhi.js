@@ -27,10 +27,20 @@ function xiRu() {
   }
 }
 
-// 拼出完整请求地址：未配置外部服务时原样返回相对路径（同域）
+// 拼出完整请求地址：优先管理员配置的外部服务；桌面端（Electron，file:// 加载）
+// 没有同域 /api 可请求，主进程内嵌了本地鉴权服务（见 electron/main.cjs，
+// 仅监听 127.0.0.1:37777），指向它；纯浏览器/静态部署保持相对路径（同域）
 export function fuWuUrl(lu) {
   const base = xiRu();
-  return base ? base + lu : lu;
+  if (base) return base + lu;
+  try {
+    if (typeof window !== 'undefined' && window.api && window.api.isElectron) {
+      return 'http://127.0.0.1:37777' + lu;
+    }
+  } catch {
+    /* 忽略 */
+  }
+  return lu;
 }
 
 // 当前服务端地址（空串表示同域）

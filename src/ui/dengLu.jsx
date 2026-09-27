@@ -111,9 +111,6 @@ export function DengLu({ open, onClose, onDengLu }) {
             />
           )}
           {cuo && <div className="a-tip a-tip-err">{cuo}</div>}
-          <div className="a-tip">
-            密码经服务端加密存储，明文不落盘。管理员后台为独立入口，与用户账号互不相通。
-          </div>
           <button className="a-btn a-btn-primary" onClick={tiJiao} disabled={mang}>
             {mang ? '处理中…' : ye === 'denglu' ? '登录' : '注册并登录'}
           </button>

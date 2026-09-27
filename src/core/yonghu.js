@@ -11,6 +11,13 @@ const ADMIN_TOKEN_KEY = 'sq_admin_token';
 
 import { fuWuUrl } from './fuwuDiZhi.js';
 
+// 管理员令牌失效统一出口：通知控制台清除本地登录态，回到登录页重新登录
+function weiFaTongBao() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sq_guanliyuan_weifa'));
+  }
+}
+
 async function tiJiao(lu, body, token) {
   // 走可配置的服务端地址：未配置时即同域 /api
   const r = await fetch(fuWuUrl('/api' + lu), {
@@ -21,7 +28,10 @@ async function tiJiao(lu, body, token) {
     },
     body: JSON.stringify(body || {})
   });
-  if (r.status === 401) return { ok: false, xinxi: '请先以管理员身份登录' };
+  if (r.status === 401) {
+    weiFaTongBao();
+    return { ok: false, xinxi: '请先以管理员身份登录' };
+  }
   return r.json();
 }
 
@@ -93,11 +103,17 @@ export async function dengLuGuanLiYuan(zhangHao, miMa) {
   return j;
 }
 
-export function yongHuLieBiao() {
+export async function yongHuLieBiao() {
   // 后端该路由为 GET；走可配置服务端地址（未配置即同域）
-  return fetch(fuWuUrl('/api/guanliyuan/yongHuLieBiao'), {
+  const r = await fetch(fuWuUrl('/api/guanliyuan/yongHuLieBiao'), {
     headers: { Authorization: 'Bearer ' + guanLiYuanLingPai() }
-  }).then(r => r.json());
+  });
+  // 令牌过期（2 小时）同样触发统一登出，避免列表界面空转不提示
+  if (r.status === 401) {
+    weiFaTongBao();
+    return { ok: false, xinxi: '请先以管理员身份登录' };
+  }
+  return r.json();
 }
 
 export function shanChuYongHu(id) {

@@ -25,6 +25,9 @@ import { aiXuanDian, shiDaoHangYiTu, tiQuMuDiDi } from '../core/aiDaohang.js';
 import { guiHuaLuXian, guiHuaJiaoTong } from './luxian.js';
 import { aiLiaoTian } from '../core/aiLiaoTian.js';
 import { liangDianJuLi, fangWeiJiao } from '../core/geo/jichu.js';
+import logoTu from '../../logo.png'; // 顶栏品牌 logo
+import aiLogoTu from '../../AIlogo.png'; // AI 助手徽章 logo（聊天里的 AI 头像）
+import guanLiLogoTu from '../../管理员logo.png'; // 管理员身份徽章 logo（顶栏「管理员」chip）
 import { bd09ZhuanWgs84 } from '../core/geo/zuobiao.js';
 import { MorphIcon } from 'morphicons/react';
 import {
@@ -53,7 +56,16 @@ import {
   History,
   Footprints,
   Bike,
-  Car
+  Car,
+  Route as LuYouLuXian,
+  Satellite,
+  Axis3d,
+  Compass,
+  Pause,
+  Play,
+  RefreshCw,
+  Ban,
+  Radio
 } from 'lucide';
 
 // 悬浮面板层级计数器（各面板共享）：点击谁谁置顶，最高只到 29（顶栏 z30 之下），满了就整体重排
@@ -254,13 +266,11 @@ function yongMianBanTuoDong() {
   return ref;
 }
 
-// AI 助手徽章：渐变蓝底 + 星芒 SVG（本项目 lucide 导出的是节点数据非组件，故手写内联 SVG）
+// AI 助手徽章：品牌 AI logo 图片（原渐变蓝底星芒 SVG 已换成 AIlogo.png 图片）
 function AiHuiZhang({ da }) {
   return (
     <span className={`lt-jiQi ${da ? 'da' : ''}`}>
-      <svg viewBox="0 0 24 24" width={da ? 20 : 13} height={da ? 20 : 13} fill="currentColor">
-        <path d="M12 2l2.3 7.7L22 12l-7.7 2.3L12 22l-2.3-7.7L2 12l7.7-2.3z" />
-      </svg>
+      <img src={aiLogoTu} alt="AI" />
     </span>
   );
 }
@@ -367,6 +377,10 @@ const YANGLI = [
   { name: '广州·天河城', lng: 113.3245, lat: 23.1371 }
 ];
 
+// 开源仓库地址：控制面板「感谢您的支持」跳转条用，发布后替换成自己的仓库即可
+const GITHUB_CANGKU = 'https://github.com/LIHUA5645/15-minute-living-circle';
+const GITEE_CANGKU = 'https://gitee.com/zhang-san-zhangshan/15-minute-living-circle';
+
 function chuangJianIpc() {
   const api = window.api;
   return {
@@ -402,8 +416,10 @@ const SOU_LEI = [
 export function App() {
   const ak = import.meta.env.VITE_BMAP_AK;
   // 默认数据源=百度地图（符合赛道要求：必须调用百度地图开放能力），
-  // 仅当 .env 未配置 VITE_BMAP_AK 时才退回 OSM 真实路网兜底模式
-  const [mode, setMode] = useState(ak ? 'bmap' : 'osm');
+  // 仅当 .env 未配置 VITE_BMAP_AK 时才退回 OSM 真实路网兜底模式。
+  // 桌面端 Electron 例外：生产包没有 /bmapapi 代理中间件，浏览器端 LocalSearch 也不可靠，
+  // 默认走「百度服务端·批量矩阵」（主进程 IPC + 服务端 AK），检索才收得到地点
+  const [mode, setMode] = useState(ak ? (isElectron ? 'server' : 'bmap') : 'osm');
   const [center, setCenter] = useState({ lng: YANGLI[0].lng, lat: YANGLI[0].lat });
   const [curName, setCurName] = useState(YANGLI[0].name);
   const [mubiaoFen, setMubiaoFen] = useState(15);
@@ -604,6 +620,12 @@ export function App() {
   };
   // 在独立标签页打开管理员控制台（用户体检页与管理页彻底分离）；弹窗被拦截时退回本页打开
   const daKaiKongZhiTai = () => {
+    // 桌面端不弹第二个窗口：window.open 在 Electron 里会生成一个带系统菜单栏的
+    // 完整第二实例（观感割裂），直接就地打开站内管理面板；浏览器端保持新标签页
+    if (isElectron) {
+      setAdminOpen(true);
+      return;
+    }
     const url = window.location.href.split('#')[0] + '#guanliyuan';
     const w = window.open(url, '_blank');
     if (!w) setAdminOpen(true);
@@ -835,7 +857,6 @@ export function App() {
     tingZhiBoFang();
     // 换中心点后旧路线全部作废，全屏导航页若还开着会只剩一个点了没反应的「继续导航」——直接退出回普通视图
     setDaoHangPing(false);
-    chongFangRef.current = false; // 旧路线作废，自动重放标记一并清掉
     setReport(prev => (prev ? null : prev));
   }, []);
 
@@ -891,8 +912,9 @@ export function App() {
     setSouSuoLiShiBan([]);
   }
   // 分类快捷检索：以当前中心为圆心 5 公里搜该类 POI，结果列表点一条即定位。
-  // 两级链路：①服务端地点检索（/bmapapi，多 AK 轮换；当日配额易被体检耗尽）；
-  // ②浏览器 AK 的 LocalSearch（chuangJianBmapWeb，配额与服务器 AK 独立，体检同款链路）
+  // 两级链路：①服务端地点检索（网页端走 /bmapapi 代理；桌面端走主进程 IPC）；
+  // ②浏览器 AK 的 LocalSearch（chuangJianBmapWeb，配额与服务器 AK 独立，体检同款链路——
+  //   桌面端跳过：游离 div 假地图跑 GL LocalSearch 检索不到东西）
   async function souLei(le) {
     setSouSuoFang(true);
     setSouSuoJie({ lei: le.ming, lie: [] });
@@ -900,23 +922,45 @@ export function App() {
     let lie = [];
     let cuo = false;
     try {
-      const r = await daiChaoShi(
-        fetch(
-          // 百度 place 检索的 location 格式为「纬度,经度」，别按习惯写成经度在前（会查成 0 结果）
-          `/bmapapi/place/v2/search?query=${encodeURIComponent(le.ci)}&location=${center.lat.toFixed(6)},${center.lng.toFixed(6)}&radius=5000&output=json&scope=2`,
-          { headers: { Accept: 'application/json' } }
-        ),
-        8000
-      );
-      const j = await r.json();
-      if (j && j.status === 0 && j.results) {
-        lie = j.results
+      let yuanShi = null;
+      if (isElectron) {
+        // 桌面端：主进程 IPC（服务端 AK，返回坐标已是内部统一 WGS-84）
+        if (!providerRef.current) providerRef.current = chuangJianIpc();
+        yuanShi = await daiChaoShi(
+          Promise.resolve(providerRef.current.searchPoi(center, [le.ci], 5000)),
+          10000
+        );
+      } else {
+        const r = await daiChaoShi(
+          fetch(
+            // 百度 place 检索的 location 格式为「纬度,经度」，别按习惯写成经度在前（会查成 0 结果）
+            `/bmapapi/place/v2/search?query=${encodeURIComponent(le.ci)}&location=${center.lat.toFixed(6)},${center.lng.toFixed(6)}&radius=5000&output=json&scope=2`,
+            { headers: { Accept: 'application/json' } }
+          ),
+          8000
+        );
+        const j = await r.json();
+        yuanShi = j && j.status === 0 ? j.results : null;
+      }
+      if (yuanShi) {
+        // 两条路径的结果形状不同：网页代理是 {name, location:{lng,lat}}，
+        // 桌面端 IPC 适配器是平铺的 {name, lng, lat}——先归一成 location 形状再过滤映射，
+        // 否则统一按 x.location 过滤会把桌面端结果全部滤光（表现为「0 个结果」）
+        const guiYi = (yuanShi || []).map(x =>
+          isElectron
+            ? { name: x.name, address: x.address, area: x.area, location: { lng: x.lng, lat: x.lat } }
+            : x
+        );
+        lie = guiYi
           .filter(x => x && x.location && Number.isFinite(x.location.lng))
           .slice(0, 8)
           .map(x => {
             // 百度 place 返回 BD-09 坐标，必须转回内部 WGS-84——
-            // 不转的话后续再按 WGS→BD09 画图/规划会双重偏移 500 米以上（旗标落河、路线穿水）
-            const w = bd09ZhuanWgs84(x.location.lng, x.location.lat);
+            // 不转的话后续再按 WGS→BD09 画图/规划会双重偏移 500 米以上（旗标落河、路线穿水）；
+            // 桌面端 IPC 适配器已经转过，直接用
+            const w = isElectron
+              ? { lng: x.location.lng, lat: x.location.lat }
+              : bd09ZhuanWgs84(x.location.lng, x.location.lat);
             return {
               ming: x.name || '未命名地点',
               di: x.address || x.area || '',
@@ -929,7 +973,7 @@ export function App() {
     } catch {
       cuo = true;
     }
-    if (!lie.length) {
+    if (!lie.length && !isElectron) {
       try {
         const wang = chuangJianBmapWeb();
         const out = await wang.searchPoi(center, [le.ci], 5000);
@@ -1016,41 +1060,68 @@ export function App() {
       /* 历史读取失败忽略，继续走在线链路 */
     }
     // ① 首选：本地代理百度地理编码（/bmapapi，服务端注入 BAIDU_SERVER_AK）——
-    //    不依赖浏览器 GL SDK 是否就绪、不依赖 GL 里的 Geocoder 回调是否触发
-    try {
-      const r = await daiChaoShi(
-        fetch(`/bmapapi/geocoding/v3/?address=${encodeURIComponent(w)}&output=json`, {
-          headers: { Accept: 'application/json' }
-        }),
-        6000
-      );
-      const j = await r.json();
-      if (j && j.status === 0 && j.result && j.result.location) {
-        // 百度返回 BD-09，转成内部统一的 WGS-84
-        yingYong(bd09ZhuanWgs84(j.result.location.lng, j.result.location.lat));
-        return;
+    //    不依赖浏览器 GL SDK 是否就绪、不依赖 GL 里的 Geocoder 回调是否触发。
+    //    桌面端 Electron 没有该代理中间件，跳过此步（地点检索走主进程 IPC 补位）
+    if (!isElectron) {
+      try {
+        const r = await daiChaoShi(
+          fetch(`/bmapapi/geocoding/v3/?address=${encodeURIComponent(w)}&output=json`, {
+            headers: { Accept: 'application/json' }
+          }),
+          6000
+        );
+        const j = await r.json();
+        if (j && j.status === 0 && j.result && j.result.location) {
+          // 百度返回 BD-09，转成内部统一的 WGS-84
+          yingYong(bd09ZhuanWgs84(j.result.location.lng, j.result.location.lat));
+          return;
+        }
+        cuo.push('地理编码：' + ((j && j.message) || '无结果'));
+      } catch (e) {
+        cuo.push('地理编码：' + ((e && e.message) || '网络异常'));
       }
-      cuo.push('地理编码：' + ((j && j.message) || '无结果'));
-    } catch (e) {
-      cuo.push('地理编码：' + ((e && e.message) || '网络异常'));
     }
     // ② 次选：百度地点检索（小区 / 店名这类 POI 名地理编码常认不出，走这里）——
-    //    以当前中心为圆心 50 公里圆形检索，取第一个结果（注意：该接口当日配额耗尽会返回 302）
+    //    以当前中心为圆心 50 公里圆形检索，取第一个结果（注意：该接口当日配额耗尽会返回 302）。
+    //    网页端走 /bmapapi 代理；桌面端 Electron 没有该中间件，改走主进程 IPC（服务端 AK）
     try {
-      const r2 = await daiChaoShi(
-        fetch(
-          `/bmapapi/place/v2/search?query=${encodeURIComponent(w)}&location=${center.lng.toFixed(6)},${center.lat.toFixed(6)}&radius=50000&output=json`,
-          { headers: { Accept: 'application/json' } }
-        ),
-        6000
-      );
-      const j2 = await r2.json();
-      const shou = j2 && j2.status === 0 && j2.results && j2.results[0] && j2.results[0].location;
+      let shou = null;
+      let beiZhu = '';
+      if (isElectron) {
+        if (!providerRef.current) providerRef.current = chuangJianIpc();
+        const lie = await daiChaoShi(
+          Promise.resolve(providerRef.current.searchPoi(center, [w], 50000)),
+          10000
+        );
+        const x = lie && lie[0];
+        if (x && Number.isFinite(x.lng) && Number.isFinite(x.lat)) {
+          shou = { lng: x.lng, lat: x.lat };
+          beiZhu = x.name || '';
+        } else {
+          beiZhu = '无结果';
+        }
+      } else {
+        const r2 = await daiChaoShi(
+          fetch(
+            `/bmapapi/place/v2/search?query=${encodeURIComponent(w)}&location=${center.lat.toFixed(6)},${center.lng.toFixed(6)}&radius=50000&output=json`,
+            { headers: { Accept: 'application/json' } }
+          ),
+          6000
+        );
+        const j2 = await r2.json();
+        const x = j2 && j2.status === 0 && j2.results && j2.results[0];
+        if (x && x.location) {
+          shou = { lng: x.location.lng, lat: x.location.lat };
+        } else {
+          beiZhu = (j2 && j2.message) || '无结果';
+        }
+      }
       if (shou) {
-        yingYong(bd09ZhuanWgs84(j2.results[0].location.lng, j2.results[0].location.lat));
+        // 桌面端 IPC 返回的坐标已是内部统一 WGS-84；网页端代理返回 BD-09 需转换
+        yingYong(isElectron ? shou : bd09ZhuanWgs84(shou.lng, shou.lat));
         return;
       }
-      cuo.push('地点检索：' + ((j2 && j2.message) || '无结果'));
+      cuo.push('地点检索：' + (beiZhu || '无结果'));
     } catch (e) {
       cuo.push('地点检索：' + ((e && e.message) || '网络异常'));
     }
@@ -1174,6 +1245,37 @@ export function App() {
             : err && err.code === 3
               ? '定位超时，设备没返回位置'
               : '无法获取设备位置（可能未开启系统定位）';
+        // 桌面端兜底：浏览器定位拿不到时用百度 IP 定位（城市/区县级，无需任何系统权限），
+        // 至少把中心点放到用户真实所在的城市，而不是永远落在兜底默认社区
+        if (isElectron && window.api && window.api.ipDingWei) {
+          window.api
+            .ipDingWei()
+            .then(ip => {
+              if (ip && ip.ok) {
+                const c = bd09ZhuanWgs84(ip.lng, ip.lat);
+                if (ziDong && jiaoHuRef.current) {
+                  ziDongTiJian(); // 用户自己选过点了，不覆盖
+                  return;
+                }
+                qieHuanZhongXin(c, ip.address ? 'IP 定位 · ' + ip.address : 'IP 定位（城市级）');
+                setDingWeiTai('ok');
+                setDingWeiYin('已用 IP 定位到' + (ip.address || '大致位置') + '（城市级精度，桌面无 GPS 的极限）');
+                tuijianZhouBian(c);
+                if (!ziDong) run(c);
+                else ziDongTiJian(c);
+                return;
+              }
+              setDingWeiTai('fail');
+              setDingWeiYin(yuan + '；IP 定位也不可用（' + ((ip && ip.reason) || '未知') + '）');
+            })
+            .catch(() => {
+              setDingWeiTai('fail');
+              setDingWeiYin(yuan);
+            });
+          if (!ziDong) return; // 手动定位：等 IP 兜底结果，不再走下面的 alert
+          ziDongTiJian(); // 自动体检不拦着：先用兜底默认社区跑
+          return;
+        }
         setDingWeiTai('fail');
         setDingWeiYin(yuan);
         if (!ziDong) alert('定位失败：' + yuan + '。可改在地图上选点或拖动蓝色图钉。');
@@ -1295,6 +1397,12 @@ export function App() {
   const [shiJiaoXuan, setShiJiaoXuan] = useState(false);
   const [daoHangPing, setDaoHangPing] = useState(false); // 全屏导航页显隐
   const daoHangDongRef = useRef(null);
+  // 走法互斥令牌：模拟行走动画 / 模拟 GPS 心跳 / 真实 GPS 三路，启动任一路都让令牌 +1，
+  // 旧的那一路下一拍发现令牌变了就自行退出（而不是只靠 cancelAnimationFrame / clearInterval——
+  // 取消在回调已入队或句柄被覆盖时会失效，曾出现「动画与模拟 GPS 同时推进」：
+  // 进度乱窜、速度显示成动画的 43.2km/h，看着像开飞机）
+  const zouFaDaiRef = useRef(0);
+  const daoHangCiRef = useRef(0); // 导航局号：每次开始/继续/重放导航 +1，地图端据此识别「新一局」并整局重开（重画路线高亮、重新落到路上）
   // 地图工具状态（AI 导航卡与地图工具条共用，MapCanvas 负责落到地图上）
   const [diTuLuKuang, setDiTuLuKuang] = useState(false);
   const [diTuWeiXing, setDiTuWeiXing] = useState(false);
@@ -1308,7 +1416,6 @@ export function App() {
   const buXingRef = useRef(null);
   buXingRef.current = buXing;
   const muDiRef = useRef(null); // 当前目的地引用（uid + 设施点）
-  const chongFangRef = useRef(false); // 方式切换后路线就绪需重放导航
   const zaiGuiHuaRef = useRef(false); // 出行方式重规划进行中（防重复触发）
   const daiDaoHangRef = useRef(null); // 体检期间收到的导航请求，体检完成后自动执行
   // 出行方式：步行（默认，走服务端真实路网）/ 骑行 / 驾车 / 公交（走浏览器端 JS API 规划）
@@ -1352,10 +1459,67 @@ export function App() {
     { jian: 'driving', ming: '驾车', tu: Car },
     { jian: 'transit', ming: '公交', tu: Bus }
   ];
+  // —— 跳转百度地图官方导航：把当前起终点交给「地图调起 URI API」（direction 接口）——
+  // 手机端优先用 baidumap:// 协议唤起百度地图 App，短时间内页面没退后台（没装 App /
+  // 唤起失败）就兜底打开网页版路线页；桌面端没有 App 可唤，直接开网页版。
+  // 坐标系说明：本项目起终点坐标全部来自百度地图（BD-09 经纬度），调起时必须带
+  // coord_type=bd09ll，缺省会按 WGS-84 解读导致目的地整体偏移几百米。
+  function daiKaiBaiDuDaoHang() {
+    const mu = muDiRef.current;
+    if (!mu || !mu.dian) return;
+    const shiShouJi = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+    let moBaiDu = {
+      walk: 'walking',
+      riding: 'riding',
+      driving: 'driving',
+      transit: 'transit'
+    }[chuXing] || 'walking';
+    // 骑行只有百度地图 App 端支持：网页版 direction 传 riding 会被当无效请求、
+    // 参数全丢落到裸首页（实测）。桌面端只有网页版可开，降级为步行路线跳过去，
+    // 落地页里百度自带「骑行」标签可一键切回；手机端 App 唤起保持真实骑行
+    if (!shiShouJi && moBaiDu === 'riding') moBaiDu = 'walking';
+    // 起终点写成 latlng:纬度,经度|name:名称 的官方格式，名称里可能带特殊字符需编码
+    const qiZuo = `latlng:${center.lat},${center.lng}|name:${encodeURIComponent(curName || '我的位置')}`;
+    const zhongZuo = `latlng:${mu.dian.lat},${mu.dian.lng}|name:${encodeURIComponent(mu.dian.ming || '目的地')}`;
+    const laiYuan = 'webapp.yangguangdaohang';
+    // region（城市名）是网页版 direction 的必选参数：实测缺失时百度会把全部参数丢掉、
+    // 只落到裸地图首页不规划路线；优先从中心点名称里取「·」前的城市段（如
+    // 「长沙·砂子塘社区」→「长沙」，跳过「IP 定位」这类前缀），取不到就用「中国」
+    // 兜底（实测 region=中国 同样能带着起终点坐标进入路线规划页）
+    const chengShiDuan = (curName || '')
+      .split('·')
+      .map(s => s.trim())
+      .find(s => s && s !== 'IP 定位' && s.length <= 6 && !/[省市区县]$/.test(s));
+    const quYu = encodeURIComponent(chengShiDuan || '中国');
+    const wangYeLian =
+      `https://api.map.baidu.com/direction?origin=${qiZuo}` +
+      `&destination=${zhongZuo}&mode=${moBaiDu}&region=${quYu}` +
+      `&coord_type=bd09ll&output=html&src=${laiYuan}`;
+    if (shiShouJi) {
+      const appLian =
+        `baidumap://map/direction?origin=${qiZuo}` +
+        `&destination=${zhongZuo}&mode=${moBaiDu}` +
+        `&coord_type=bd09ll&src=${laiYuan}`;
+      let tuiHouTai = false;
+      const jiXia = () => {
+        tuiHouTai = true;
+      };
+      document.addEventListener('visibilitychange', jiXia, { once: true });
+      window.location.href = appLian;
+      setTimeout(() => {
+        document.removeEventListener('visibilitychange', jiXia);
+        // 页面还在前台 = App 没被唤起，兜底网页版
+        if (!tuiHouTai && !document.hidden) window.open(wangYeLian, '_blank');
+      }, 800);
+    } else {
+      window.open(wangYeLian, '_blank');
+    }
+  }
   const chuXingBiao = (CHU_XING.find(c => c.jian === (buXing && buXing.chuXing)) || CHU_XING[0])
     .ming;
   // 只停播放、不出全屏导航页（换出行方式重规划时用，避免把用户踢出导航）
   function tingZhiBoFang() {
+    zouFaDaiRef.current++; // 令牌作废：动画帧下一拍即便被调度进来也会自行退出
     if (daoHangDongRef.current) cancelAnimationFrame(daoHangDongRef.current);
     daoHangDongRef.current = null;
     setDaoHangTai(null);
@@ -1363,8 +1527,10 @@ export function App() {
   // 导航页里的「暂停」：停掉动画但保留进度（daoHangTai 置 kai=false），
   // 「继续导航」可从当前里程接着走，而不是从头重来
   function zhanTingBoFang() {
+    zouFaDaiRef.current++;
     if (daoHangDongRef.current) cancelAnimationFrame(daoHangDongRef.current);
     daoHangDongRef.current = null;
+    tingZhiMoNiGps(); // 暂停时也关掉模拟 GPS 信号，保持单一走法
     setDaoHangTai(prev => (prev && prev.kai ? { ...prev, kai: false } : prev));
   }
   const [suiShouTai, setSuiShouTai] = useState(''); // 标记此处按钮态：'' / cun 保存中 / ok 成功闪烁
@@ -1428,20 +1594,19 @@ export function App() {
   function tingZhiDaiLu() {
     tingZhiBoFang();
     tingZhiGpsGenSui();
+    tingZhiMoNiGps();
     setDaoHangPing(false);
-    // 已退出全屏导航页，「方式切换后自动重放」标记必须清掉——
-    // 否则之后设新终点路线就绪时会被当成本次切方式的重放请求，导航页自动弹回来
-    chongFangRef.current = false;
+    setDiTuQingXie(false); // 导航的 3D 近景是导航态专属，退出恢复普通平视图
   }
   // 切换出行方式：只是「切换采用的路线」——各方式路线早已并行规划好并画在地图上；
-  // 若该方式还没规划好（极少数），补一次全量规划。导航中切换自动重放新路线
+  // 若该方式还没规划好（极少数），补一次全量规划。
+  // 注意：切换后绝不自动重放导航（曾经「切个方式蓝点就自己开走」）——
+  // 想走必须用户自己点「继续导航 / 重新导航」，不点就一直停着
   function qieHuanChuXing(mode) {
     if (mode === chuXing) return;
-    const zaiNav = !!daoHangTai || daoHangPing;
     tingZhiBoFang();
     setChuXing(mode);
     setJiaoTongKai(true); // 弹「路线方案」窗口（公交多方案 / 其他单路线）
-    chongFangRef.current = zaiNav; // 路线就绪后若在导航中则自动重放
     if (muDiRef.current && !luXianZuRef.current[mode]) guiHuaQuanBu(muDiRef.current.dian);
   }
   // 聊天「你想怎么去」方式卡被点击：切换采用该方式路线 + 弹路线方案窗 + AI 回一句推荐
@@ -1529,12 +1694,18 @@ export function App() {
     fangWeiCunRef.current = fangWeiJiao(wei, qian);
     return fangWeiCunRef.current;
   }
-  // 开始导航：进入全屏导航页并播放（视觉速度约 12m/s，全程最短 10 秒、最长 60 秒）；
+  // 开始导航：进入全屏导航页并按「真实速度」播放——速度取百度给出的该出行方式耗时折算
+  // （步行 515 米约 6 分钟 → 约 1.33 米/秒即 4.8km/h），走完全程花的就是真实时间；
   // 可显式传入路线；congJinDuM 传已走里程则从该处继续（「继续导航」用），缺省从头走
+  // 开始 / 继续导航：进入全屏导航页，跟随「真实位置」——绝不自己演。
+  // 有真实定位（手机端 GPS）就走哪跟哪；桌面没有 GPS 芯片，蓝点静止等待，
+  // 宽限期后会提示精度不足并停住，要看行走演示请点「模拟GPS」。人不移动蓝点就不动。
+  // congJinDuM 传已走里程则从该处继续（「继续导航」用），缺省从头走
   function kaiShiDaiLu(luZhiDing, congJinDuM) {
     const lu = luZhiDing || buXingRef.current;
     if (!lu || lu.zhuangTai !== 'ok' || !lu.polyline || lu.polyline.length < 2) return;
     if (daoHangDongRef.current) cancelAnimationFrame(daoHangDongRef.current);
+    tingZhiMoNiGps(); // 关掉模拟 GPS，避免两种走法互相打架
     const buZou = shengChengBuZou(lu.polyline);
     const duan = [];
     let quanCheng = 0;
@@ -1544,66 +1715,29 @@ export function App() {
       quanCheng += d;
     }
     const qiDu = Math.min(quanCheng - 1, Math.max(0, Number(congJinDuM) || 0));
-    const zongMiao = Math.min(60, Math.max(10, (quanCheng - qiDu) / 12));
-    const qiShi = performance.now();
+    setDiTuQingXie(true); // 导航默认 3D 近景（右上角 3D 开关同步点亮，退出导航恢复平视）
     setDaoHangPing(true);
+    const daoHangCi = ++daoHangCiRef.current; // 局号 +1：地图端识别「新一局」，整局重开（重画高亮、重新落到路上）
     const qiWei = yanXianQuDian(lu.polyline, duan, quanCheng, qiDu);
-    const qiQian = yanXianQuDian(lu.polyline, duan, quanCheng, qiDu + 60);
+    // 前视距离 18 米：导航近景固定在 21 级，屏幕纵向只覆盖约 50 米，
+    // 沿用旧的 60 米前视会把蓝点甩到屏幕外（用户看不到自己位置的箭头）
+    const qiQian = yanXianQuDian(lu.polyline, duan, quanCheng, qiDu + 18);
     setDaoHangTai({
       kai: true,
+      ci: daoHangCi,
       quanChengM: quanCheng,
       shengYuM: quanCheng - qiDu,
       jinDuM: qiDu,
       weiZhi: qiWei,
       qianWang: qiQian, // 开局也看向前方，构图从第一帧就正确
       fangWei: wenDingFangWei(qiWei, qiQian), // 实时方位角（度，顺时针 0=正北），驱动小蓝点箭头朝向
-      buWen: '沿路线出发',
+      suDu: 0, // 还没动就是没动；真实速度由定位推算（gpsShuaXin），桌面无定位时保持 0
+      buWen: '导航已就绪，等待真实定位…',
       buJiao: buZou.length ? buZou[0].jiao : 0
     });
-    const bu = now => {
-      const p = Math.min(1, (now - qiShi) / (zongMiao * 1000));
-      const muBiao = qiDu + (quanCheng - qiDu) * p;
-      const wei = yanXianQuDian(lu.polyline, duan, quanCheng, muBiao);
-      // 相机视线放在前方 60 米：小蓝点沉到屏幕下三分之一，前方路面占视野主体（真导航构图）
-      const qianWang = yanXianQuDian(lu.polyline, duan, quanCheng, muBiao + 60);
-      // 当前所处「步」：八方位转向提示（北为 0°）
-      const FANG = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
-      // 内层不能叫 bu：外层动画帧函数就叫 bu，重名会把 1568 行 requestAnimationFrame(bu)
-      // 遮蔽成传步对象，rAF 抛 TypeError，动画第一帧后即冻结（表现为暂停/继续导航都没反应）
-      const dqBu = buZou.find(s => muBiao >= s.qiLei && muBiao < s.zhiLei);
-      const daoDaQian = quanCheng - muBiao < 30;
-      const buWen = daoDaQian
-        ? '即将到达目的地'
-        : dqBu
-          ? `${FANG[Math.round(dqBu.jiao / 45) % 8]}向直行 · 剩余 ${Math.max(1, Math.round(dqBu.zhiLei - muBiao))} 米`
-          : '沿路线前进';
-      const buJiao = dqBu ? dqBu.jiao : 0;
-      setDaoHangTai({
-        kai: p < 1,
-        quanChengM: quanCheng,
-        shengYuM: quanCheng * (1 - p),
-        jinDuM: muBiao,
-        weiZhi: wei,
-        qianWang,
-        fangWei: wenDingFangWei(wei, qianWang),
-        buWen,
-        buJiao
-      });
-      if (p < 1) {
-        daoHangDongRef.current = requestAnimationFrame(bu);
-      } else {
-        daoHangDongRef.current = null;
-        // 到达：聊天里报一声（导航页停留，底部显示已到达，点退出返回）
-        const ming = lu.dian && lu.dian.name;
-        const daoTiao = {
-          role: 'ai',
-          wen: `🏁 已带你到达${ming ? `「${ming}」` : '目的地'}附近，这一路设施覆盖情况可以在报告里细看。`
-        };
-        setLiaoTianLieBiao(prev => [...prev, daoTiao]);
-        ltBaoCun([daoTiao], null);
-      }
-    };
-    daoHangDongRef.current = requestAnimationFrame(bu);
+    // 挂真实定位跟随：手机端有 GPS 就走哪跟哪；桌面无芯片会在宽限后提示精度不足并停住，
+    // 蓝点绝不自己走——要看行走演示请点「模拟GPS」
+    qiDongGpsGenSui();
   }
 
   // —— GPS 实时跟随：真实设备定位驱动小蓝点（模拟动画之外的另一种走法）——
@@ -1611,7 +1745,17 @@ export function App() {
   const [gpsGenSui, setGpsGenSui] = useState(false);
   const gpsWatchRef = useRef(null); // watchPosition 句柄
   const gpsJinDuRef = useRef(0); // 最近一次 GPS 投影出的已走里程（定位失败退回模拟时用）
+  const gpsShiJianRef = useRef(0); // 最近一次接受 GPS 定位的时间戳（双向限速防漂移用）
   const gpsDaoDaRef = useRef(false); // GPS 模式下是否已报过「到达」（防重复推送）
+  const gpsKuanShiRef = useRef(0); // 首次收到低精度定位的时间戳：15 秒宽限期等不到高精度就停止跟随
+  // 「模拟 GPS 信号」开关：无真实 GPS（桌面演示）时，用一条预设轨迹按真实步行速度
+  // 持续喂给同一套 gpsShuaXin 流水线——UI / 相机 / 指引与真机 GPS 跟随完全一致，
+  // 仅在顶栏明确标注「模拟 GPS 信号」，绝不冒充真实定位。
+  const [moNiGps, setMoNiGps] = useState(false);
+  const moNiGpsRef = useRef(false);
+  const moNiGpsTimerRef = useRef(null); // setInterval 句柄
+  const moNiGpsLiRef = useRef(0); // 当前模拟里程
+  const moNiGpsShiJianRef = useRef(0); // 上一帧时间戳
   // 把一个点投影到路线上，返回沿线的已走里程（米）——GPS 定位点不会精确落在路线上，需吸附到最近线段
   function luJingTouYing(polyline, duan, p) {
     // 局部平面近似：经度乘 cos(lat) 折算米，纬度按 110540 米/度，短距离误差可忽略
@@ -1644,46 +1788,106 @@ export function App() {
     // 定位点可能离路线几百上千米，这种「漂移」点不能拿来推进导航进度
     return { li: jieGuo, ju: zuiJin === Infinity ? 0 : zuiJin };
   }
-  // 按 GPS 位置刷新导航状态（投影里程 → 剩余 / 指引 / 相机引导点，与模拟动画同一套状态结构）
+  // 路线派生数据缓存：段长/总里程/步进数组只随路线重算一次。
+  // GPS 心跳每 400ms 全量重算一遍 O(n) 派生数据纯属浪费（同一条路线结果不变）
+  const gpsPaiShengRef = useRef({ xian: null, duan: [], quanCheng: 0, buZou: [] });
+  // HUD 推送门控：只有「有意义的展示值」变化才 setDaoHangTai——
+  // 此前心跳每次都推新状态，导航文字里的「剩余 X 米」每米都变，
+  // 巨型 App 组件树每 400ms 就全量重渲染一次，模拟 GPS 模式持续掉帧
+  const dhTuiRef = useRef({ wen: '', yu: -1, zou: -1, su: -1 });
+  // 按 GPS 位置刷新导航状态（投影里程 → 剩余 / 指引 / 相机引导点，与模拟动画同一套状态结构）。
+  // yiZhiLi：模拟 GPS 直接给的已知精确里程（喂的点本来就在路线上，无需投影）；
   // 投影点离路线超过 300 米视为定位漂移（IP 粗定位 / 信号弱），不推进进度，蓝点停在原地
-  function gpsShuaXin(lu, c) {
-    const duan = [];
-    let quanCheng = 0;
-    for (let i = 1; i < lu.polyline.length; i++) {
-      const d = liangDianJuLi(lu.polyline[i - 1], lu.polyline[i]);
-      duan.push(d);
-      quanCheng += d;
+  function gpsShuaXin(lu, c, yiZhiLi) {
+    let ps = gpsPaiShengRef.current;
+    if (ps.xian !== lu.polyline) {
+      const duan = [];
+      let quanCheng = 0;
+      for (let i = 1; i < lu.polyline.length; i++) {
+        const d = liangDianJuLi(lu.polyline[i - 1], lu.polyline[i]);
+        duan.push(d);
+        quanCheng += d;
+      }
+      ps = { xian: lu.polyline, duan, quanCheng, buZou: shengChengBuZou(lu.polyline) };
+      gpsPaiShengRef.current = ps;
     }
-    const buZou = shengChengBuZou(lu.polyline);
-    const touYing = luJingTouYing(lu.polyline, duan, c);
+    const { duan, quanCheng, buZou } = ps;
+    // 里程来源二选一：
+    // 模拟 GPS 直接给「已知精确里程」（喂的点本来就在路线上）——跳过投影。
+    // 路线有折返 / 平行路段时，投影会把喂的点吸附到另一段，里程来回蹦，箭头跟着乱转（实测截图）；
+    // 真实 GPS 没有里程可用，仍走投影 + 300 米漂移护栏
+    const touYing =
+      yiZhiLi != null
+        ? { li: Math.min(quanCheng, Math.max(0, yiZhiLi)), ju: 0 }
+        : luJingTouYing(lu.polyline, duan, c);
     if (touYing.ju > 300) {
       setDaoHangTai(prev =>
         prev ? { ...prev, kai: true, buWen: 'GPS 信号弱，定位漂移中，蓝点暂不移动' } : prev
       );
       return;
     }
-    const jinDu = Math.min(quanCheng, Math.max(0, touYing.li));
+    // GPS 投影里程不能直接当进度——静止或慢走时，GPS 抖动 / WiFi 重估计 / 路线平行段
+    // （去程回程重合、环路）会让投影点跳到更靠后的路段，里程猛地往前窜，观感就是
+    // 「蓝点自己跑到终点」。这里做双向限速：单次前进/后退都不得超过「2 倍步行速度 ×
+    // 两次定位间隔」，把平行路段误投影、信号漂移造成的假位移滤掉，真走才真动。
+    const xinLi = Math.min(quanCheng, Math.max(0, touYing.li));
+    const shangCi = gpsJinDuRef.current || 0;
+    const jianGe = gpsShiJianRef.current ? (Date.now() - gpsShiJianRef.current) / 1000 : 0;
+    // 双向限速上限按出行方式取真实速度（步行 80、骑行 200、驾车 500、公交 300 米/分钟），
+    // 2 倍容差；此前写死按步行 80 算，骑行/驾车演示会被限速阀「拖慢」
+    const moSu = MO_NI_SU_BIAO[lu.chuXing] || MO_NI_SU_BIAO.walk;
+    const zuiDa = Math.max(5, 2 * moSu * (jianGe || 1)); // 首帧 jianGe=0 时取下限
+    let jinDu;
+    if (xinLi >= shangCi) {
+      jinDu = Math.min(xinLi, shangCi + zuiDa);
+    } else {
+      jinDu = Math.max(xinLi, shangCi - zuiDa);
+    }
     gpsJinDuRef.current = jinDu;
+    gpsShiJianRef.current = Date.now();
     const FANG = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
     const dqBu = buZou.find(s => jinDu >= s.qiLei && jinDu < s.zhiLei);
     const daoDaQian = quanCheng - jinDu < 30;
     const wei = yanXianQuDian(lu.polyline, duan, quanCheng, jinDu);
-    const qian = yanXianQuDian(lu.polyline, duan, quanCheng, jinDu + 60);
-    setDaoHangTai({
-      kai: true,
-      quanChengM: quanCheng,
-      shengYuM: quanCheng - jinDu,
-      jinDuM: jinDu,
-      weiZhi: wei,
-      qianWang: qian,
-      fangWei: wenDingFangWei(wei, qian), // 蓝点箭头朝向：沿线前进方向（度，顺时针 0=正北）
-      buWen: daoDaQian
-        ? '即将到达目的地'
-        : dqBu
-          ? `${FANG[Math.round(dqBu.jiao / 45) % 8]}向直行 · 剩余 ${Math.max(1, Math.round(dqBu.zhiLei - jinDu))} 米`
-          : '沿路线前进',
-      buJiao: dqBu ? dqBu.jiao : 0
-    });
+    const qian = yanXianQuDian(lu.polyline, duan, quanCheng, jinDu + 18); // 相机视线：前方 18 米
+    // 箭头朝向用 6 米短前视——贴着当前位置所在路段的实际走向；
+    // 用 18 米长前视在弯道处会「抄近路」，箭头看着不沿路
+    const jianTou = yanXianQuDian(lu.polyline, duan, quanCheng, jinDu + 6);
+    const fw = wenDingFangWei(wei, jianTou); // 蓝点箭头朝向：沿线前进方向（度，顺时针 0=正北）
+    // 位置帧直发地图端：模拟/真实 GPS 的蓝点与镜头即时跟随，不等低频的状态推送
+    window.dispatchEvent(
+      new CustomEvent('sq_dh_wei', { detail: { weiZhi: wei, qianWang: qian, fangWei: fw } })
+    );
+    // 实时速度（km/h）：由限速后的进度差 / 间隔时间推算，负位移（漂移回退）记 0
+    const suDu = Number(
+      Math.max(0, Math.min(25, ((jinDu - shangCi) / (jianGe || 0.4)) * 3.6)).toFixed(1)
+    );
+    // 展示值按粒度取整：剩余/已走 5 米、速度 0.5km/h、段内剩余 10 米（文字）
+    const yu = Math.round((quanCheng - jinDu) / 5) * 5;
+    const zou = Math.round(jinDu / 5) * 5;
+    const su1 = Math.round(suDu * 2) / 2;
+    const buWen = daoDaQian
+      ? '即将到达目的地'
+      : dqBu
+        ? `${FANG[Math.round(dqBu.jiao / 45) % 8]}向直行 · 剩余 ${Math.max(1, Math.round((dqBu.zhiLei - jinDu) / 10) * 10)} 米`
+        : '沿路线前进';
+    const tui = dhTuiRef.current;
+    if (buWen !== tui.wen || yu !== tui.yu || zou !== tui.zou || su1 !== tui.su) {
+      dhTuiRef.current = { wen: buWen, yu, zou, su: su1 };
+      setDaoHangTai({
+        kai: true,
+        ci: daoHangCiRef.current,
+        quanChengM: quanCheng,
+        shengYuM: quanCheng - jinDu,
+        jinDuM: jinDu,
+        weiZhi: wei,
+        qianWang: qian,
+        fangWei: fw,
+        suDu,
+        buWen,
+        buJiao: dqBu ? dqBu.jiao : 0
+      });
+    }
     if (daoDaQian && !gpsDaoDaRef.current) {
       gpsDaoDaRef.current = true;
       const ming = lu.dian && lu.dian.name;
@@ -1702,18 +1906,42 @@ export function App() {
       cancelAnimationFrame(daoHangDongRef.current);
       daoHangDongRef.current = null;
     }
+    tingZhiMoNiGps(); // 进真实 GPS 前，先关掉模拟 GPS 信号
+    const zouDai = ++zouFaDaiRef.current; // 本路令牌：拿到旧令牌的回调一律不推进
     gpsDaoDaRef.current = false;
+    gpsJinDuRef.current = 0;
+    gpsShiJianRef.current = 0;
+    gpsKuanShiRef.current = 0;
     setGpsGenSui(true);
     setDaoHangTai(prev => (prev ? { ...prev, kai: true, buWen: 'GPS 定位中…' } : prev));
     gpsWatchRef.current = navigator.geolocation.watchPosition(
       pos => {
+        if (zouDai !== zouFaDaiRef.current) return; // 已切走法：这拍定位不再推进
         const lu = buXingRef.current;
         if (!lu || lu.zhuangTai !== 'ok' || !lu.polyline || lu.polyline.length < 2) return;
-        // 精度圈大于 100 米的定位（IP 粗定位）不可信，直接丢弃，等更准的定位再来
+        // 精度圈大于 100 米的定位（IP 粗定位）一律不用于推进：桌面浏览器没有 GPS 芯片，
+        // 只有 WiFi/IP 粗定位（常见 ±100 米～数公里），定位漂移投影到路线上会让蓝点
+        // 「人没动它自己走」——这是假跟随。给 15 秒宽限期等高精度，等不到就明确停下并告知，
+        // 绝不拿漂移冒充行走；真实跟随请在手机端使用，桌面演示请用「模拟GPS」
         if (pos.coords && pos.coords.accuracy && pos.coords.accuracy > 100) {
+          if (!gpsKuanShiRef.current) gpsKuanShiRef.current = Date.now();
+          if (Date.now() - gpsKuanShiRef.current < 15000) {
+            setDaoHangTai(prev =>
+              prev ? { ...prev, kai: true, buWen: `GPS 定位精度差（±${Math.round(pos.coords.accuracy)} 米），等待更准的定位…` } : prev
+            );
+            return;
+          }
+          if (!gpsWatchRef.current) return; // 错误/超时可能连发，已处理过就忽略
+          const cuoTiao = {
+            role: 'ai',
+            wen: `📡 桌面设备没有 GPS 芯片，网络定位精度只有 ±${Math.round(pos.coords.accuracy)} 米，分不清「真走」还是「定位漂移」，已停止 GPS 跟随并把蓝点停在原地，不会自己往前走。要演示请点「模拟GPS」，要真实跟随请用手机端打开本页再点 GPS 跟随。`
+          };
+          tingZhiGpsGenSui();
           setDaoHangTai(prev =>
-            prev ? { ...prev, kai: true, buWen: `GPS 定位精度差（±${Math.round(pos.coords.accuracy)} 米），等待更准的定位…` } : prev
+            prev ? { ...prev, kai: false, buWen: 'GPS 精度不足，已停在原地' } : prev
           );
+          setLiaoTianLieBiao(prev => [...prev, cuoTiao]);
+          ltBaoCun([cuoTiao], null);
           return;
         }
         gpsShuaXin(lu, { lng: pos.coords.longitude, lat: pos.coords.latitude });
@@ -1739,11 +1967,82 @@ export function App() {
   }
   // 关闭 GPS 跟随：摘掉 watch，回到模拟模式
   function tingZhiGpsGenSui() {
+    zouFaDaiRef.current++; // 令牌作废：残留的定位回调不再推进进度
     if (gpsWatchRef.current != null && navigator.geolocation) {
       navigator.geolocation.clearWatch(gpsWatchRef.current);
     }
     gpsWatchRef.current = null;
     setGpsGenSui(false);
+  }
+  // 模拟 GPS 信号：按当前出行方式的真实速度沿路线持续喂点给 gpsShuaXin，
+  // 让桌面无真 GPS 时也能演示「实时跟随」的镜头/箭头/指引效果；明确标注为模拟，不冒充真实定位。
+  // 速度按方式取真实值：步行 80、骑行 200、驾车 500、公交 300 米/分钟——骑行演示不能还是步行速度
+  const MO_NI_SU_BIAO = { walk: 80 / 60, riding: 200 / 60, driving: 500 / 60, transit: 300 / 60 };
+  function qiDongMoNiGps() {
+    const lu = buXingRef.current;
+    if (!lu || lu.zhuangTai !== 'ok' || !lu.polyline || lu.polyline.length < 2) return;
+    // 进模拟 GPS 前先停掉模拟行走动画与真实 GPS，避免三种走法互相打架
+    if (daoHangDongRef.current) {
+      cancelAnimationFrame(daoHangDongRef.current);
+      daoHangDongRef.current = null;
+    }
+    tingZhiGpsGenSui();
+    gpsDaoDaRef.current = false;
+    const duan = [];
+    let quanCheng = 0;
+    for (let i = 1; i < lu.polyline.length; i++) {
+      const d = liangDianJuLi(lu.polyline[i - 1], lu.polyline[i]);
+      duan.push(d);
+      quanCheng += d;
+    }
+    // 从当前进度接着走（导航里走到哪，演示就从哪继续），不是每次都回起点
+    const qiJin = Math.min(quanCheng, Math.max(0, Number(daoHangTai && daoHangTai.jinDuM) || 0));
+    gpsJinDuRef.current = qiJin;
+    gpsShiJianRef.current = 0;
+    moNiGpsLiRef.current = qiJin;
+    moNiGpsShiJianRef.current = 0;
+    moNiGpsRef.current = true;
+    setMoNiGps(true);
+    setDaoHangTai(prev =>
+      prev ? { ...prev, kai: true, buWen: '模拟 GPS 信号 · 沿路线出发' } : prev
+    );
+    const zouDai = ++zouFaDaiRef.current; // 本路令牌：动画那一路拿到旧令牌会自动收手
+    const xinTiao = setInterval(() => {
+      // 令牌与开关双保险：任一不对就自毁心跳，绝不和别的走法一起推进度
+      if (zouDai !== zouFaDaiRef.current || !moNiGpsRef.current) {
+        clearInterval(xinTiao);
+        return;
+      }
+      const l = buXingRef.current;
+      if (!l || l.zhuangTai !== 'ok') {
+        tingZhiMoNiGps();
+        return;
+      }
+      const xianZai = Date.now();
+      const dt = moNiGpsShiJianRef.current ? (xianZai - moNiGpsShiJianRef.current) / 1000 : 0.4;
+      moNiGpsShiJianRef.current = xianZai;
+      const moSu = MO_NI_SU_BIAO[l.chuXing] || MO_NI_SU_BIAO.walk; // 该出行方式的模拟速度
+      let li = moNiGpsLiRef.current + moSu * dt;
+      if (li >= quanCheng) {
+        li = quanCheng;
+        moNiGpsLiRef.current = li;
+        gpsShuaXin(l, yanXianQuDian(l.polyline, duan, quanCheng, li), li);
+        tingZhiMoNiGps();
+        return;
+      }
+      moNiGpsLiRef.current = li;
+      gpsShuaXin(l, yanXianQuDian(l.polyline, duan, quanCheng, li), li);
+    }, 400);
+    moNiGpsTimerRef.current = xinTiao;
+  }
+  function tingZhiMoNiGps() {
+    zouFaDaiRef.current++; // 令牌作废：若还有别的走法在跑（异常残留），下一拍也会自行收手
+    if (moNiGpsTimerRef.current != null) {
+      clearInterval(moNiGpsTimerRef.current);
+      moNiGpsTimerRef.current = null;
+    }
+    moNiGpsRef.current = false;
+    setMoNiGps(false);
   }
 
   // 路线被清掉 / 换了新路线 / 组件卸载时，自动停止播放（全屏导航页保留，供重新开始）
@@ -1751,16 +2050,18 @@ export function App() {
     if (!buXing || buXing.zhuangTai !== 'ok') {
       tingZhiBoFang();
       tingZhiGpsGenSui();
+      tingZhiMoNiGps();
     }
   }, [buXing]);
   useEffect(
     () => () => {
       tingZhiBoFang();
       tingZhiGpsGenSui();
+      tingZhiMoNiGps();
     },
     []
   );
-  // 当前采用方式的路线就绪后同步到 buXing（导航 / 地图高亮用它）；方式切换后导航中自动重放
+  // 当前采用方式的路线就绪后同步到 buXing（导航 / 地图高亮用它）；只同步，不自动开走
   useEffect(() => {
     const x = luXianZu[chuXing];
     const mu = muDiRef.current;
@@ -1782,11 +2083,8 @@ export function App() {
       buXingRef.current.chuXing === chuXing &&
       buXingRef.current.polyline === polyline;
     if (tong) return;
+    // 只同步路线，绝不自动开始行走——想走必须用户点「继续导航 / 重新导航」
     setBuXingLuXian(xin);
-    if (chongFangRef.current) {
-      chongFangRef.current = false;
-      kaiShiDaiLu(xin);
-    }
   }, [luXianZu, chuXing, daoHangTai, daoHangPing]);
   // 步行 / 骑行的阴凉路段：路线点 45 米内有绿地休闲类设施即视为阴凉，聚成绿色分段
   useEffect(() => {
@@ -1853,6 +2151,69 @@ export function App() {
   const [liaoTianWen, setLiaoTianWen] = useState('');
   const [liaoTianZhong, setLiaoTianZhong] = useState(false);
   const ltGunRef = useRef(null);
+
+  // —— 报告面板滚动触底波纹：快速下滑撞到底边时，涟漪从底边中心扩散到整块面板 ——
+  // 视觉直接复用拖动碰撞水波（shuiBo-Tao / shuiHuan），保证两种碰撞手感一致
+  const baoGunShangRef = useRef({ top: 0, t: 0 }); // 上一次滚动位置与时间，用来算滚动速度
+  const baoBoWenShiRef = useRef(0); // 上次触底时间：动画没播完不叠加，防止连刷
+  // 在面板内从波源点扩散三圈涟漪（与拖动碰撞的 yaoHuang 同一套视觉）
+  function chengXianBoWen(mian) {
+    const r = mian.getBoundingClientRect();
+    const tao = document.createElement('span');
+    tao.className = 'shuiBo-Tao gunDi'; // gunDi：套触底专用边缘渐隐遮罩，波纹到边框前先淡出
+    // 面板本身是滚动容器，绝对定位子元素会随内容滚走：把波纹层钉在当前可视区（内容坐标系）
+    tao.style.top = `${mian.scrollTop}px`;
+    tao.style.height = `${mian.clientHeight}px`;
+    mian.appendChild(tao);
+    const zhou = Math.hypot(r.width, r.height); // 覆盖整块面板所需的扩散尺度
+    // 波纹向上涌起的高度：面板高的一半，封顶 300px——波是从底边撞出来的，往面板里涌
+    const yong = Math.min(mian.clientHeight * 0.5, 300);
+    for (let i = 0; i < 3; i++) {
+      const huan = document.createElement('i');
+      huan.className = 'shuiHuan';
+      // 波源：面板底边中间——滚动碰撞撞的就是底边
+      huan.style.left = `${(r.width / 2).toFixed(1)}px`;
+      huan.style.top = `${mian.clientHeight}px`;
+      tao.appendChild(huan);
+      // 圆环一边扩大一边上涌（translate 是未缩放的像素位移，涌起距离不受缩放影响），
+      // 到达面板边缘前透明度已归零，任何方向都不会出现被边框硬裁一半的截断
+      const dong = huan.animate(
+        [
+          { transform: 'translate(-50%, -20px) scale(0.12)', opacity: 0.85 },
+          {
+            transform: `translate(-50%, ${(-70 - yong).toFixed(0)}px) scale(${((zhou / 130) * (1 + i * 0.3)).toFixed(2)})`,
+            opacity: 0
+          }
+        ],
+        {
+          duration: 640 + i * 170,
+          delay: i * 110,
+          easing: 'cubic-bezier(.2,.65,.35,1)',
+          fill: 'forwards'
+        }
+      );
+      dong.onfinish = () => huan.remove();
+    }
+    setTimeout(() => tao.remove(), 1200);
+    // 整块面板再泛一次蓝色光晕描边（复用碰撞态样式），增强「撞上了」的物理感
+    mian.classList.add('pengZhuang');
+    setTimeout(() => mian.classList.remove('pengZhuang'), 500);
+  }
+  function baoBiaoGunDong(e) {
+    const mian = e.currentTarget;
+    const xianZai = performance.now();
+    const shang = baoGunShangRef.current;
+    // 滚动速度（px/毫秒）：只有足够快的下滑才算「碰撞」，慢慢拖到底不算
+    const su = (mian.scrollTop - shang.top) / Math.max(xianZai - shang.t, 1);
+    shang.top = mian.scrollTop;
+    shang.t = xianZai;
+    if (mian.scrollHeight <= mian.clientHeight + 4) return; // 内容不足一屏，无所谓触底
+    const daoDi = mian.scrollTop + mian.clientHeight >= mian.scrollHeight - 2;
+    if (!daoDi || su < 0.5) return;
+    if (xianZai - baoBoWenShiRef.current < 450) return; // 波纹没播完不叠加
+    baoBoWenShiRef.current = xianZai;
+    chengXianBoWen(mian);
+  }
 
   // —— 聊天历史：会话按账号存 localStorage，可回看 / 续聊 / 删除 ——
   const [ltLiShi, setLtLiShi] = useState([]); // 全部历史会话 [{id, shiJian, biaoTi, xiaoXi}]
@@ -2181,7 +2542,7 @@ export function App() {
     <div className="app">
       <header className="header">
         <div className="brand" onClick={logoLianDian} title="15 分钟生活圈智能体检助手">
-          <span className="brand-icon">🧭</span>
+          <img className="brand-icon" src={logoTu} alt="logo" />
           <span className="brand-title">15 分钟生活圈智能体检助手</span>
         </div>
 
@@ -2300,7 +2661,7 @@ export function App() {
                 spring="snappy"
                 size={15}
               />
-              控制面板
+              <span className="tog-wen">控制面板</span>
             </button>
             <button
               type="button"
@@ -2309,7 +2670,7 @@ export function App() {
               onClick={() => qieHuanKai('ai')}
             >
               <MorphIcon icon={kai.ai ? Navigation : NavigationOff} spring="snappy" size={15} />
-              AI 导航
+              <span className="tog-wen">AI 导航</span>
             </button>
             <button
               type="button"
@@ -2322,7 +2683,7 @@ export function App() {
                 spring="snappy"
                 size={15}
               />
-              报告面板
+              <span className="tog-wen">报告面板</span>
             </button>
           </div>
           {/* 赛道要求必须使用百度地图，底图固定为百度，不提供第三方底图切换 */}
@@ -2352,7 +2713,8 @@ export function App() {
           ) : guanLiYuanZai ? (
             <>
               <span className="src-chip" title="管理员身份已登录">
-                🛡 管理员
+                <img className="src-chip-tu" src={guanLiLogoTu} alt="" />
+                管理员
               </span>
               <button
                 className="admin-btn"
@@ -2473,11 +2835,18 @@ export function App() {
                 </svg>
               </span>
               <div className="daoPing-ding-wen">
-                <b>{daoHangTai ? daoHangTai.buWen : '已到达目的地'}</b>
+                <b>
+                  {daoHangTai ? daoHangTai.buWen : '已到达目的地'}
+                  {moNiGps && <i className="daoPing-moni-biao">模拟 GPS 信号</i>}
+                </b>
                 <span>
                   {daoHangTai
-                    ? `剩余 ${Math.round(daoHangTai.shengYuM)} 米 · 约 ${Math.max(1, Math.round(daoHangTai.shengYuM / 80))} 分钟`
+                    ? `剩余 ${Math.round(daoHangTai.shengYuM)} 米 · 约 ${Math.max(
+                        1,
+                        Math.round(daoHangTai.shengYuM / Math.max(1, ((daoHangTai.suDu || 4.8) * 1000) / 60))
+                      )} 分钟 · ${daoHangTai.suDu != null ? daoHangTai.suDu : 0} km/h`
                     : '导航结束，点下方「退出导航」返回'}
+                  {moNiGps && '（演示用，非真实定位）'}
                 </span>
               </div>
             </div>
@@ -2504,30 +2873,65 @@ export function App() {
                 ——此前中途停下或到站后页面没有开始入口，只能退出；
                 「标记此处」把当前小蓝点位置一键标成共享盲区，途中发现缺口随走随记 */}
             <div className="daoPing-cao">
-              <button
-                type="button"
-                className={`daoPing-biao ${suiShouTai === 'ok' ? 'ok' : ''}`}
-                onClick={suiShouBiaoJi}
-                disabled={suiShouTai === 'cun'}
-                title="把当前位置一键标成共享盲区（全员可见）"
-              >
-                <MorphIcon icon={MapPin} size={13} spring="snappy" />
-                {suiShouTai === 'cun' ? '标记中…' : suiShouTai === 'ok' ? '已标记' : '标记此处'}
-              </button>
-              {/* 航向视角开关：默认北朝上画面稳定不晕；开了镜头才随行进方向旋转（航向朝上） */}
-              <button
-                type="button"
-                className={shiJiaoXuan ? 'ok' : ''}
-                onClick={() => setShiJiaoXuan(x => !x)}
-                title={
-                  shiJiaoXuan
-                    ? '当前为航向朝上（镜头随行进方向旋转），点此切回北朝上（画面更稳不易晕）'
-                    : '当前为北朝上（画面稳定），点此开启航向朝上（镜头随行进方向旋转，手机导航同款）'
-                }
-              >
-                🧭 {shiJiaoXuan ? '航向' : '朝北'}
-              </button>
-              {gpsGenSui ? (
+              {/* 辅助行：视角与图层开关（小号深色按钮，与主操作区分层级，避免一行挤爆文字断行） */}
+              <div className="daoPing-cao-fu">
+                {/* 航向视角开关：默认北朝上画面稳定不晕；开了镜头才随行进方向旋转（航向朝上） */}
+                <button
+                  type="button"
+                  className={shiJiaoXuan ? 'ok' : ''}
+                  onClick={() => setShiJiaoXuan(x => !x)}
+                  title={
+                    shiJiaoXuan
+                      ? '当前为航向朝上（镜头随行进方向旋转），点此切回北朝上（画面更稳不易晕）'
+                      : '当前为北朝上（画面稳定），点此开启航向朝上（镜头随行进方向旋转，手机导航同款）'
+                  }
+                >
+                  <MorphIcon icon={Compass} size={12} spring="snappy" />
+                  {shiJiaoXuan ? '航向' : '朝北'}
+                </button>
+                {/* 路况 / 卫星 / 3D：与地图工具条、AI 导航卡同一套开关（diTuGongJu），双向联动；
+                    导航页里直接切，不用退出导航去找工具条 */}
+                {[
+                  ['luKuang', '路况', LuYouLuXian, '实时路况图层'],
+                  ['weiXing', '卫星', Satellite, '卫星影像 / 普通地图'],
+                  ['qingXie', '3D', Axis3d, '3D 倾斜视角']
+                ].map(([jian, biao, tu, ti]) => (
+                  <button
+                    key={jian}
+                    type="button"
+                    className={diTuGongJu[jian] ? 'ok' : ''}
+                    onClick={() => diTuGongJuSheZhi[jian](!diTuGongJu[jian])}
+                    title={ti}
+                  >
+                    <MorphIcon icon={tu} size={12} spring="snappy" />
+                    {biao}
+                  </button>
+                ))}
+              </div>
+              {/* 主行：边走边标 + 走法 + 暂停/继续导航 */}
+              <div className="daoPing-cao-zhu">
+                <button
+                  type="button"
+                  className={`daoPing-biao ${suiShouTai === 'ok' ? 'ok' : ''}`}
+                  onClick={suiShouBiaoJi}
+                  disabled={suiShouTai === 'cun'}
+                  title="把当前位置一键标成共享盲区（全员可见）"
+                >
+                  <MorphIcon icon={MapPin} size={13} spring="snappy" />
+                  {suiShouTai === 'cun' ? '标记中…' : suiShouTai === 'ok' ? '已标记' : '标记此处'}
+                </button>
+                {moNiGps ? (
+                /* 模拟 GPS 信号跟随中：用预设轨迹按真实步行速度喂点，明确标注为模拟；点此停止 */
+                <button
+                  type="button"
+                  className="ok"
+                  onClick={tingZhiMoNiGps}
+                  title="正在用模拟 GPS 信号跟随（明确标注为模拟，不冒充真实定位）；点此停止并切回模拟行走"
+                >
+                  <MorphIcon icon={Radio} size={13} spring="snappy" />
+                  模拟GPS中
+                </button>
+              ) : gpsGenSui ? (
                 /* GPS 实时跟随中：小蓝点由设备定位驱动，暂停/继续无意义，给一个切回模拟的出口 */
                 <button
                   type="button"
@@ -2535,7 +2939,8 @@ export function App() {
                   onClick={tingZhiGpsGenSui}
                   title="正在按设备 GPS 实时定位跟随；点此切回模拟行走"
                 >
-                  📡 GPS 实时
+                  <MorphIcon icon={Satellite} size={13} spring="snappy" />
+                  GPS 实时
                 </button>
               ) : (
                 <>
@@ -2545,11 +2950,22 @@ export function App() {
                     disabled={!buXing || buXing.zhuangTai !== 'ok'}
                     title="用设备 GPS 实时定位驱动小蓝点（走到哪蓝点到哪）；定位失败会停在原地并提示，不会自己往前走"
                   >
-                    📡 GPS 跟随
+                    <MorphIcon icon={Satellite} size={13} spring="snappy" />
+                    GPS 跟随
+                  </button>
+                  <button
+                    type="button"
+                    onClick={qiDongMoNiGps}
+                    disabled={!buXing || buXing.zhuangTai !== 'ok'}
+                    title="无真 GPS（桌面演示）时，用模拟信号按真实步行速度驱动小蓝点；界面明确标注为「模拟 GPS」，不冒充真实定位"
+                  >
+                    <MorphIcon icon={Radio} size={13} spring="snappy" />
+                    模拟GPS
                   </button>
                   {daoHangTai && daoHangTai.kai ? (
-                    <button type="button" onClick={zhanTingBoFang} title="暂停模拟行走">
-                      ⏸ 暂停
+                    <button type="button" onClick={zhanTingBoFang} title="暂停跟随（蓝点停在原地，点「继续导航」恢复）">
+                      <MorphIcon icon={Pause} size={13} spring="snappy" />
+                      暂停
                     </button>
                   ) : (
                     <button
@@ -2570,20 +2986,32 @@ export function App() {
                       title={
                         !buXing || buXing.zhuangTai !== 'ok'
                           ? '当前没有可用路线：请先选目的地或设中心点后重新规划'
-                          : '从当前位置继续模拟行走'
+                          : '从当前位置继续真实跟随导航'
                       }
                     >
-                      {!buXing || buXing.zhuangTai !== 'ok'
-                        ? '🚫 暂无路线'
-                        : daoHangTai &&
-                            daoHangTai.quanChengM > 0 &&
-                            daoHangTai.jinDuM >= daoHangTai.quanChengM - 1
-                          ? '🔁 重新导航'
-                          : '▶ 继续导航'}
+                      {!buXing || buXing.zhuangTai !== 'ok' ? (
+                        <>
+                          <MorphIcon icon={Ban} size={13} spring="snappy" />
+                          暂无路线
+                        </>
+                      ) : daoHangTai &&
+                          daoHangTai.quanChengM > 0 &&
+                          daoHangTai.jinDuM >= daoHangTai.quanChengM - 1 ? (
+                        <>
+                          <MorphIcon icon={RefreshCw} size={13} spring="snappy" />
+                          重新导航
+                        </>
+                      ) : (
+                        <>
+                          <MorphIcon icon={Play} size={13} spring="snappy" />
+                          继续导航
+                        </>
+                      )}
                     </button>
                   )}
                 </>
               )}
+              </div>
             </div>
             {/* 底部信息卡：目的地 / 里程 / 进度条 */}
             <div className="daoPing-di">
@@ -2593,7 +3021,7 @@ export function App() {
                 </span>
                 <span className="daoPing-shu">
                   {daoHangTai
-                    ? `全程 ${Math.round(daoHangTai.quanChengM)} 米 · 已走 ${Math.round(daoHangTai.jinDuM)} 米`
+                    ? `全程 ${Math.round(daoHangTai.quanChengM)} 米 · 已走 ${Math.round(daoHangTai.jinDuM)} 米 · ${daoHangTai.suDu != null ? daoHangTai.suDu : 0} km/h`
                     : '导航完成'}
                 </span>
               </div>
@@ -2634,6 +3062,40 @@ export function App() {
       {/* 左下控制卡片：整块显隐由顶栏开关控制 */}
       <div ref={zuoTuoRef} className={`float-card left-bottom ${kai.zuo ? '' : 'hidden'}`}>
         <div className="panel-title">体检控制</div>
+
+        {/* 开源致谢条：GitHub / Gitee 官方 logo（内联 SVG，不引外部图片资源） */}
+        <div className="kaiYuan-tiao">
+          <span className="kaiYuan-wen">
+            感谢您的支持
+            <i className="kaiYuan-zi">本项目开源地址</i>
+          </span>
+          <span className="kaiYuan-an">
+            <a
+              className="kaiYuan-lian"
+              href={GITHUB_CANGKU}
+              target="_blank"
+              rel="noreferrer"
+              title="GitHub 开源仓库"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+              </svg>
+              GitHub
+            </a>
+            <a
+              className="kaiYuan-lian"
+              href={GITEE_CANGKU}
+              target="_blank"
+              rel="noreferrer"
+              title="Gitee 开源仓库"
+            >
+              <svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor" aria-hidden="true">
+                <path d="M512 1024C229.2 1024 0 794.8 0 512S229.2 0 512 0s512 229.2 512 512-229.2 512-512 512z m259.2-569.6H480c-12.8 0-25.6 12.8-25.6 25.6v64c0 12.8 12.8 25.6 25.6 25.6h176c12.8 0 25.6 12.8 25.6 25.6v12.8c0 41.6-35.2 76.8-76.8 76.8h-240c-12.8 0-25.6-12.8-25.6-25.6V416c0-41.6 35.2-76.8 76.8-76.8h355.2c12.8 0 25.6-12.8 25.6-25.6v-64c0-12.8-12.8-25.6-25.6-25.6H416c-105.6 0-192 86.4-192 192v355.2c0 12.8 12.8 25.6 25.6 25.6h374.4c92.8 0 172.8-76.8 172.8-172.8v-144c0-12.8-12.8-25.6-25.6-25.6z" />
+              </svg>
+              Gitee
+            </a>
+          </span>
+        </div>
 
         <div className="sec">
           <div className="sec-title">
@@ -2795,16 +3257,17 @@ export function App() {
           <div className="dh-tuCeng">
             <span className="dh-tuCeng-biao">地图</span>
             {[
-              ['luKuang', '🚦 路况', '实时路况图层'],
-              ['weiXing', '🛰 卫星', '卫星影像 / 普通地图'],
-              ['qingXie', '🏔 3D', '3D 倾斜视角']
-            ].map(([jian, biao, ti]) => (
+              ['luKuang', '路况', LuYouLuXian, '实时路况图层'],
+              ['weiXing', '卫星', Satellite, '卫星影像 / 普通地图'],
+              ['qingXie', '3D', Axis3d, '3D 倾斜视角']
+            ].map(([jian, biao, tu, ti]) => (
               <button
                 key={jian}
                 className={`dh-tuCeng-an ${diTuGongJu[jian] ? 'on' : ''}`}
                 onClick={() => diTuGongJuSheZhi[jian](!diTuGongJu[jian])}
                 title={ti}
               >
+                <MorphIcon icon={tu} size={12} spring="snappy" />
                 {biao}
               </button>
             ))}
@@ -3086,7 +3549,11 @@ export function App() {
       </div>
 
       {/* 右侧面板：整块显隐由顶栏开关控制 */}
-      <div ref={youTuoRef} className={`float-card right-panel ${kai.you ? '' : 'hidden'}`}>
+      <div
+        ref={youTuoRef}
+        className={`float-card right-panel ${kai.you ? '' : 'hidden'}`}
+        onScroll={baoBiaoGunDong}
+      >
         <div className="panel-title">
           体检报告{report ? ` · ${report.total} 分 ${report.dengji} 级` : ''}
         </div>
@@ -3499,6 +3966,10 @@ export function App() {
                         ? ' · 步行较远，可考虑驾车 / 公交'
                         : ''}
                     </div>
+                    {/* 右侧「开始」圆钮：点卡导航的视觉锚点（点击冒泡到卡片本身） */}
+                    <span className="jiaoTong-ka-go">
+                      <MorphIcon icon={Navigation} size={16} spring="snappy" />
+                    </span>
                   </div>
                 </>
               );
@@ -3506,6 +3977,17 @@ export function App() {
             <div className="lt-ls-tiShi">
               地图同时显示各方式路线，当前采用的加粗；点路线卡即可直接开始导航。
             </div>
+            {/* 次要入口：主推站内导航，不想用时才把起终点交给百度地图官方导航 */}
+            {muDiRef.current && (
+              <button
+                className="jiaoTong-baiDu"
+                onClick={daiKaiBaiDuDaoHang}
+                title="备用方式：手机调起百度地图 App 导航，电脑打开百度地图网页版路线"
+              >
+                <MorphIcon icon={Navigation} size={12} spring="snappy" />
+                也可以用百度地图导航
+              </button>
+            )}
           </div>
         </div>
       )}

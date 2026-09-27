@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('api', {
   routeMatrix: (o, d) => ipcRenderer.invoke('routeMatrix', o, d),
   searchPoi: (c, k, r) => ipcRenderer.invoke('searchPoi', c, k, r),
   reverseGeocode: (p) => ipcRenderer.invoke('reverseGeocode', p),
+  ipDingWei: () => ipcRenderer.invoke('ipDingWei'),
 });
