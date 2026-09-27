@@ -280,14 +280,22 @@ async function qiDongYongHuFuWu() {
 }
 
 app.whenReady().then(async () => {
-  // 动态 import 加载 ESM 适配器（主进程是 CJS，只能这样引 src 下的模块）
-  const { chuangJianBmapServer } = await import('../src/adapters/bmapServer.js');
+  // 动态 import 加载 ESM 适配器（主进程是 CJS，只能这样引 src 下的模块）。
+  // 加载失败绝不能拦住 createWindow——否则打包后进程挂着、窗口永远出不来（灰死）
+  let chuangJianBmapServer = null;
+  try {
+    ({ chuangJianBmapServer } = await import('../src/adapters/bmapServer.js'));
+  } catch (e) {
+    console.error('[data] 数据源适配器加载失败（桌面端检索/算路将不可用）：', e.message);
+  }
   // 多 AK 轮换：主 AK 当日配额超限（baidu:302「天配额超限」）或被禁用（4/5）时，
   // 自动换下一把重试；全部用尽才把最后的错误抛回渲染层（与 vite 中间件的多 AK 架构对齐）。
   // 此前只挂主 AK，配额一满桌面端路线/检索/体检就全挂（表现为「没有当前方案」）
-  const AK_LIE = [process.env.BAIDU_SERVER_AK, process.env.BAIDU_SERVER_AK2]
-    .filter(Boolean)
-    .map(ak => chuangJianBmapServer({ ak, referer: 'http://localhost' }));
+  const AK_LIE = chuangJianBmapServer
+    ? [process.env.BAIDU_SERVER_AK, process.env.BAIDU_SERVER_AK2]
+        .filter(Boolean)
+        .map(ak => chuangJianBmapServer({ ak, referer: 'http://localhost' }))
+    : []; // 适配器加载失败（打包缺文件等）：数据层不可用，但窗口必须照常打开
   let AK_Xu = 0;
   const daiHuan = mingZ => async (...can) => {
     let zuiHou = null;

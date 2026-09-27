@@ -9,6 +9,8 @@ directories:
 files:
   - dist/**
   - electron/**
+  - src/**      # 主进程运行时动态 import 的数据源适配器（bmapServer 等）必须随包
+  - fuwuqi/**   # 主进程内嵌用户/管理员鉴权服务（yonghu-fuwu.mjs）
   - package.json
 win:
   target: nsis
