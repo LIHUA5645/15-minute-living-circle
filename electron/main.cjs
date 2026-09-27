@@ -152,6 +152,99 @@ ipcMain.handle('ipDingWei', async () => {
 // 渲染层在桌面端把 /api 指到 http://127.0.0.1:37777（见 src/core/fuwuDiZhi.js）。
 // MySQL 连接参数复用 .env 的 DB_*；库表结构 / 限流规则 / 种子管理员与服务端完全一致。
 const YONGHU_DUANKOU = 37777;
+// —— /airelay AI 接口中转（与 vite.config.js 的 ai-relay 中间件同构）——
+// 桌面端没有 vite 中间件，AI 对话 / 诊断 / 导航的出站请求改由主进程代理：
+// 前端传 {url, tou, body, fangFa}，主进程转发；密钥只在请求头里过一遍，不落库不落盘。
+// 二级回退：返回内容像网页（Cloudflare 拦截页）时换 Windows 自带 curl.exe 的
+// Schannel TLS 指纹再试一次，过部分厂商的防火墙规则。
+function huiYuanWang(t) {
+  return String(t || '')
+    .trimStart()
+    .startsWith('<');
+}
+function curlQingQiu(execFile, url, tou, body, fangFa) {
+  const canshu = [
+    '-sS',
+    '--max-time',
+    '90',
+    '--compressed',
+    '-X',
+    fangFa === 'GET' ? 'GET' : 'POST',
+    '-H',
+    'Content-Type: application/json',
+    '-H',
+    'Accept: application/json',
+    '-H',
+    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+  ];
+  for (const [k, v] of Object.entries(tou || {})) canshu.push('-H', `${k}: ${v}`);
+  if (fangFa !== 'GET') canshu.push('--data', JSON.stringify(body || {}));
+  canshu.push(url);
+  return new Promise((jie, ju) => {
+    execFile(
+      'curl',
+      canshu,
+      { windowsHide: true, maxBuffer: 20 * 1024 * 1024, timeout: 95000 },
+      (cuo, stdout) => (cuo ? ju(cuo) : jie(stdout))
+    );
+  });
+}
+async function aiZhongZhuan(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    return res.end();
+  }
+  let s = '';
+  req.on('data', (c) => (s += c));
+  req.on('end', async () => {
+    try {
+      const { url, tou, body, fangFa } = JSON.parse(s || '{}');
+      if (!/^https:\/\//.test(String(url || ''))) throw new Error('仅支持 HTTPS 接口地址');
+      const shiGET = fangFa === 'GET';
+      let txt = '';
+      let status = 0;
+      try {
+        const r = await fetch(url, {
+          method: shiGET ? 'GET' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            Accept: 'application/json',
+            ...(tou || {})
+          },
+          ...(shiGET ? {} : { body: JSON.stringify(body || {}) })
+        });
+        txt = await r.text();
+        status = r.status;
+      } catch (e) {
+        txt = JSON.stringify({ ok: false, xinxi: '出站请求失败：' + e.message });
+        status = 502;
+      }
+      if (huiYuanWang(txt)) {
+        try {
+          const { execFile } = require('child_process');
+          const txt2 = await curlQingQiu(execFile, url, tou, body, fangFa);
+          if (!huiYuanWang(txt2)) {
+            txt = txt2;
+            status = 200;
+          }
+        } catch {
+          /* curl 也失败：保留第一级结果 */
+        }
+      }
+      res.statusCode = status;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(txt);
+    } catch (e) {
+      res.statusCode = 502;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ ok: false, xinxi: 'AI 中转失败：' + e.message }));
+    }
+  });
+}
 async function qiDongYongHuFuWu() {
   try {
     const { chuangJianYongHuFuWu } = await import('../fuwuqi/yonghu-fuwu.mjs');
@@ -166,8 +259,11 @@ async function qiDongYongHuFuWu() {
     fuwu.chuShiHua().catch(e => console.error('[yonghu-fuwu] MySQL 初始化失败：', e.message));
     require('http')
       .createServer((req, res) => {
+        const lu = String(req.url || '/');
+        // AI 接口中转：与 /api 同端口同服务，路由前缀不同
+        if (lu.startsWith('/airelay')) return aiZhongZhuan(req, res);
         // 前端统一走 /api 前缀，fuwu 服务内的路由不带前缀，剥掉再交给处理器
-        req.url = String(req.url || '/').replace(/^\/api/, '');
+        req.url = lu.replace(/^\/api/, '');
         fuwu.chuLi(req, res);
       })
       .listen(YONGHU_DUANKOU, '127.0.0.1')
