@@ -1365,8 +1365,8 @@ body {
   }
 }
 .mq-tag.user {
-  background: #fdecec;
-  color: #c93438;
+  background: #fdeaf5;
+  color: #b5338a;
 }
 .mq-shiJian {
   font-size: 11px;
@@ -2766,6 +2766,7 @@ body {
   padding: 10px;
   margin-bottom: 8px;
   transition: 0.15s;
+  cursor: pointer; /* 整条都能点：点一下地图就跳到该盲区 / 该标记 */
 }
 .mq-item:hover {
   box-shadow: 0 3px 10px rgba(229, 72, 77, 0.12);
@@ -2775,6 +2776,23 @@ body {
   background: #fffaf2;
   box-shadow: 0 0 0 2px rgba(255, 140, 0, 0.22);
 }
+/* 地图上点绿色 ✚ 补建点：右侧对应盲区条目亮两下，让人一眼看清是「哪一条」 */
+.mq-item.shan {
+  animation: mq-liang 0.7s ease-in-out 2;
+}
+@keyframes mq-liang {
+  0%,
+  100% {
+    border-color: #f6d6d6;
+    background: #fff7f7;
+    box-shadow: 0 0 0 0 rgba(26, 143, 87, 0);
+  }
+  50% {
+    border-color: #1a8f57;
+    background: #f2fbf6;
+    box-shadow: 0 0 0 4px rgba(26, 143, 87, 0.25);
+  }
+}
 .mq-head {
   display: flex;
   align-items: center;
@@ -2783,6 +2801,16 @@ body {
 .mq-head b {
   color: var(--danger);
   font-size: 13px;
+}
+/* 自标盲区统一成玫红系：与地图上那枚图钉、信息窗里的小徽章同色，一眼对得上 */
+.zi-biao-biao {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #b5338a;
+}
+.zi-biao-biao svg {
+  flex: 0 0 auto;
 }
 /* 盲区标记按钮：点击在地图上定位并高亮 */
 .mq-biaoJi {

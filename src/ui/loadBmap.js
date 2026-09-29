@@ -34,7 +34,8 @@ export function loadBmap() {
     document.head.appendChild(s);
     setTimeout(() => {
       if (!window.BMapGL || !window.BMapGL.Map) reject(new Error('BMap 加载超时'));
-    }, 15000);
+      // 45 秒：百度 CDN 偶发抽风时 1.2MB 的 SDK 要拉十几秒，15 秒会把「慢」误判成「失败」
+    }, 45000);
   });
   // 失败不缓存：下次调用自动重试（此前一次「未就绪」竞态失败会被永久缓存，地图再也加载不出来）
   p.catch(() => {

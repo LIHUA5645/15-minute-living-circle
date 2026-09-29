@@ -47,6 +47,45 @@ function faGuoWaPian(qiDongShi) {
   }
 }
 
+// 补建点（绿色 ✚）的信息窗内容：说清「这个点是什么、为什么建议建在这里、建完能覆盖多少人」。
+// 不依赖任何外部状态，纯拼字符串，供点击图钉时直接丢给 BMapGL.InfoWindow
+function buJianDianChuang(mq) {
+  const dian = mq.buJianDian || {};
+  const que = (mq.quekou || []).join('、') || '便民设施';
+  const dengJi =
+    mq.level === 'red'
+      ? '<span style="margin-left:auto;font-size:11px;color:#b42318;background:#fdeceb;border-radius:9px;padding:1px 7px">重度缺口</span>'
+      : '<span style="margin-left:auto;font-size:11px;color:#1a8f57;background:#e8f6ee;border-radius:9px;padding:1px 7px">轻度缺口</span>';
+  const jianYi = mq.jianyi || `建议在标 ✚ 处增设${que}，让周边居民步行 15 分钟内可达。`;
+  return (
+    '<div style="min-width:224px;max-width:284px">' +
+    '<div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;margin-bottom:7px;border-bottom:1px dashed #e3e8ef">' +
+    '<span style="font-size:15px;line-height:1">🏗️</span>' +
+    '<b style="font-size:13.5px;color:#1f2a37">补建建议点 ' +
+    mq.id +
+    '</b>' +
+    dengJi +
+    '</div>' +
+    '<div style="font-size:12.5px;color:#1f2a37;line-height:1.65">' +
+    '<span style="color:#8a93a3">该盲区缺口：</span>' +
+    que +
+    '<br/>' +
+    jianYi +
+    '</div>' +
+    (mq.yujiFugaiRenkou
+      ? '<div style="margin-top:6px;color:#0f766e;font-size:11.5px">预计覆盖约 ' +
+        mq.yujiFugaiRenkou +
+        ' 人（按人口密度估算）</div>'
+      : '') +
+    '<div style="margin-top:6px;color:#8a93a3;font-size:11.5px;line-height:1.6">(' +
+    Number(dian.lng).toFixed(5) +
+    ', ' +
+    Number(dian.lat).toFixed(5) +
+    ')</div>' +
+    '</div>'
+  );
+}
+
 const COLOR = {
   yiliao: '#ff6b6b',
   jiaoyu: '#ffd166',
@@ -104,6 +143,7 @@ export const MapCanvas = React.memo(function MapCanvas({
   center,
   onPick,
   onPoiDianJi,
+  onBuJianDianJi,
   buXing,
   xianshi,
   ditu = 'baidu',
@@ -137,6 +177,7 @@ export const MapCanvas = React.memo(function MapCanvas({
     yongHu: [],
     muDiBiao: []
   });
+  const juZhongRef = useRef(''); // 已居中过的体检中心坐标：重绘时不再重复居中，免得把刚飞到的位置拽回
   const keysRef = useRef({
     iso: '',
     poi: '',
@@ -150,6 +191,7 @@ export const MapCanvas = React.memo(function MapCanvas({
   });
   const onPickRef = useRef(onPick);
   const onPoiRef = useRef(onPoiDianJi);
+  const onBuJianRef = useRef(onBuJianDianJi); // 点地图上的绿色 ✚ 补建点 → 通知外部（右侧清单定位到该盲区）
   const biaoJiRef = useRef(biaoJiKai); // 盲区标记模式：点地图落标记而非选中心
   const onBiaoJiRef = useRef(onBiaoJiDianJi);
   biaoJiRef.current = biaoJiKai;
@@ -170,6 +212,7 @@ export const MapCanvas = React.memo(function MapCanvas({
   const [juJiaoCi, setJuJiaoCi] = useState(0); // 「回到体检中心」按钮计数（瓦片引擎靠它强制重新居中）
   onPickRef.current = onPick;
   onPoiRef.current = onPoiDianJi;
+  onBuJianRef.current = onBuJianDianJi;
   queRenRef.current = () => {
     if (!daiXuan) return;
     huLveRef.current = Date.now();
@@ -276,8 +319,8 @@ export const MapCanvas = React.memo(function MapCanvas({
         // 只用 canvas 是否存在判断不够——实测遇到过画布早就在、地图实例 getZoom 也有值，
         // 却一个瓦片都不请求、画面永久空白的情况，用户看到的就是「地图加载不出来」。
         // 所以健康标准定为：①容器里有画布 ②本局确实发过矢量瓦片请求；缺了就换一局重建（最多 2 次）。
-        // 首次体检给 3.5 秒：GL 正常时实例建好后 1 秒内就会发出瓦片请求（记的是「发出」不是「下完」，
-        // 慢网也不影响），僵死时则一个都不发，早点重建用户几乎无感。
+        // 健康窗口 10 秒：窗口内既没等到 tilesloaded、也没发出过任何瓦片请求，才判定为僵死并换局重建
+        // （GL 正常时实例建好后 1 秒内就会发出瓦片请求，记的是「发出」不是「下完」，慢网也不影响）。
         const qiDongShi = performance.now();
         readyTimer = setTimeout(function jianKang() {
           if (cancelled) return;
@@ -305,7 +348,9 @@ export const MapCanvas = React.memo(function MapCanvas({
           }
           setEngine('error'); // 重建两次仍不行：给出可读排查提示（AK / 白名单 / 网络）
           readyTimer = setTimeout(jianKang, 1500);
-        }, 3500);
+          // 10 秒窗口：百度 CDN 偶发抽风时 getmodules/瓦片要十几秒才到位，
+          // 3.5 秒太紧会把「慢」误判成「僵死」，重建两次后直接报失败
+        }, 10000);
         // 瓦片加载完成即视为健康：停掉体检、清掉重建计数，自动撤掉误报提示
         map.addEventListener('tilesloaded', () => {
           clearTimeout(readyTimer);
@@ -370,18 +415,21 @@ export const MapCanvas = React.memo(function MapCanvas({
       const { map, B } = mapRef.current;
       const q = Z(mq.zhongxin);
       ziFaRef.current = null;
-      map.setCenter(new B.Point(q.lng, q.lat));
+      // 同 juJiaoYongHu：瞬移过去，别用带过渡的默认动画（否则重绘会把视图拽回来）
+      map.setCenter(new B.Point(q.lng, q.lat), { noAnimation: true });
     }
   }, [guanZhuId, engine]);
 
-  // 自标盲区清单点「定位」→ 飞到该点（dian + ci 计数，同一标记可反复定位）
+  // 自标盲区清单点「定位」/ 盲区清单点「补建点」→ 飞到该点（dian + ci 计数，同一处可反复定位）
   useEffect(() => {
     if (!juJiaoYongHu || engine !== 'baidu' || !mapRef.current) return;
     const { map, B } = mapRef.current;
     const q = Z(juJiaoYongHu.dian);
     ziFaRef.current = null;
-    map.setCenter(new B.Point(q.lng, q.lat));
-    if (map.getZoom() < 16) map.setZoom(16);
+    // 必须走 noAnimation：GL 的 setCenter / setZoom 默认带过渡，两者一起调用会互相打断，
+    // 缩放动画还拿旧中心当基准算，跑完又落回原地——表现就是「点了定位，地图纹丝不动」
+    map.setCenter(new B.Point(q.lng, q.lat), { noAnimation: true });
+    if (map.getZoom() < 16) map.setZoom(16, { noAnimation: true });
   }, [juJiaoYongHu, engine]);
 
   // —— 多方式路线组：非当前采用方式的路线以各方式颜色半透明显示（选中的走 buXing 加粗蓝线） ——
@@ -1159,10 +1207,17 @@ export const MapCanvas = React.memo(function MapCanvas({
     if (daoHangKaiRef.current) return;
     const { map, B } = mapRef.current;
     const c0 = Z(center);
-    // 若中心点来自地图自身点击，不重复居中（否则画面会整体平移，观感为乱跳）
+    // 居中只在「体检中心真的换了」时做一次：此前是每次重绘都 setCenter，
+    // 结果任何一次重绘都会把视图拽回体检中心——刚飞过去的补建点、盲区标记、自标定位
+    // 全会被一把拉回，用户看到的就是「点了定位但地图没动」。
+    // 若中心点来自地图自身点击，同样不重复居中（否则画面整体平移，观感为乱跳）
     const z = ziFaRef.current;
     const ziFa = z && Math.abs(z.lng - center.lng) < 1e-9 && Math.abs(z.lat - center.lat) < 1e-9;
-    if (!ziFa) map.setCenter(new B.Point(c0.lng, c0.lat));
+    const juZhongKey = c0.lng.toFixed(6) + ',' + c0.lat.toFixed(6);
+    if (!ziFa && juZhongRef.current !== juZhongKey) {
+      juZhongRef.current = juZhongKey;
+      map.setCenter(new B.Point(c0.lng, c0.lat));
+    }
 
     // ① 等时圈热力分层：仅当数据变化时重建
     const isoKey = simpleKey(report?.dengShiQuan?.ceng);
@@ -1305,7 +1360,7 @@ export const MapCanvas = React.memo(function MapCanvas({
       for (const mq of report?.mangquList || []) {
         if (!mq.buJianDian) continue;
         const q = Z(mq.buJianDian);
-        addTo(
+        const dian = addTo(
           'buJian',
           new B.Marker(new B.Point(q.lng, q.lat), {
             icon: new B.Icon(
@@ -1315,9 +1370,24 @@ export const MapCanvas = React.memo(function MapCanvas({
               new B.Size(22, 22),
               { anchor: new B.Size(11, 11) }
             ),
-            title: `补建点 ${mq.id}`
+            title: `补建点 ${mq.id}（点一下看建议）`
           })
         );
+        // 点击绿 ✚：①信息窗说明这个点是什么、建议在此增建什么；②通知外部把右侧报告面板
+        // 定位到对应盲区条目（面板若收起了先展开）。此前图钉只挂了个 title，点上去毫无反应
+        dian.addEventListener('click', () => {
+          huLveRef.current = Date.now(); // 点图钉不要被当成「地图选点」或「落盲区标记」
+          if (onBuJianRef.current) onBuJianRef.current(mq);
+          try {
+            const chuang = new B.InfoWindow(buJianDianChuang(mq), {
+              width: 0,
+              enableAutoPan: true
+            });
+            map.openInfoWindow(chuang, dian.getPosition());
+          } catch {
+            /* 个别版本不支持时忽略，图钉仍保留了 hover 提示文案 */
+          }
+        });
       }
     }
 
@@ -1345,7 +1415,8 @@ export const MapCanvas = React.memo(function MapCanvas({
       }
     }
 
-    // ④‴ 用户自标盲区：红色图钉（与体检盲区绿 ✚、清单标记橙旗区分），点击弹信息窗看详情
+    // ④‴ 用户自标盲区：玫红图钉 + 圆徽章里的小人（「这是人标的」一目了然；玫红也避开了
+    // 体检中心的蓝、目的地的紫、盲区标记的橙、补建点的绿、导航终点的红），点击弹信息窗看详情
     const yhKey = simpleKey(yongHuMangQu || []);
     if (yhKey !== keysRef.current.yongHu) {
       keysRef.current.yongHu = yhKey;
@@ -1358,7 +1429,7 @@ export const MapCanvas = React.memo(function MapCanvas({
             title: `自标盲区：${m.beiZhu}`,
             icon: new B.Icon(
               svgIcon(
-                `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#e5484d' stroke='#ffffff' stroke-width='1.5'/><path d='M12 7.2c-.9 0-1.6.7-1.5 1.6l.3 3.4c0 .7.5 1.2 1.2 1.2s1.2-.5 1.2-1.2l.3-3.4c.1-.9-.6-1.6-1.5-1.6z' fill='#ffffff'/><circle cx='12' cy='15.4' r='1' fill='#ffffff'/></svg>`
+                `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#d6409f' stroke='#ffffff' stroke-width='1.5'/><circle cx='12' cy='11' r='4.7' fill='#ffffff'/><circle cx='12' cy='9.5' r='1.7' fill='#d6409f'/><path d='M9.2 13.9c0-1.7 1.3-2.7 2.8-2.7s2.8 1 2.8 2.7z' fill='#d6409f'/></svg>`
               ),
               new B.Size(24, 30),
               { anchor: new B.Size(12, 30) }
@@ -1380,7 +1451,8 @@ export const MapCanvas = React.memo(function MapCanvas({
             '<div style="min-width:200px;max-width:240px">' +
             // 标题行：图钉 + 标题 + 虚线分隔，比旧版单行标题更精致
             '<div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;margin-bottom:7px;border-bottom:1px dashed #e3e8ef">' +
-            '<span style="font-size:15px;line-height:1">📍</span>' +
+            // 标题图标：与地图上那枚玫红图钉同款（玫红圆徽章 + 白人形），替换掉原来的 📍
+            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" style="flex:0 0 auto"><circle cx="12" cy="12" r="11" fill="#d6409f"/><circle cx="12" cy="9.6" r="3.4" fill="#ffffff"/><path d="M5.6 19.4c0-3.4 2.9-5.4 6.4-5.4s6.4 2 6.4 5.4z" fill="#ffffff"/></svg>' +
             '<b style="font-size:13.5px;color:#1f2a37">用户标记的盲区</b>' +
             '</div>' +
             `<div style="font-size:12.5px;color:#1f2a37;line-height:1.6">${m.beiZhu}</div>` +

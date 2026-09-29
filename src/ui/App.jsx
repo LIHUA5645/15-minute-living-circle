@@ -471,6 +471,30 @@ export function App() {
   const [dengLuKai, setDengLuKai] = useState(false);
   const [geRenKai, setGeRenKai] = useState(false); // 个人主页弹窗（点头像进入）
   const [guanZhuM, setGuanZhuM] = useState(null); // 用户在盲区清单里标记（高亮）的盲区 id
+  const [mqShan, setMqShan] = useState(null); // 地图上点绿色 ✚ 补建点后，右侧对应清单条目闪一下
+  const mqShanRef = useRef(0);
+  // 地图上点绿色 ✚ 补建点：右侧报告面板定位到该盲区条目并闪烁提示。
+  // 刻意不动地图视角——用户点的就是他想看的位置，镜头再飞走反而丢掉上下文
+  function dianJiBuJianDian(mq) {
+    if (!mq || !mq.id) return;
+    if (!kai.you) setKai(prev => ({ ...prev, you: true })); // 面板收起来了先展开
+    setMqShan(mq.id);
+    clearTimeout(mqShanRef.current);
+    mqShanRef.current = setTimeout(() => setMqShan(null), 2200);
+    // 等面板滑入起帧后再滚动：隐藏状态下条目量不到位置
+    setTimeout(() => {
+      const tiao = document.querySelector(`[data-mq="${mq.id}"]`);
+      if (tiao && tiao.scrollIntoView) tiao.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
+  }
+  // 点盲区清单里任意一条（整块都能点）→ 地图跳到该盲区：
+  // 有补建点就落到绿色 ✚ 上（用户最想看的就是「该在哪儿补建」），没有就落到盲区中心
+  function feiDaoMangQu(m) {
+    if (!m) return;
+    const dian = m.buJianDian || m.zhongxin;
+    if (dian && Number.isFinite(dian.lng) && Number.isFinite(dian.lat))
+      setJuJiaoYongHu({ dian, ci: Date.now() });
+  }
   const [yongHu, setYongHu] = useState(() => dangQianYongHu());
   // —— 用户标记盲区：算法盲区之外，用户在地图上补标真实缺设施的位置（红图钉 + 备注，按账号持久化） ——
   const [yongHuMangQu, setYongHuMangQu] = useState([]);
@@ -1329,6 +1353,10 @@ export function App() {
     setBuXingLuXian({ uid: p.uid || 'dest', dian: p, zhuangTai: 'loading', chuXing });
     setLuXianZu({});
     guiHuaQuanBu(p);
+    // 点设施也算「选定了目的地」，和搜索选点 / AI 选点一样把「路线方案」窗口弹出来——
+    // 之前这里漏了这一步，用户点完只看到顶部一条「步行 XXX 米」提示，
+    // 找不到「开始导航」的入口（方案窗口里的路线卡就是导航入口，点一下即出发）
+    setJiaoTongKai(true);
   }
   // 全方式并行规划（结果陆续写入 luXianZu，谁先算完谁先上地图）
   async function guiHuaQuanBu(dian) {
@@ -2763,6 +2791,7 @@ export function App() {
           center={center}
           onPick={xuanZeZhongXin}
           onPoiDianJi={dianJiSheShi}
+          onBuJianDianJi={dianJiBuJianDian}
           guanZhuId={guanZhuM}
           yongHuMangQu={fuJinMangQu}
           souSuoMuDi={souSuoMuDi}
@@ -3612,13 +3641,24 @@ export function App() {
           )}
           {report &&
             report.mangquList.map(m => (
-              <div className={`mq-item ${guanZhuM === m.id ? 'on' : ''}`} key={m.id}>
+              <div
+                className={`mq-item ${guanZhuM === m.id ? 'on' : ''} ${
+                  mqShan === m.id ? 'shan' : ''
+                }`}
+                key={m.id}
+                data-mq={m.id}
+                onClick={() => feiDaoMangQu(m)}
+                title="点这一条，地图跳到该盲区（有补建点就跳到绿色 ✚）"
+              >
                 <div className="mq-head">
                   <b>{m.id}</b>
                   <span className={`mq-tag ${m.level}`}>{m.level === 'red' ? '重度' : '轻度'}</span>
                   <button
                     className={`mq-biaoJi ${guanZhuM === m.id ? 'on' : ''}`}
-                    onClick={() => setGuanZhuM(guanZhuM === m.id ? null : m.id)}
+                    onClick={e => {
+                      e.stopPropagation(); // 点「标记」别再顺带触发整块跳转
+                      setGuanZhuM(guanZhuM === m.id ? null : m.id);
+                    }}
                     title={guanZhuM === m.id ? '取消标记' : '在地图上标记并定位该盲区'}
                   >
                     {guanZhuM === m.id ? '已标记' : '标记'}
@@ -3690,13 +3730,29 @@ export function App() {
             <div className="empty-tip">已隐藏 {yinCangShu} 个距离当前位置 2 公里外的标记。</div>
           )}
           {fuJinMangQu.map(m => (
-            <div className="mq-item" key={m.id}>
+            <div
+              className="mq-item"
+              key={m.id}
+              onClick={() => setJuJiaoYongHu({ dian: m.weiZhi, ci: Date.now() })}
+              title="点这一条，地图跳到该标记位置"
+            >
               <div className="mq-head">
-                <b>📍 自标</b>
+                {/* 图标与地图上那枚玫红自标图钉同款：玫红圆徽章 + 白人形，别再各用一套 */}
+                <b className="zi-biao-biao">
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="11" fill="#d6409f" />
+                    <circle cx="12" cy="9.6" r="3.4" fill="#ffffff" />
+                    <path d="M5.6 19.4c0-3.4 2.9-5.4 6.4-5.4s6.4 2 6.4 5.4z" fill="#ffffff" />
+                  </svg>
+                  自标
+                </b>
                 <span className="mq-tag user">{m.zhangHao}</span>
                 <button
                   className="mq-biaoJi"
-                  onClick={() => setJuJiaoYongHu({ dian: m.weiZhi, ci: Date.now() })}
+                  onClick={e => {
+                    e.stopPropagation(); // 整块已经能点，这里显式再来一次，别触发两遍
+                    setJuJiaoYongHu({ dian: m.weiZhi, ci: Date.now() });
+                  }}
                   title="在地图上定位该标记"
                 >
                   定位
@@ -3704,7 +3760,10 @@ export function App() {
                 {((yongHu && m.zhangHao === yongHu.zhangHao) || guanLiYuanZai) && (
                   <button
                     className="mq-biaoJi"
-                    onClick={() => shanYongHuMangQu(m.id)}
+                    onClick={e => {
+                      e.stopPropagation(); // 点「删除」别把地图也一起带走
+                      shanYongHuMangQu(m.id);
+                    }}
                     title={
                       guanLiYuanZai && !(yongHu && m.zhangHao === yongHu.zhangHao)
                         ? '管理员删除'
