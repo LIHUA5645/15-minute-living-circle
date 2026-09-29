@@ -10,7 +10,6 @@
 | 部署平台 | 访问地址 |
 |---|---|
 | GitHub Pages | **https://lihua5645.github.io/15-minute-living-circle/** |
-| Gitee Pages | **https://lihua5645.github.io/15-minute-living-circle/**  |
 
 > 使用说明：打开页面允许浏览器定位（或直接拖动地图图钉 / 搜索框输入社区名选点），点击「开始体检」即可完整复现
 > 等时圈计算 → 六类设施统计 → 盲区识别 → 可视化体检报告全流程。

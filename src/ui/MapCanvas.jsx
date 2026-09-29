@@ -33,6 +33,20 @@ function yingYongDaoHangYangShi(map) {
   }
 }
 
+// 本局地图是否「真的」发起过矢量瓦片请求（qt=vtile）——判断底图有没有在渲染的硬指标。
+// 注意不能只看容器里有没有 canvas：GL 会偶发「画布在、实例也能响应 API（getZoom 照常有值），
+// 但渲染壳僵死」，一个瓦片都不请求，画面永远是一张白图（实测 WebGL 上下文没丢、容器尺寸也正常）。
+// 取不到性能条目时返回 true（宁可不动，避免误判后反复重建）。
+function faGuoWaPian(qiDongShi) {
+  try {
+    return performance
+      .getEntriesByType('resource')
+      .some(r => r.name.indexOf('qt=vtile') >= 0 && r.startTime >= qiDongShi);
+  } catch {
+    return true;
+  }
+}
+
 const COLOR = {
   yiliao: '#ff6b6b',
   jiaoyu: '#ffd166',
@@ -144,6 +158,8 @@ export const MapCanvas = React.memo(function MapCanvas({
   onDaoHangBiaoRef.current = onDaoHangBiaoJi;
   const ziFaRef = useRef(null); // 由地图点击产生的中心点，避免重复居中造成视图跳动
   const [engine, setEngine] = useState(ditu === 'tile' ? 'tile' : 'loading');
+  const [diTuHao, setDiTuHao] = useState(0); // 底图重建局号：渲染壳僵死 / WebGL 上下文丢失时换一局重建
+  const zhongJianCiRef = useRef(0); // 已自动重建次数（最多 2 次，防止坏环境下无休止重建）
   const drawTimerRef = useRef(0);
   // 选中确认机制：双击地图才落一个「待确认点」（气泡 + 确认按钮），点确认才回写中心点，
   // 单击只用于浏览/点设施/点盲区图钉，不会误触搬走体检中心；体检中心图钉本身可拖拽，拖动松手直接生效
@@ -170,6 +186,18 @@ export const MapCanvas = React.memo(function MapCanvas({
     }
     let cancelled = false;
     let readyTimer = 0;
+    let jianTingRongQi = null; // 挂过 webglcontextlost 监听的容器节点（卸载时按它摘监听）
+
+    // WebGL 上下文丢失（切换显卡 / 驱动重置 / 休眠唤醒）后百度 GL 不会自己回来，画面会永久空白，
+    // 只能换一局重建。webglcontextlost 不冒泡但能捕获，所以监听挂在容器的捕获阶段
+    function shangXiaWenDiu(ev) {
+      if (cancelled) return;
+      if (ev && ev.preventDefault) ev.preventDefault();
+      if (zhongJianCiRef.current >= 2) return;
+      zhongJianCiRef.current += 1;
+      console.warn('[map] WebGL 上下文丢失，自动重建底图（第 ' + zhongJianCiRef.current + ' 次）');
+      setDiTuHao(n => n + 1);
+    }
 
     function chuShiHua(B) {
       if (cancelled) return;
@@ -240,21 +268,48 @@ export const MapCanvas = React.memo(function MapCanvas({
         ro.observe(mapDivRef.current);
         resizeRoRef.current = ro;
         setEngine('baidu');
-        // 底图瓦片超时未加载完成（AK 被风控时百度瓦片会一直不来）→ 提示排查，不降级非百度底图
-        // 首屏瓦片受网络影响常超过 3 秒，这里给 12 秒，避免正常加载被误判为失败
-        readyTimer = setTimeout(function check() {
+        // WebGL 上下文丢失监听（捕获阶段）
+        jianTingRongQi = mapDivRef.current;
+        if (jianTingRongQi)
+          jianTingRongQi.addEventListener('webglcontextlost', shangXiaWenDiu, true);
+        // 底图渲染体检：既兜「瓦片一直不来」（AK 被风控 / 断网），也兜「画布在但渲染壳僵死」。
+        // 只用 canvas 是否存在判断不够——实测遇到过画布早就在、地图实例 getZoom 也有值，
+        // 却一个瓦片都不请求、画面永久空白的情况，用户看到的就是「地图加载不出来」。
+        // 所以健康标准定为：①容器里有画布 ②本局确实发过矢量瓦片请求；缺了就换一局重建（最多 2 次）。
+        // 首次体检给 3.5 秒：GL 正常时实例建好后 1 秒内就会发出瓦片请求（记的是「发出」不是「下完」，
+        // 慢网也不影响），僵死时则一个都不发，早点重建用户几乎无感。
+        const qiDongShi = performance.now();
+        readyTimer = setTimeout(function jianKang() {
           if (cancelled) return;
-          // 画布已经出图（GL 正常渲染）就不再误报「加载失败」，慢网下瓦片晚到属正常现象
-          if (mapDivRef.current && mapDivRef.current.querySelector('canvas')) {
-            setEngine('baidu'); // 失败提示后画布晚到：自动撤掉横幅自愈
+          // 页面在后台时 GL 本就不渲染、不发瓦片请求，先别判断（否则会误重建）
+          if (document.visibilityState === 'hidden') {
+            readyTimer = setTimeout(jianKang, 1500);
             return;
           }
-          setEngine('error');
-          readyTimer = setTimeout(check, 1500); // 每 1.5 秒复查，画布出现即自愈
-        }, 12000);
-        // 瓦片迟到时恢复底图状态，自动撤掉误报提示
+          const youHuaBu = !!(mapDivRef.current && mapDivRef.current.querySelector('canvas'));
+          if (youHuaBu && faGuoWaPian(qiDongShi)) {
+            setEngine('baidu'); // 慢网下瓦片晚到：自动撤掉「加载失败」横幅
+            return;
+          }
+          if (zhongJianCiRef.current < 2) {
+            zhongJianCiRef.current += 1;
+            console.warn(
+              '[map] 底图未发起瓦片请求，自动重建第 ' +
+                zhongJianCiRef.current +
+                ' 次（画布：' +
+                youHuaBu +
+                '）'
+            );
+            setDiTuHao(n => n + 1); // 换局重建：effect 重跑 → 销毁旧实例并重新初始化
+            return;
+          }
+          setEngine('error'); // 重建两次仍不行：给出可读排查提示（AK / 白名单 / 网络）
+          readyTimer = setTimeout(jianKang, 1500);
+        }, 3500);
+        // 瓦片加载完成即视为健康：停掉体检、清掉重建计数，自动撤掉误报提示
         map.addEventListener('tilesloaded', () => {
           clearTimeout(readyTimer);
+          zhongJianCiRef.current = 0;
           if (!cancelled) setEngine('baidu');
         });
       } catch (e) {
@@ -285,6 +340,10 @@ export const MapCanvas = React.memo(function MapCanvas({
     return () => {
       cancelled = true;
       clearTimeout(readyTimer);
+      if (jianTingRongQi) {
+        jianTingRongQi.removeEventListener('webglcontextlost', shangXiaWenDiu, true);
+        jianTingRongQi = null;
+      }
       if (resizeRoRef.current) {
         resizeRoRef.current.disconnect();
         resizeRoRef.current = null;
@@ -292,7 +351,8 @@ export const MapCanvas = React.memo(function MapCanvas({
       if (mapRef.current && mapRef.current.map.destroy) mapRef.current.map.destroy();
       mapRef.current = null;
     };
-  }, [ditu]);
+    // diTuHao：底图自愈换局号，变化即走完整销毁 + 重新初始化
+  }, [ditu, diTuHao]);
 
   // 重绘叠加层：防抖 80ms，避免连续状态更新触发多次全量绘制
   useEffect(() => {
@@ -642,11 +702,7 @@ export const MapCanvas = React.memo(function MapCanvas({
       const kq = Z(qian);
       // panTo 限 30fps：骑行车速快、目标持续前移，逐帧 panTo 会让 GL 每帧全画面重渲染（卡的主因）；
       // 33ms 一拍对人眼依然连贯，蓝点 marker 仍逐帧微移
-      if (
-        Number.isFinite(kq.lng) &&
-        Number.isFinite(kq.lat) &&
-        xianZai - dhPanRef.current >= 33
-      ) {
+      if (Number.isFinite(kq.lng) && Number.isFinite(kq.lat) && xianZai - dhPanRef.current >= 33) {
         dhPanRef.current = xianZai;
         map.panTo(new B.Point(kq.lng, kq.lat), { noAnimation: true });
       }
@@ -672,7 +728,8 @@ export const MapCanvas = React.memo(function MapCanvas({
     }
     // 未到位就继续下一帧；到位（亚像素级 + 朝向基本对齐）收手等下一拍定位
     const chaMi = liangDianJuLi(xian.weiZhi, mbiao.weiZhi);
-    if (chaMi > 0.12 || Math.abs(chaJiao) > 0.8) dhHuanRef.current = requestAnimationFrame(dhPingHua);
+    if (chaMi > 0.12 || Math.abs(chaJiao) > 0.8)
+      dhHuanRef.current = requestAnimationFrame(dhPingHua);
     else dhXianShiRef.current = mbiao;
   }
 
@@ -697,7 +754,10 @@ export const MapCanvas = React.memo(function MapCanvas({
     const cha = ((xiang - daoHangXiangRef.current + 540) % 360) - 180; // 最短角差 [-180,180)
     if (Math.abs(cha) <= 0.6) return;
     daoHangXiangRef.current =
-      (daoHangXiangRef.current + Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) + 360) % 360;
+      (daoHangXiangRef.current +
+        Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) +
+        360) %
+      360;
     try {
       mb.map.setHeading(daoHangXiangRef.current, { noAnimation: true });
     } catch {
@@ -920,20 +980,17 @@ export const MapCanvas = React.memo(function MapCanvas({
           // 终点标：红色旗标图钉 + 「目的地」红底白字文字标——导航画面里最醒目的锚点
           const zhongW = xianW[xianW.length - 1];
           const zq = Z(zhongW);
-          const zhongBiao = new B.Marker(
-            new B.Point(zq.lng, zq.lat),
-            {
-              title: '目的地',
-              icon: new B.Icon(
-                svgIcon(
-                  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='36' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#e5484d' stroke='#ffffff' stroke-width='1.5'/><path d='M8.5 15.5h7v-6h-7z' fill='#ffffff'/><path d='M15.5 10.5l4 1.8-4 1.8z' fill='#ffffff'/></svg>`
-                ),
-                new B.Size(28, 36),
-                { anchor: new B.Size(14, 36) }
+          const zhongBiao = new B.Marker(new B.Point(zq.lng, zq.lat), {
+            title: '目的地',
+            icon: new B.Icon(
+              svgIcon(
+                `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='36' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#e5484d' stroke='#ffffff' stroke-width='1.5'/><path d='M8.5 15.5h7v-6h-7z' fill='#ffffff'/><path d='M15.5 10.5l4 1.8-4 1.8z' fill='#ffffff'/></svg>`
               ),
-              zIndex: 998
-            }
-          );
+              new B.Size(28, 36),
+              { anchor: new B.Size(14, 36) }
+            ),
+            zIndex: 998
+          });
           map.addOverlay(zhongBiao);
           daoHangLuRef.current.push(zhongBiao);
           try {
@@ -1001,9 +1058,9 @@ export const MapCanvas = React.memo(function MapCanvas({
         "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'>" +
           "<circle cx='20' cy='20' r='15' fill='rgba(47,134,247,0.16)'/>" +
           "<path d='M20 4 L29.5 21 L20 16.5 L10.5 21 Z' fill='#2f86f7' stroke='#ffffff' " +
-            "stroke-width='2' stroke-linejoin='round'/>" +
+          "stroke-width='2' stroke-linejoin='round'/>" +
           "<rect x='16.8' y='19' width='6.4' height='12' rx='3' fill='#2f86f7' stroke='#ffffff' " +
-            "stroke-width='2'/></svg>"
+          "stroke-width='2'/></svg>"
       );
       const biao = new B.Icon(tu, new B.Size(40, 40), { anchor: new B.Size(20, 20) });
       // zIndex 压过终点图钉（998）与「目的地」标签——GPS 模式下蓝点常与终点重合，层级低了会被盖住
@@ -1058,7 +1115,11 @@ export const MapCanvas = React.memo(function MapCanvas({
       if (Number.isFinite(xiang)) {
         const cha = ((xiang - daoHangXiangRef.current + 540) % 360) - 180; // 最短角差 [-180,180)
         if (Math.abs(cha) > 0.6) {
-          daoHangXiangRef.current = (daoHangXiangRef.current + Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) + 360) % 360;
+          daoHangXiangRef.current =
+            (daoHangXiangRef.current +
+              Math.sign(cha) * Math.min(Math.abs(cha), Math.max(1, Math.abs(cha) * 0.2)) +
+              360) %
+            360;
           try {
             map.setHeading(daoHangXiangRef.current, { noAnimation: true });
           } catch {
@@ -1512,8 +1573,10 @@ export const MapCanvas = React.memo(function MapCanvas({
 
   return (
     <div className={`map-view ${biaoJiKai ? 'map-biaoJi' : ''}`}>
-      {/* 百度底图容器必须常驻：初始化时需要它已经有尺寸，否则会一直卡在加载中 */}
-      {engine !== 'tile' && <div ref={mapDivRef} className="map-inner" />}
+      {/* 百度底图容器必须常驻：初始化时需要它已经有尺寸，否则会一直卡在加载中。
+          key 用重建局号：自愈换局时连容器 DOM 一起换新的——GL 那套渲染壳会在旧容器上留脏状态，
+          只 destroy 实例、复用同一个 div 未必能起死回生 */}
+      {engine !== 'tile' && <div ref={mapDivRef} className="map-inner" key={diTuHao} />}
       {/* 地图工具条：百度地图同款（路况 / 卫星 / 3D） */}
       {engine === 'baidu' && (
         <div className="map-gongJu">
