@@ -309,6 +309,114 @@ const FEI_BUJIAN = `(async () => {
   );
 })()`;
 
+// 走一遍「点设施 → 进导航 → 退出导航」，看等时圈热力图与设施点在退出后是否原样恢复
+const WANG_FAN = `(async () => {
+  const deng = t => new Promise(j => setTimeout(j, t));
+  const d = document.querySelector('.map-inner');
+  if (!d) return '没有地图容器';
+  const k = Object.keys(d).find(x => x.indexOf('__reactFiber$') === 0);
+  let f = d[k];
+  let map = null;
+  let rep = null;
+  let fn = null;
+  while (f) {
+    const p = f.memoizedProps || {};
+    if (!rep && p.report && p.center) rep = p.report;
+    if (!fn && typeof p.onPoiDianJi === 'function') fn = p.onPoiDianJi;
+    const B0 = window.BMapGL;
+    let s = f.memoizedState;
+    while (s && !map && B0) {
+      const v = s.memoizedState;
+      if (v && v.current && v.current.map && typeof v.current.map.getZoom === 'function') map = v.current.map;
+      s = s.next;
+    }
+    f = f.return;
+  }
+  if (!map || !fn || !rep) return '缺东西：map=' + !!map + ' fn=' + !!fn + ' report=' + !!rep;
+  const B = window.BMapGL;
+  const ji = () => {
+    let duo = 0;
+    let dian = 0;
+    for (const o of map.getOverlays()) {
+      if (B.Polygon && o instanceof B.Polygon) duo++;
+      else if (B.Marker && o instanceof B.Marker) dian++;
+    }
+    return '多边形 ' + duo + ' / 标记 ' + dian;
+  };
+  const jg = [];
+  jg.push('初始：' + ji());
+  const fen = (rep.poiSet && rep.poiSet.fenleiSet) || {};
+  const lei = Object.keys(fen).find(x => (fen[x] || []).length);
+  if (!lei) return '本轮报告没有设施点，无法测';
+  fn(fen[lei][0]);
+  await deng(4500);
+  jg.push('点设施后：' + ji());
+  const ka = document.querySelector('.jiaoTong-ka');
+  if (ka) {
+    ka.click();
+    await deng(2200);
+  }
+  jg.push('进导航后：' + ji() + ' / 全屏导航=' + !!document.querySelector('.daoHang-quanPing'));
+  const tui = document.querySelector('.daoPing-tui');
+  if (tui) {
+    tui.click();
+    await deng(2600);
+  }
+  jg.push('退出导航后：' + ji() + ' / 全屏导航=' + !!document.querySelector('.daoHang-quanPing'));
+  return jg.join('\\n');
+})()`;
+
+// 查等时圈（热力图）：报告里到底有几层、地图上到底画了几个多边形
+const CHA_ISO = `(() => {
+  const d = document.querySelector('.map-inner');
+  if (!d) return JSON.stringify({ cuo: '没有地图容器' });
+  const k = Object.keys(d).find(x => x.indexOf('__reactFiber$') === 0);
+  let f = d[k];
+  let map = null;
+  let rep = null;
+  while (f) {
+    const p = f.memoizedProps || {};
+    if (!rep && p.report && p.center) rep = p.report;
+    let s = f.memoizedState;
+    while (s && !map) {
+      const v = s.memoizedState;
+      if (v && v.current && v.current.map && typeof v.current.map.getZoom === 'function') map = v.current.map;
+      s = s.next;
+    }
+    f = f.return;
+  }
+  let tuCeng = '未拿到地图实例';
+  if (map && map.getOverlays) {
+    const B = window.BMapGL;
+    const lie = map.getOverlays();
+    let duo = 0;
+    let xian = 0;
+    let yuan = 0;
+    let dian = 0;
+    let qiTa = 0;
+    for (const o of lie) {
+      // 用 instanceof 判类：GL 内部的 constructor.name 在打包/压缩后并不可靠
+      if (B.Polygon && o instanceof B.Polygon) duo++;
+      else if (B.Circle && o instanceof B.Circle) yuan++;
+      else if (B.Polyline && o instanceof B.Polyline) xian++;
+      else if (B.Marker && o instanceof B.Marker) dian++;
+      else qiTa++;
+    }
+    tuCeng = { 多边形: duo, 折线: xian, 圆: yuan, 标记: dian, 其他: qiTa, 总数: lie.length };
+  }
+  const ceng = (rep && rep.dengShiQuan && rep.dengShiQuan.ceng) || [];
+  return JSON.stringify(
+    {
+      报告里的等时圈层: ceng.length ? ceng.map(c => c.miao + '分/' + (c.polygon || []).length + '环') : '(空)',
+      地图覆盖物: tuCeng,
+      是否在导航: !!document.querySelector('.daoHang-quanPing'),
+      顶部提示条: (document.querySelector('.buxing-tip') || {}).innerText || '(无)'
+    },
+    null,
+    1
+  );
+})()`;
+
 // 点设施（走 MapCanvas 的 onPoiDianJi，与手点地图设施图标同一条路），看「路线方案」窗口有没有弹出来
 const DIAN_SHE_SHI = `(async () => {
   const deng = t => new Promise(j => setTimeout(j, t));
@@ -473,6 +581,14 @@ const zhu = async () => {
         qing.delete(x.params.requestId);
       }
     }
+    if (x.id === 814 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
+    }
+    if (x.id === 813 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
+    }
     if (x.id === 812 && x.result && x.result.result) {
       console.log(x.result.result.value);
       process.exit(0);
@@ -570,6 +686,28 @@ const zhu = async () => {
         id: 810,
         method: 'Runtime.evaluate',
         params: { expression: ZHAO_BUJIAN, returnByValue: true, awaitPromise: true }
+      })
+    );
+    return;
+  }
+
+  if (MO === 'wangfan') {
+    ws.send(
+      JSON.stringify({
+        id: 814,
+        method: 'Runtime.evaluate',
+        params: { expression: WANG_FAN, returnByValue: true, awaitPromise: true }
+      })
+    );
+    return;
+  }
+
+  if (MO === 'iso') {
+    ws.send(
+      JSON.stringify({
+        id: 813,
+        method: 'Runtime.evaluate',
+        params: { expression: CHA_ISO, returnByValue: true }
       })
     );
     return;

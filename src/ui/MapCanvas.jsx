@@ -311,6 +311,17 @@ export const MapCanvas = React.memo(function MapCanvas({
         ro.observe(mapDivRef.current);
         resizeRoRef.current = ro;
         setEngine('baidu');
+        // 这是一张全新的地图实例：把各图层「已画的键值」和旧实例留下的覆盖物引用一并清掉，
+        // 逼 drawBaidu 把等时圈热力、设施点、盲区圆、图钉全部重画一遍。
+        // 否则 key 判定为「没变化」→ 新地图上只剩一张光底图（自愈换局之后用户看到的
+        // 就是「热力图怎么没了、设施点也没了」）。旧实例已经 destroy，它的覆盖物不用再移除
+        Object.keys(keysRef.current).forEach(k => {
+          keysRef.current[k] = '';
+        });
+        Object.keys(layersRef.current).forEach(k => {
+          layersRef.current[k] = [];
+        });
+        juZhongRef.current = ''; // 居中记录一并作废：让首帧按当前体检中心居中一次
         // WebGL 上下文丢失监听（捕获阶段）
         jianTingRongQi = mapDivRef.current;
         if (jianTingRongQi)
