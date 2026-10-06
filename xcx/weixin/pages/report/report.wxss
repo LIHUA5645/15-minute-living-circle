@@ -1,0 +1,4 @@
+/* 报告页专用样式：公共类在 app.wxss */
+.mq-tag {
+  margin-left: 6rpx;
+}

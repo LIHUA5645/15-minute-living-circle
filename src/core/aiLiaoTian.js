@@ -6,12 +6,13 @@
 import { duiHuaJieKouZhi } from './zhenduan.js';
 import { liangDianJuLi } from './geo/jichu.js';
 import { fuWuUrl } from './fuwuDiZhi.js';
+import { aiPeiHaoLe, fuWuDaiFa } from './types.js';
 
 // 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；
 // ai 管理员 AI 配置；zhongXin 用户当前地图中心 {lng, lat, ming}（可选，用于位置感知）
 export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
   // 先区分「没配置」和「配置了但没开启用开关」，给用户可执行的提示
-  if (!(ai && ai.apiDiZhi && ai.miYao)) {
+  if (!aiPeiHaoLe(ai)) {
     return {
       ok: false,
       xinxi:
@@ -126,13 +127,22 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
         '（例如「步行 15 分钟内有 2 个医疗点（最近的 XX 约 X 分钟），看病算方便」），' +
         '严禁回复「打开手机地图搜一搜」「用高德/百度地图查一下」这类让用户自己去别的地图验证的话；' +
         '若某类设施数量为 0 或明细缺失，就如实说体检范围内没检索到该类设施，并建议重新体检或换个位置。' +
+        '与本工具后台有关的问题（AI 接口地址/密钥/模型名、管理员控制台、服务器是否启动、部署运维等）不要展开，' +
+        '只回一句「这属于后台配置，请让管理员看「AI 设置」，或查项目文档」，并把话题拉回社区生活圈体检；' +
+        '不要编造本工具的设置步骤。' +
         '语义判断由你完成，不要拘泥于具体关键词。'
     },
-    // 只带最近 8 条，防上下文超长
-    ...lishi.slice(-8).map(m => ({
-      role: m.role === 'user' ? 'user' : 'assistant',
-      content: m.wen
-    })),
+    // 只带最近 8 条，防上下文超长。
+    // 注意：role='cuo' 是「程序给的提示」（读不到配置、没检索到设施等），不是模型说过的话——
+    // 早期把这类也当 assistant 喂回去，模型会照着学舌，张口就是「请到管理员控制台填接口地址和密钥」，
+    // 看着像 AI 答非所问。程序提示一律不进上下文
+    ...lishi
+      .filter(m => m.role === 'user' || m.role === 'ai')
+      .slice(-8)
+      .map(m => ({
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: m.wen
+      })),
     { role: 'user', content: wen }
   ];
 
@@ -145,22 +155,29 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
       url: fuWuUrl('/airelay'),
       ti: {
         url: duiHuaJieKouZhi(ai.apiDiZhi),
-        tou: { Authorization: 'Bearer ' + ai.miYao },
+        // 只有「本地填了密钥、且服务端还没存过」才自己带；服务端存过就让它代发，免得旧密钥顶掉新配置
+        ...(ai.miYao && !fuWuDaiFa(ai) ? { tou: { Authorization: 'Bearer ' + ai.miYao } } : {}),
         body: moXingTi
       }
-    },
-    {
+    }
+  ];
+  // 浏览器直连这条路必须自带密钥，且只在「服务端没代发」时才有意义，否则省一次注定失败的请求
+  if (ai.miYao && !fuWuDaiFa(ai)) {
+    changShi.push({
       ming: '浏览器直连',
       url: duiHuaJieKouZhi(ai.apiDiZhi),
       ti: moXingTi
-    }
-  ];
+    });
+  }
   const cuoLieBiao = [];
   for (const lu of changShi) {
     try {
       const r = await fetch(lu.url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ai.miYao },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ai.miYao && !fuWuDaiFa(ai) ? { Authorization: 'Bearer ' + ai.miYao } : {})
+        },
         body: JSON.stringify(lu.ti)
       });
       const yuan = await r.text();

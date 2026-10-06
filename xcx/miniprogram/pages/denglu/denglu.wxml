@@ -1,0 +1,49 @@
+<!-- 登录 / 注册：账号体系统一走自有服务端，页内可就地改服务端地址并测连通 -->
+<view class="deng-ye">
+  <view class="deng-tou">
+    <view class="deng-hui">
+      <!-- 品牌 logo：真源在 xcx/common/images/logo-circle.png，同步脚本会按字节复制到各端 images/ -->
+      <image class="deng-logo" src="/images/logo-circle.png" mode="aspectFit"></image>
+    </view>
+    <view class="deng-ming">15 分钟生活圈体检</view>
+    <view class="deng-fu">登录后可标记并共享社区服务盲区</view>
+  </view>
+
+  <view class="deng-ka">
+    <view class="deng-tab">
+      <view class="deng-tab-an {{moShi === 'dengLu' ? 'on' : ''}}" data-m="dengLu" bindtap="qieMoShi">登录</view>
+      <view class="deng-tab-an {{moShi === 'zhuCe' ? 'on' : ''}}" data-m="zhuCe" bindtap="qieMoShi">注册</view>
+    </view>
+
+    <view class="input-biao">账号（至少 3 位）</view>
+    <input class="input" placeholder="请输入账号" data-k="zhangHao" value="{{zhangHao}}" bindinput="sheRu" />
+    <view class="input-biao">密码（至少 6 位）</view>
+    <input class="input" password placeholder="请输入密码" data-k="miMa" value="{{miMa}}" bindinput="sheRu" />
+    <block wx:if="{{moShi === 'zhuCe'}}">
+      <view class="input-biao">确认密码</view>
+      <input class="input" password placeholder="再输一次密码" data-k="miMa2" value="{{miMa2}}" bindinput="sheRu" />
+    </block>
+
+    <view wx:if="{{cuo}}" class="ai-cuo">{{cuo}}</view>
+
+    <button class="an zhu deng-bo" bindtap="tijiao" disabled="{{mang}}">
+      {{mang ? '提交中…' : (moShi === 'dengLu' ? '登录' : '注册并登录')}}
+    </button>
+    <view class="deng-ke" bindtap="youKe">先随便看看（不登录也能体检）</view>
+  </view>
+
+  <view class="deng-ka" style="margin-top: 24rpx">
+    <view class="row" style="border-bottom: none; padding-top: 0">
+      <view class="row-biao">服务端地址</view>
+      <view class="row-zhi" style="color: #98a2b3; font-size: 22rpx">账号与共享标记存这儿</view>
+    </view>
+    <input class="input" data-k="fuWuDiZhi" value="{{fuWuDiZhi}}" bindinput="sheRu" placeholder="http://127.0.0.1:8787" />
+    <view class="an-hang">
+      <button class="an ci" bindtap="baoCunFuWu">保存地址</button>
+      <button class="an ci" bindtap="ceFuWu">测连通</button>
+    </view>
+    <view class="deng-ti">{{ceWen || '本地开发需先执行 npm run fuwu；真机预览请填 HTTPS 域名，并在小程序后台加 request 合法域名'}}</view>
+  </view>
+
+  <view class="deng-jiao">{{pingTai}}端 · 与 Web 端共用同一套账号接口</view>
+</view>

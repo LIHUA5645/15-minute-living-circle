@@ -1,0 +1,80 @@
+<!-- 首页：定位 → 参数 → 一键体检 → 摘要 -->
+<view class="ye">
+  <!-- 体检中心 -->
+  <view class="ka">
+    <view class="ka-hang">
+      <view class="ka-biao">体检中心</view>
+      <view class="ka-zhi">{{diMing}}</view>
+    </view>
+    <view class="ka-fu" wx:if="{{zhongXinWen}}">坐标（显示为地图坐标）：{{zhongXinWen}}</view>
+    <view class="an-hang">
+      <button class="an ci" bindtap="dingWei">用当前位置</button>
+      <button class="an ci" bindtap="xuanDian">地图上选点</button>
+      <button class="an ci" bindtap="quWoDe">我的</button>
+    </view>
+  </view>
+
+  <!-- 体检参数 -->
+  <view class="ka">
+    <view class="ka-biao">目标时长</view>
+    <view class="pai">
+      <view
+        class="pai-an {{item.on ? 'on' : ''}}"
+        wx:for="{{muBiaoLie}}"
+        wx:key="miao"
+        data-miao="{{item.miao}}"
+        bindtap="xuanMuBiao"
+      >
+        {{item.ming}}
+      </view>
+    </view>
+    <view class="ka-biao" style="margin-top: 20rpx">精度档位</view>
+    <view class="pai">
+      <view
+        class="pai-an {{item.on ? 'on' : ''}}"
+        wx:for="{{dangWeiLie}}"
+        wx:key="zhi"
+        data-zhi="{{item.zhi}}"
+        bindtap="xuanDangWei"
+      >
+        {{item.ming}}
+      </view>
+    </view>
+    <view class="ka-fu">精细档网格更密、结论更准，但请求更多（百度服务端配额有限，演示建议用「标准」）</view>
+  </view>
+
+  <!-- 开始体检 -->
+  <view class="ka">
+    <button class="an zhu" bindtap="kaiShiTiJian" disabled="{{running || !youZhongXin}}">
+      {{running ? jinDu + '% 体检中' : '开始体检'}}
+    </button>
+    <block wx:if="{{running}}">
+      <view class="jindu">
+        <view class="jindu-tiao" style="width: {{jinDu}}%"></view>
+      </view>
+      <view class="ka-fu">{{jieDuanWen}}</view>
+    </block>
+    <view class="ka-fu" wx:else>共 4 步：检索设施 → 生成等时圈 → 识别盲区 → 评分。首次约 1~3 分钟</view>
+  </view>
+
+  <!-- 上次结论摘要 -->
+  <view class="ka" wx:if="{{shangCi}}">
+    <view class="ka-hang">
+      <view class="ka-biao">上次体检结论</view>
+      <view class="ka-fu">{{shangCi.shiJianWen}}</view>
+    </view>
+    <view class="fen-hang">
+      <text class="fen" style="color: {{shangCiFenSe}}">{{shangCi.total}}</text>
+      <text class="fen-dan">{{shangCiDengJi}}｜盲区 {{shangCi.mangquShu}} 处｜请求 {{shangCi.qingQiuShu}} 次</text>
+    </view>
+    <view class="an-hang">
+      <button class="an ci" bindtap="kanBaoGao">看报告</button>
+      <button class="an ci" bindtap="kanDiTu">看地图</button>
+    </view>
+    <view class="ka-fu">完整报告只保存在本机内存里：小程序被系统回收后需重跑一轮体检</view>
+  </view>
+
+  <view class="ka-fu" style="text-align: center; margin-top: 20rpx">
+    {{pingTai}}端 · 数据：OpenStreetMap 水域 + 百度地图 Web 服务
+  </view>
+</view>

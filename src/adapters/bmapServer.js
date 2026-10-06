@@ -122,8 +122,18 @@ export function chuangJianBmapServer(cfg = {}) {
           const json = await baiDuGet(api, '/routematrix/v2/walking', {
             ak,
             // 起终点一律先转 BD-09（矩阵接口按 BD-09 解析坐标）
-            origins: p.o.map(q => { const w = qu(q); return `${w.lat},${w.lng}`; }).join('|'),
-            destinations: p.d.map(q => { const w = qu(q); return `${w.lat},${w.lng}`; }).join('|'),
+            origins: p.o
+              .map(q => {
+                const w = qu(q);
+                return `${w.lat},${w.lng}`;
+              })
+              .join('|'),
+            destinations: p.d
+              .map(q => {
+                const w = qu(q);
+                return `${w.lat},${w.lng}`;
+              })
+              .join('|'),
             _referer: referer
           });
           const ge = json.result || [];

@@ -5,6 +5,7 @@ import { yunXingTijian } from '../core/pipeline.js';
 import { chuangJianBmapWeb } from '../adapters/bmapWeb.js';
 import { chuangJianBmapServer } from '../adapters/bmapServer.js';
 import { chuangJianOsm } from '../adapters/osm.js';
+import { huoShuiYu } from '../adapters/shuiyu.js';
 import { MapCanvas } from './MapCanvas.jsx';
 import { BaoGao } from './BaoGao.jsx';
 import { GuanLiYuan } from './admin.jsx';
@@ -18,7 +19,8 @@ import {
   mangQuLieBiao,
   mangQuShanChu
 } from '../core/yonghu.js';
-import { loadPeiZhi, saveReport } from './peiZhi.js';
+import { loadPeiZhi, laPeiZhiFuWu, saveReport } from './peiZhi.js';
+import { aiPeiHaoLe } from '../core/types.js';
 import { loadBmap } from './loadBmap.js';
 import { shengChengZhenDuan } from '../core/zhenduan.js';
 import { aiXuanDian, shiDaoHangYiTu, tiQuMuDiDi } from '../core/aiDaohang.js';
@@ -65,7 +67,11 @@ import {
   Play,
   RefreshCw,
   Ban,
-  Radio
+  Radio,
+  Settings,
+  Check,
+  Sparkles,
+  UserRound
 } from 'lucide';
 
 // 悬浮面板层级计数器（各面板共享）：点击谁谁置顶，最高只到 29（顶栏 z30 之下），满了就整体重排
@@ -301,28 +307,49 @@ const SHE_SHI_TU = {
   jiaotong: Bus,
   xiuxian: Trees
 };
-// AI 诊断卡：体检完成后自动生成诊断叙述（大模型优先，本地规则兜底），打字机逐字浮现
+// 诊断结论生成方式的本地偏好键：用户在这里选过就按用户选的走，没选过就跟随管理员配置
+const ZHEN_DUAN_SHE_KEY = 'sq_zhenduan_she';
+
+// AI 诊断卡：体检完成后自动生成诊断叙述（大模型优先，本地规则兜底），打字机逐字浮现。
+// 标题右侧的齿轮是「生成方式设置」：可以让用户自己挑大模型还是本地规则引擎
 function AiZhenDuanKa({ report, peiZhi }) {
   const [wen, setWen] = useState('');
   const [xianShiWen, setXianShiWen] = useState('');
   const [zhuangTai, setZhuangTai] = useState('shengCheng'); // shengCheng | daZi | wanCheng
   const [laiYuan, setLaiYuan] = useState('');
+  const [huiTui, setHuiTui] = useState(false); // 本次是不是「选了大模型但调用失败、回退本地」
+  const [cuoYin, setCuoYin] = useState(''); // 回退时把失败原因摆在卡片上，用户才知道该去改哪儿
+  const [sheKai, setSheKai] = useState(false); // 设置浮层
+  // '' = 没设置过（跟随管理员配置），'ai' / 'bendi' = 用户自己定过
+  const [sheZhi, setSheZhi] = useState(() => {
+    try {
+      const cun = localStorage.getItem(ZHEN_DUAN_SHE_KEY);
+      return cun === 'ai' || cun === 'bendi' ? cun : '';
+    } catch {
+      return ''; // 隐私模式取不到存储，按默认走
+    }
+  });
+  const aiPei = peiZhi && peiZhi.ai;
+  const aiKeYong = aiPeiHaoLe(aiPei); // 地址 + 密钥（密钥可能存在服务器上，读回来时只有 miYaoYiCun 标记）
+  const sheBiao = sheZhi || (aiPei && aiPei.qiYong ? 'ai' : 'bendi');
 
   useEffect(() => {
     if (!report) return;
     let huo = true;
     setZhuangTai('shengCheng');
     setXianShiWen('');
-    shengChengZhenDuan(report, peiZhi).then(j => {
+    shengChengZhenDuan(report, peiZhi, sheBiao).then(j => {
       if (!huo) return;
       setWen(j.wen);
       setLaiYuan(j.laiYuan);
+      setHuiTui(!!j.jiangJi);
+      setCuoYin(j.cuoYin || '');
       setZhuangTai('daZi');
     });
     return () => {
       huo = false;
     };
-  }, [report]);
+  }, [report, sheBiao]);
 
   // 打字机
   useEffect(() => {
@@ -336,23 +363,108 @@ function AiZhenDuanKa({ report, peiZhi }) {
   }, [zhuangTai, xianShiWen, wen]);
 
   if (!report) return null;
-  // 来源说明要诚实区分三种情况：大模型生成 / 配置了但调用失败回退 / 根本没启用大模型
-  const qiYong = peiZhi && peiZhi.ai && peiZhi.ai.qiYong;
+  // 来源说明要诚实区分四种情况：大模型生成 / 选了大模型但调用失败回退 / 用户自己选了本地 / 管理员压根没配。
+  // 用的是哪个模型也一并写出来（太长就截断，全名与回退原因都放 title）
+  const moXingMing = (aiPei && aiPei.moXing) || '';
+  const moXingDuan = moXingMing.length > 20 ? moXingMing.slice(0, 20) + '…' : moXingMing;
   const biaoQian =
     zhuangTai === 'shengCheng'
-      ? '生成中…'
+      ? moXingDuan
+        ? `生成中 · ${moXingDuan}`
+        : '生成中…'
       : laiYuan === 'ai'
-        ? '大模型生成'
-        : qiYong
+        ? moXingDuan
+          ? `大模型生成 · ${moXingDuan}`
+          : '大模型生成'
+        : huiTui
           ? '本地规则 · 大模型失败已回退'
-          : '本地规则引擎 · 未接入大模型';
+          : aiKeYong
+            ? '本地规则引擎 · 按你的设置'
+            : '本地规则引擎 · 未接入大模型';
   const biaoTi = laiYuan === 'ai' ? 'AI 诊断' : '诊断结论';
+  const biaoTiShi =
+    [moXingMing ? '模型：' + moXingMing : '', huiTui && cuoYin ? '回退原因：' + cuoYin : '']
+      .filter(Boolean)
+      .join(' ｜ ') || undefined;
+  // 选定生成方式：自己定过就记住（下次打开还按这个来），随后自动重出一遍结论
+  function xuanSheZhi(v) {
+    setSheZhi(v);
+    try {
+      localStorage.setItem(ZHEN_DUAN_SHE_KEY, v);
+    } catch {
+      /* 存不了也不影响本次切换 */
+    }
+    setSheKai(false);
+  }
   return (
     <div className="chart-card ai-card">
-      <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div className="card-title ai-title">
         <span>{biaoTi}</span>
-        <span className={`ai-biao ${laiYuan === 'ai' ? 'ai' : 'bendi'}`}>{biaoQian}</span>
+        <span className="ai-title-you">
+          <span className={`ai-biao ${laiYuan === 'ai' ? 'ai' : 'bendi'}`} title={biaoTiShi}>
+            {biaoQian}
+          </span>
+          <button
+            type="button"
+            className={`ai-she-an ${sheKai ? 'on' : ''}`}
+            onClick={() => setSheKai(v => !v)}
+            title="设置结论生成方式（大模型 / 本地规则引擎）"
+          >
+            <MorphIcon icon={Settings} size={13} spring="snappy" />
+          </button>
+        </span>
       </div>
+      {sheKai && (
+        <div className="ai-she">
+          <div className="ai-she-biao">结论由谁来写</div>
+          <button
+            type="button"
+            className={`ai-she-xuan ${sheBiao === 'ai' ? 'on' : ''}`}
+            disabled={!aiKeYong}
+            onClick={() => aiKeYong && xuanSheZhi('ai')}
+            title={aiKeYong ? '用大模型写结论' : '管理员还没配置大模型接口'}
+          >
+            <span className="ai-she-tu">
+              <MorphIcon icon={Sparkles} size={14} spring="snappy" />
+            </span>
+            <span className="ai-she-wen">
+              <b>大模型生成</b>
+              <i>
+                {aiKeYong
+                  ? '措辞更像真人专家、会归纳建议；需要联网，接口与密钥由管理员配置'
+                  : '管理员尚未配置大模型接口（地址 / 模型 / 密钥），暂时用不了'}
+              </i>
+            </span>
+            {sheBiao === 'ai' && (
+              <span className="ai-she-dui">
+                <MorphIcon icon={Check} size={14} spring="snappy" />
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`ai-she-xuan ${sheBiao === 'bendi' ? 'on' : ''}`}
+            onClick={() => xuanSheZhi('bendi')}
+            title="用本地规则引擎算出的结论（不联网、秒出）"
+          >
+            <span className="ai-she-tu bendi">
+              <MorphIcon icon={Radio} size={14} spring="snappy" />
+            </span>
+            <span className="ai-she-wen">
+              <b>本地规则引擎</b>
+              <i>按评分与盲区数据本地成文，不联网、不耗 token，断网也能出结论</i>
+            </span>
+            {sheBiao === 'bendi' && (
+              <span className="ai-she-dui">
+                <MorphIcon icon={Check} size={14} spring="snappy" />
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+      {huiTui && cuoYin && (
+        <div className="ai-cuo-tip">大模型没调通，这份结论是本地规则引擎写的。原因：{cuoYin}</div>
+      )}
       <div className="ai-wen">
         {xianShiWen}
         {zhuangTai === 'daZi' && <span className="ai-guang-biao">▌</span>}
@@ -429,6 +541,17 @@ export function App() {
   const [report, setReport] = useState(null);
   const [offline, setOffline] = useState(false);
   const [peiZhi, setPeiZhi] = useState(() => loadPeiZhi());
+  // 启动时从服务端再拉一次管理员配置：本地那份管「离线可用」，服务端那份管「换浏览器也是同一份」。
+  // 拉不到（服务没起 / 静态部署）就静默用本地的，不打扰用户
+  useEffect(() => {
+    let huo = true;
+    laPeiZhiFuWu().then(p => {
+      if (huo && p) setPeiZhi(p);
+    });
+    return () => {
+      huo = false;
+    };
+  }, []);
   // 管理员控制台在独立标签页保存配置后，本页通过 storage 事件实时同步，无需刷新
   useEffect(() => {
     function tongBuPeiZhi(e) {
@@ -776,12 +899,24 @@ export function App() {
               // 节奏太松反而把数据打残；单次调用 2~3 秒，靠"关键词并发提交 + 有限并发池"已经够快
               { qps: 6, bingfa: 8 }
             : { qps: 8, bingfa: 8 };
+    // 水域数据（OpenStreetMap）：给等时圈做「水面避让」，免得 15 分钟圈横跨江面画过去。
+    // 带本地缓存、同一片区域第二次跑几乎瞬回；拉不到就按「本轮不避让」处理，
+    // 体检照常往下跑（报告里会如实写明这一轮有没有避让）
+    jinDu(0.01);
+    let shuiYu = null;
+    try {
+      shuiYu = await huoShuiYu(c);
+      if (shuiYu && shuiYu.cuo) shuiYu = null;
+    } catch {
+      shuiYu = null;
+    }
     try {
       let rep;
       try {
         rep = await yunXingTijian(provider, canshu, {
           jinDu: jinDu,
           peiZhi,
+          shuiYu,
           ...jieZou
         });
       } catch (e) {
@@ -799,6 +934,7 @@ export function App() {
         rep = await yunXingTijian(osm, canshu, {
           jinDu: jinDu,
           peiZhi,
+          shuiYu,
           qps: 50,
           bingfa: 8
         });
@@ -972,7 +1108,12 @@ export function App() {
         // 否则统一按 x.location 过滤会把桌面端结果全部滤光（表现为「0 个结果」）
         const guiYi = (yuanShi || []).map(x =>
           isElectron
-            ? { name: x.name, address: x.address, area: x.area, location: { lng: x.lng, lat: x.lat } }
+            ? {
+                name: x.name,
+                address: x.address,
+                area: x.area,
+                location: { lng: x.lng, lat: x.lat }
+              }
             : x
         );
         lie = guiYi
@@ -1072,9 +1213,7 @@ export function App() {
       const mingZhong = lie.find(
         x =>
           Number.isFinite(x.lng) &&
-          (x.w === w ||
-            (x.w.length >= 2 && x.w.includes(w)) ||
-            (w.length >= 2 && w.includes(x.w)))
+          (x.w === w || (x.w.length >= 2 && x.w.includes(w)) || (w.length >= 2 && w.includes(x.w)))
       );
       if (mingZhong) {
         yingYong({ lng: mingZhong.lng, lat: mingZhong.lat });
@@ -1283,7 +1422,11 @@ export function App() {
                 }
                 qieHuanZhongXin(c, ip.address ? 'IP 定位 · ' + ip.address : 'IP 定位（城市级）');
                 setDingWeiTai('ok');
-                setDingWeiYin('已用 IP 定位到' + (ip.address || '大致位置') + '（城市级精度，桌面无 GPS 的极限）');
+                setDingWeiYin(
+                  '已用 IP 定位到' +
+                    (ip.address || '大致位置') +
+                    '（城市级精度，桌面无 GPS 的极限）'
+                );
                 tuijianZhouBian(c);
                 if (!ziDong) run(c);
                 else ziDongTiJian(c);
@@ -1496,12 +1639,13 @@ export function App() {
     const mu = muDiRef.current;
     if (!mu || !mu.dian) return;
     const shiShouJi = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
-    let moBaiDu = {
-      walk: 'walking',
-      riding: 'riding',
-      driving: 'driving',
-      transit: 'transit'
-    }[chuXing] || 'walking';
+    let moBaiDu =
+      {
+        walk: 'walking',
+        riding: 'riding',
+        driving: 'driving',
+        transit: 'transit'
+      }[chuXing] || 'walking';
     // 骑行只有百度地图 App 端支持：网页版 direction 传 riding 会被当无效请求、
     // 参数全丢落到裸首页（实测）。桌面端只有网页版可开，降级为步行路线跳过去，
     // 落地页里百度自带「骑行」标签可一键切回；手机端 App 唤起保持真实骑行
@@ -1649,7 +1793,11 @@ export function App() {
     const shi = miao == null ? '正在规划，路线好了地图马上画出来' : `预计 ${haoShiWen(miao)}`;
     const paiXu = CHU_XING.map(k => {
       const l = luXianZuRef.current[k.jian];
-      return { jian: k.jian, ming: k.ming, miao: l && l.zhuangTai === 'ok' ? l.durationSec : Infinity };
+      return {
+        jian: k.jian,
+        ming: k.ming,
+        miao: l && l.zhuangTai === 'ok' ? l.durationSec : Infinity
+      };
     }).sort((a, b) => a.miao - b.miao);
     const zuiKuai = paiXu[0];
     const BU_YUAN = 1500; // 步行超过 25 分钟视为「较远」，不适合步行
@@ -1955,7 +2103,13 @@ export function App() {
           if (!gpsKuanShiRef.current) gpsKuanShiRef.current = Date.now();
           if (Date.now() - gpsKuanShiRef.current < 15000) {
             setDaoHangTai(prev =>
-              prev ? { ...prev, kai: true, buWen: `GPS 定位精度差（±${Math.round(pos.coords.accuracy)} 米），等待更准的定位…` } : prev
+              prev
+                ? {
+                    ...prev,
+                    kai: true,
+                    buWen: `GPS 定位精度差（±${Math.round(pos.coords.accuracy)} 米），等待更准的定位…`
+                  }
+                : prev
             );
             return;
           }
@@ -2482,8 +2636,7 @@ export function App() {
       peiZhi &&
       peiZhi.ai &&
       peiZhi.ai.qiYong &&
-      peiZhi.ai.apiDiZhi &&
-      peiZhi.ai.miYao &&
+      aiPeiHaoLe(peiZhi.ai) &&
       peiZhi.ai.moXing
     );
     if (aiKai) {
@@ -2623,7 +2776,11 @@ export function App() {
                     )}
                     {!souSuoFang &&
                       souSuoJie.lie.map((x, i) => (
-                        <button key={i} className="souSuo-jie-xiang" onClick={() => dingWeiJieGuo(x)}>
+                        <button
+                          key={i}
+                          className="souSuo-jie-xiang"
+                          onClick={() => dingWeiJieGuo(x)}
+                        >
                           <b>{x.ming}</b>
                           <span>
                             {x.di}
@@ -2872,7 +3029,9 @@ export function App() {
                   {daoHangTai
                     ? `剩余 ${Math.round(daoHangTai.shengYuM)} 米 · 约 ${Math.max(
                         1,
-                        Math.round(daoHangTai.shengYuM / Math.max(1, ((daoHangTai.suDu || 4.8) * 1000) / 60))
+                        Math.round(
+                          daoHangTai.shengYuM / Math.max(1, ((daoHangTai.suDu || 4.8) * 1000) / 60)
+                        )
                       )} 分钟 · ${daoHangTai.suDu != null ? daoHangTai.suDu : 0} km/h`
                     : '导航结束，点下方「退出导航」返回'}
                   {moNiGps && '（演示用，非真实定位）'}
@@ -2950,96 +3109,100 @@ export function App() {
                   {suiShouTai === 'cun' ? '标记中…' : suiShouTai === 'ok' ? '已标记' : '标记此处'}
                 </button>
                 {moNiGps ? (
-                /* 模拟 GPS 信号跟随中：用预设轨迹按真实步行速度喂点，明确标注为模拟；点此停止 */
-                <button
-                  type="button"
-                  className="ok"
-                  onClick={tingZhiMoNiGps}
-                  title="正在用模拟 GPS 信号跟随（明确标注为模拟，不冒充真实定位）；点此停止并切回模拟行走"
-                >
-                  <MorphIcon icon={Radio} size={13} spring="snappy" />
-                  模拟GPS中
-                </button>
-              ) : gpsGenSui ? (
-                /* GPS 实时跟随中：小蓝点由设备定位驱动，暂停/继续无意义，给一个切回模拟的出口 */
-                <button
-                  type="button"
-                  className="ok"
-                  onClick={tingZhiGpsGenSui}
-                  title="正在按设备 GPS 实时定位跟随；点此切回模拟行走"
-                >
-                  <MorphIcon icon={Satellite} size={13} spring="snappy" />
-                  GPS 实时
-                </button>
-              ) : (
-                <>
+                  /* 模拟 GPS 信号跟随中：用预设轨迹按真实步行速度喂点，明确标注为模拟；点此停止 */
                   <button
                     type="button"
-                    onClick={qiDongGpsGenSui}
-                    disabled={!buXing || buXing.zhuangTai !== 'ok'}
-                    title="用设备 GPS 实时定位驱动小蓝点（走到哪蓝点到哪）；定位失败会停在原地并提示，不会自己往前走"
-                  >
-                    <MorphIcon icon={Satellite} size={13} spring="snappy" />
-                    GPS 跟随
-                  </button>
-                  <button
-                    type="button"
-                    onClick={qiDongMoNiGps}
-                    disabled={!buXing || buXing.zhuangTai !== 'ok'}
-                    title="无真 GPS（桌面演示）时，用模拟信号按真实步行速度驱动小蓝点；界面明确标注为「模拟 GPS」，不冒充真实定位"
+                    className="ok"
+                    onClick={tingZhiMoNiGps}
+                    title="正在用模拟 GPS 信号跟随（明确标注为模拟，不冒充真实定位）；点此停止并切回模拟行走"
                   >
                     <MorphIcon icon={Radio} size={13} spring="snappy" />
-                    模拟GPS
+                    模拟GPS中
                   </button>
-                  {daoHangTai && daoHangTai.kai ? (
-                    <button type="button" onClick={zhanTingBoFang} title="暂停跟随（蓝点停在原地，点「继续导航」恢复）">
-                      <MorphIcon icon={Pause} size={13} spring="snappy" />
-                      暂停
-                    </button>
-                  ) : (
+                ) : gpsGenSui ? (
+                  /* GPS 实时跟随中：小蓝点由设备定位驱动，暂停/继续无意义，给一个切回模拟的出口 */
+                  <button
+                    type="button"
+                    className="ok"
+                    onClick={tingZhiGpsGenSui}
+                    title="正在按设备 GPS 实时定位跟随；点此切回模拟行走"
+                  >
+                    <MorphIcon icon={Satellite} size={13} spring="snappy" />
+                    GPS 实时
+                  </button>
+                ) : (
+                  <>
                     <button
                       type="button"
-                      onClick={() =>
-                        kaiShiDaiLu(
-                          null,
-                          daoHangTai &&
-                            daoHangTai.quanChengM > 0 &&
-                            daoHangTai.jinDuM >= daoHangTai.quanChengM - 1
-                            ? 0
-                            : daoHangTai
-                              ? daoHangTai.jinDuM
-                              : 0
-                        )
-                      }
+                      onClick={qiDongGpsGenSui}
                       disabled={!buXing || buXing.zhuangTai !== 'ok'}
-                      title={
-                        !buXing || buXing.zhuangTai !== 'ok'
-                          ? '当前没有可用路线：请先选目的地或设中心点后重新规划'
-                          : '从当前位置继续真实跟随导航'
-                      }
+                      title="用设备 GPS 实时定位驱动小蓝点（走到哪蓝点到哪）；定位失败会停在原地并提示，不会自己往前走"
                     >
-                      {!buXing || buXing.zhuangTai !== 'ok' ? (
-                        <>
-                          <MorphIcon icon={Ban} size={13} spring="snappy" />
-                          暂无路线
-                        </>
-                      ) : daoHangTai &&
+                      <MorphIcon icon={Satellite} size={13} spring="snappy" />
+                      GPS 跟随
+                    </button>
+                    <button
+                      type="button"
+                      onClick={qiDongMoNiGps}
+                      disabled={!buXing || buXing.zhuangTai !== 'ok'}
+                      title="无真 GPS（桌面演示）时，用模拟信号按真实步行速度驱动小蓝点；界面明确标注为「模拟 GPS」，不冒充真实定位"
+                    >
+                      <MorphIcon icon={Radio} size={13} spring="snappy" />
+                      模拟GPS
+                    </button>
+                    {daoHangTai && daoHangTai.kai ? (
+                      <button
+                        type="button"
+                        onClick={zhanTingBoFang}
+                        title="暂停跟随（蓝点停在原地，点「继续导航」恢复）"
+                      >
+                        <MorphIcon icon={Pause} size={13} spring="snappy" />
+                        暂停
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          kaiShiDaiLu(
+                            null,
+                            daoHangTai &&
+                              daoHangTai.quanChengM > 0 &&
+                              daoHangTai.jinDuM >= daoHangTai.quanChengM - 1
+                              ? 0
+                              : daoHangTai
+                                ? daoHangTai.jinDuM
+                                : 0
+                          )
+                        }
+                        disabled={!buXing || buXing.zhuangTai !== 'ok'}
+                        title={
+                          !buXing || buXing.zhuangTai !== 'ok'
+                            ? '当前没有可用路线：请先选目的地或设中心点后重新规划'
+                            : '从当前位置继续真实跟随导航'
+                        }
+                      >
+                        {!buXing || buXing.zhuangTai !== 'ok' ? (
+                          <>
+                            <MorphIcon icon={Ban} size={13} spring="snappy" />
+                            暂无路线
+                          </>
+                        ) : daoHangTai &&
                           daoHangTai.quanChengM > 0 &&
                           daoHangTai.jinDuM >= daoHangTai.quanChengM - 1 ? (
-                        <>
-                          <MorphIcon icon={RefreshCw} size={13} spring="snappy" />
-                          重新导航
-                        </>
-                      ) : (
-                        <>
-                          <MorphIcon icon={Play} size={13} spring="snappy" />
-                          继续导航
-                        </>
-                      )}
-                    </button>
-                  )}
-                </>
-              )}
+                          <>
+                            <MorphIcon icon={RefreshCw} size={13} spring="snappy" />
+                            重新导航
+                          </>
+                        ) : (
+                          <>
+                            <MorphIcon icon={Play} size={13} spring="snappy" />
+                            继续导航
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
             {/* 底部信息卡：目的地 / 里程 / 进度条 */}
@@ -3106,7 +3269,13 @@ export function App() {
               rel="noreferrer"
               title="GitHub 开源仓库"
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+                aria-hidden="true"
+              >
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
               </svg>
               GitHub
@@ -3118,7 +3287,13 @@ export function App() {
               rel="noreferrer"
               title="Gitee 开源仓库"
             >
-              <svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <svg
+                viewBox="0 0 1024 1024"
+                width="14"
+                height="14"
+                fill="currentColor"
+                aria-hidden="true"
+              >
                 <path d="M512 1024C229.2 1024 0 794.8 0 512S229.2 0 512 0s512 229.2 512 512-229.2 512-512 512z m259.2-569.6H480c-12.8 0-25.6 12.8-25.6 25.6v64c0 12.8 12.8 25.6 25.6 25.6h176c12.8 0 25.6 12.8 25.6 25.6v12.8c0 41.6-35.2 76.8-76.8 76.8h-240c-12.8 0-25.6-12.8-25.6-25.6V416c0-41.6 35.2-76.8 76.8-76.8h355.2c12.8 0 25.6-12.8 25.6-25.6v-64c0-12.8-12.8-25.6-25.6-25.6H416c-105.6 0-192 86.4-192 192v355.2c0 12.8 12.8 25.6 25.6 25.6h374.4c92.8 0 172.8-76.8 172.8-172.8v-144c0-12.8-12.8-25.6-25.6-25.6z" />
               </svg>
               Gitee
@@ -3490,13 +3665,13 @@ export function App() {
                             miao: l && l.zhuangTai === 'ok' ? l.durationSec : null,
                             wu: l && l.zhuangTai === 'fail', // 该方式规划失败：没有当前方案
                             // 步行超过 25 分钟视为「较远」，卡片上明示不建议步行
-                            yuan: c.jian === 'walk' && l && l.zhuangTai === 'ok' && l.durationSec > 1500
+                            yuan:
+                              c.jian === 'walk' && l && l.zhuangTai === 'ok' && l.durationSec > 1500
                           };
                         })
                           .sort(
                             (a, b) =>
-                              (a.miao == null ? 1 : 0) - (b.miao == null ? 1 : 0) ||
-                              a.miao - b.miao
+                              (a.miao == null ? 1 : 0) - (b.miao == null ? 1 : 0) || a.miao - b.miao
                           )
                           .map(x => (
                             <button
@@ -3737,13 +3912,11 @@ export function App() {
               title="点这一条，地图跳到该标记位置"
             >
               <div className="mq-head">
-                {/* 图标与地图上那枚玫红自标图钉同款：玫红圆徽章 + 白人形，别再各用一套 */}
+                {/* 图标一律走前端图标库：lucide 的 UserRound 套一个玫红圆底，与地图上那枚自标图钉同源 */}
                 <b className="zi-biao-biao">
-                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="11" fill="#d6409f" />
-                    <circle cx="12" cy="9.6" r="3.4" fill="#ffffff" />
-                    <path d="M5.6 19.4c0-3.4 2.9-5.4 6.4-5.4s6.4 2 6.4 5.4z" fill="#ffffff" />
-                  </svg>
+                  <span className="zi-biao-yuan">
+                    <MorphIcon icon={UserRound} size={10} spring="snappy" />
+                  </span>
                   自标
                 </b>
                 <span className="mq-tag user">{m.zhangHao}</span>
@@ -4076,12 +4249,12 @@ export function App() {
                   maxLength={60}
                 />
               </div>
-              {suiShouCuo && (
-                <div className="a-tip a-tip-err">
-                  {suiShouCuo}
-                </div>
-              )}
-              <button className="a-btn a-btn-primary" onClick={queRenSuiShou} disabled={suiShouTai === 'cun'}>
+              {suiShouCuo && <div className="a-tip a-tip-err">{suiShouCuo}</div>}
+              <button
+                className="a-btn a-btn-primary"
+                onClick={queRenSuiShou}
+                disabled={suiShouTai === 'cun'}
+              >
                 {suiShouTai === 'cun' ? '保存中…' : '保存标记'}
               </button>
             </div>

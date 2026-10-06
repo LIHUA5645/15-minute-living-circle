@@ -3,11 +3,10 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { chuangJianYongHuFuWu } from './fuwuqi/yonghu-fuwu.mjs';
-
-const execFileAsync = promisify(execFile);
+// 三个中间件的实现放在 fuwuqi/zhongJian.mjs：Vite 开发服务器（本文件）与独立服务端
+// fuwuqi/fuwu-qi.mjs 共用同一份，避免「Web 改了、小程序端那套没跟上」的漂移
+import { chuangJianBmapDaiLi, chuangJianAiZhongJi } from './fuwuqi/zhongJian.mjs';
 
 // base 设为相对路径，便于 Electron 直接加载 dist/index.html 与静态部署
 export default defineConfig(({ mode }) => {
@@ -29,50 +28,10 @@ export default defineConfig(({ mode }) => {
       {
         name: 'baidu-web-api-proxy',
         configureServer(server) {
-          const AK_LIE = [env.BAIDU_SERVER_AK, env.BAIDU_SERVER_AK2].filter(Boolean);
-          server.middlewares.use('/bmapapi', async (req, res) => {
-            // 跨域：允许静态部署页面直连本机服务
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-            if (req.method === 'OPTIONS') {
-              res.statusCode = 204;
-              return res.end();
-            }
-            const u = new URL(req.url, 'http://localhost');
-            let zuiHou = AK_LIE.length ? '无请求' : '未配置服务端 AK';
-            let zuiHouWen = '';
-            for (const ak of AK_LIE) {
-              u.searchParams.set('ak', ak);
-              const muBiao = `https://api.map.baidu.com${u.pathname}?${u.searchParams}`;
-              try {
-                const r = await fetch(muBiao, {
-                  headers: { Accept: 'application/json' }
-                });
-                const txt = await r.text();
-                let j = null;
-                try {
-                  j = JSON.parse(txt);
-                } catch {
-                  /* 非 JSON（异常页）也当作失败换下一把 */
-                }
-                if (j && j.status === 0) {
-                  res.statusCode = 200;
-                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                  return res.end(txt);
-                }
-                // 这把 AK 不可用（配额超限 302 / 服务未开通 240 / 其他）→ 记下原因，换下一把
-                zuiHou = (j && j.message) || `HTTP ${r.status}`;
-                zuiHouWen = txt;
-              } catch (e) {
-                zuiHou = (e && e.message) || '网络异常';
-                zuiHouWen = JSON.stringify({ status: -1, message: zuiHou });
-              }
-            }
-            // 所有 AK 都失败：把最后一把的原始错误透传（前端按 status!==0 自行降级并展示原因）
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(zuiHouWen || JSON.stringify({ status: -1, message: '百度服务不可用：' + zuiHou }));
+          const daiLi = chuangJianBmapDaiLi({
+            akLie: [env.BAIDU_SERVER_AK, env.BAIDU_SERVER_AK2].filter(Boolean)
           });
+          server.middlewares.use('/bmapapi', (req, res) => daiLi(req, res));
         },
       },
       // /api 用户鉴权与管理接口（MySQL）：注册/登录/管理员用户管理
@@ -84,89 +43,12 @@ export default defineConfig(({ mode }) => {
         },
       },
       // /airelay AI 接口中转：解决浏览器直连大模型 API 的 CORS 限制
-      // 请求体 {url, tou, body} 均由前端传入（接口地址/密钥由管理员在面板配置）
+      // 请求体 {url, tou, body} 均由前端传入（接口地址/密钥由管理员在面板配置，服务端代持）
       {
         name: 'ai-relay',
         configureServer(server) {
-          // 三级回退出站请求：Node fetch → Windows 自带 curl.exe（Schannel TLS 指纹，可过部分 Cloudflare 规则）
-          async function curlQingQiu(url, tou, body, fangFa) {
-            const canshu = [
-              '-sS', '--max-time', '90', '--compressed',
-              '-X', fangFa === 'GET' ? 'GET' : 'POST',
-              '-H', 'Content-Type: application/json',
-              '-H', 'Accept: application/json',
-              '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            ];
-            for (const [k, v] of Object.entries(tou || {})) canshu.push('-H', `${k}: ${v}`);
-            if (fangFa !== 'GET') canshu.push('--data', JSON.stringify(body || {}));
-            canshu.push(url);
-            const { stdout } = await execFileAsync('curl', canshu, {
-              windowsHide: true,
-              maxBuffer: 20 * 1024 * 1024,
-              timeout: 95000,
-            });
-            return stdout;
-          }
-          server.middlewares.use('/airelay', (req, res) => {
-            // 跨域：允许静态部署页面直连本机的 AI 中转
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-            if (req.method === 'OPTIONS') {
-              res.statusCode = 204;
-              return res.end();
-            }
-            let s = '';
-            req.on('data', (c) => (s += c));
-            req.on('end', async () => {
-              try {
-                const { url, tou, body, fangFa } = JSON.parse(s || '{}');
-                if (!/^https:\/\//.test(String(url || ''))) throw new Error('仅支持 HTTPS 接口地址');
-                // fangFa 缺省为 POST（对话补全）；GET 用于拉取 /models 模型列表
-                const shiGET = fangFa === 'GET';
-                const wangYe = (t) => String(t || '').trimStart().startsWith('<');
-                let txt = '';
-                let status = 0;
-                // 第一级：Node fetch（补浏览器 UA）
-                try {
-                  const r = await fetch(url, {
-                    method: shiGET ? 'GET' : 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'User-Agent':
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                      Accept: 'application/json',
-                      ...(tou || {}),
-                    },
-                    ...(shiGET ? {} : { body: JSON.stringify(body || {}) }),
-                  });
-                  txt = await r.text();
-                  status = r.status;
-                } catch (e) {
-                  txt = JSON.stringify({ ok: false, xinxi: '出站请求失败：' + e.message });
-                  status = 502;
-                }
-                // 第二级：返回的是网页（Cloudflare 拦截页等）→ 换 curl.exe 的 Schannel TLS 指纹再试
-                if (wangYe(txt)) {
-                  try {
-                    const txt2 = await curlQingQiu(url, tou, body, fangFa);
-                    if (!wangYe(txt2)) {
-                      txt = txt2;
-                      status = 200;
-                    }
-                  } catch {
-                    /* curl 也失败：保留第一级结果 */
-                  }
-                }
-                res.statusCode = status;
-                res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                res.end(txt);
-              } catch (e) {
-                res.statusCode = 502;
-                res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                res.end(JSON.stringify({ ok: false, xinxi: 'AI 中转失败：' + e.message }));
-              }
-            });
-          });
+          const zhongJi = chuangJianAiZhongJi({ quAiPeiZhi: () => yongHuFuWu.quAiPeiZhi() });
+          server.middlewares.use('/airelay', (req, res) => zhongJi(req, res));
         },
       },
     ],

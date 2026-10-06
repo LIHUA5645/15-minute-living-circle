@@ -6,6 +6,7 @@
 import { liangDianJuLi } from './geo/jichu.js';
 import { duiHuaJieKouZhi } from './zhenduan.js';
 import { fuWuUrl } from './fuwuDiZhi.js';
+import { aiPeiHaoLe, fuWuDaiFa } from './types.js';
 
 // 意图关键词 → 评分维度（本地规则用）
 const YI_TU = [
@@ -78,12 +79,15 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
   if (!houXuan.length)
     return {
       ok: false,
-      xinxi:
-        '本轮体检没有检索到任何设施（多为百度接口配额超限或数据源异常），暂时无法规划导航。等配额恢复后重新体检，或在管理员面板把数据源切到「离线样例」体验导航。'
+      // 「没跑过体检」和「跑了但没检索到设施」是两回事：前者容易被误读成配额问题，
+      // 所以没有报告时直接告诉他先去跑一轮
+      xinxi: report
+        ? '本轮体检没有检索到任何设施（多为百度接口配额超限或数据源异常，也可能是这个位置附近确实没有），暂时无法规划导航。等配额恢复后重新体检，或在管理员面板把数据源切到「离线样例」体验导航。'
+        : '还没有可用的体检结果，暂时无法规划导航：请先回地图页跑一轮体检，再来问我「带我去最近的医院」这类问题。'
     };
 
   // ① 大模型路：候选清单（限 120 条防超长）+ 用户需求 → 结构化 JSON 选择
-  if (ai && ai.qiYong && ai.apiDiZhi && ai.miYao) {
+  if (ai && ai.qiYong && aiPeiHaoLe(ai)) {
     try {
       const mingDan = houXuan.slice(0, 120).map((p, i) => ({
         i,
@@ -102,7 +106,8 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: duiHuaJieKouZhi(ai.apiDiZhi),
-          tou: { Authorization: 'Bearer ' + ai.miYao },
+          // 只有「本地填了密钥、且服务端还没存过」才自己带；服务端存过就让它代发
+          ...(ai.miYao && !fuWuDaiFa(ai) ? { tou: { Authorization: 'Bearer ' + ai.miYao } } : {}),
           body: {
             model: ai.moXing,
             temperature: 0.2,

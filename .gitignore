@@ -17,3 +17,13 @@ coverage
 agent
 skills-lock.json
 .playwright-cli/
+
+# 本地调试残留（留在本地排查用，不随仓库分发）
+cdp_*.txt
+dev_log.txt
+exe_log.txt
+pdf_text.txt
+snap*.yaml
+fuwuqi/fuwu.log
+fuwuqi/fuwu.log.err
+fuwuqi/shuju/

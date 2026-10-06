@@ -1,0 +1,28 @@
+{
+  "pages": [
+    "pages/ditu/ditu",
+    "pages/tijian/tijian",
+    "pages/baogao/baogao",
+    "pages/wo/wo",
+    "pages/denglu/denglu",
+    "pages/ai/ai",
+    "pages/index/index",
+    "pages/example/index"
+  ],
+  "window": {
+    "backgroundColor": "#f4f1ea",
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTitleText": "15 分钟生活圈体检",
+    "navigationBarTextStyle": "black"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于确定体检中心点，生成 15 分钟步行可达范围"
+    }
+  },
+  "requiredPrivateInfos": ["getLocation", "chooseLocation"],
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

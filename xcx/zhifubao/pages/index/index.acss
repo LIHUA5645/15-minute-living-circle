@@ -1,0 +1,5 @@
+/* 首页专用样式：公共类在 app.wxss */
+.fen-dan {
+  font-size: 22rpx;
+  color: #8a93a3;
+}

@@ -53,12 +53,26 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
   }
 
   // 2. 等时圈（占总进度 18~85%）
+  // 水域掩膜由调用方（界面层）预先取好传进来：core 不碰网络，保持跨端可复用
   const dengShiQuan = await shengChengDengshiquan(provider, canShu, {
     huanCun: hc,
     xianliu,
     jinDu: opt.jinDu,
-    jinDuQuJian: [0.18, 0.85]
+    jinDuQuJian: [0.18, 0.85],
+    shuiYu: opt.shuiYu || null
   });
+  const shuiYuTai = dengShiQuan.shuiYu || {};
+  if (shuiYuTai.qiYong && shuiYuTai.geShu) {
+    warnings.push(
+      `等时圈已按水域避让：跳过 ${shuiYuTai.geShu} 处水面（江河湖泊不计入 15 分钟覆盖）`
+    );
+  } else if (!shuiYuTai.qiYong) {
+    // 拉不到水域数据（Overpass 限流等）时如实说明，别让用户以为「圈里含江面」也是对的。
+    // 周边压根没有水面（取到了但数量为 0）属正常，不打扰
+    warnings.push(
+      '本轮未取到水域数据（OpenStreetMap），等时圈未做水面避让——横跨江河的覆盖判定会偏乐观'
+    );
+  }
   if (dengShiQuan.geshe && dengShiQuan.geshe.length) {
     warnings.push(`检测到 ${dengShiQuan.geshe.length} 个方位存在明显阻隔/割裂`);
   }

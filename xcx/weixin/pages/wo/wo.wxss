@@ -1,0 +1,6 @@
+/* 「我的」页专用样式：公共类在 app.wxss */
+.mq-hang {
+  font-size: 24rpx;
+  color: #5b6675;
+  margin-top: 8rpx;
+}

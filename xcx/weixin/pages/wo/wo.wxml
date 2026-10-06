@@ -1,0 +1,65 @@
+<!-- 我的：账号 → 我的标记 → 设置 → 自检 -->
+<view class="ye">
+  <!-- 账号 -->
+  <view class="ka">
+    <view class="ka-hang">
+      <view class="ka-biao">账号</view>
+      <view class="ka-fu">{{pingTai}}端</view>
+    </view>
+    <block wx:if="{{yongHu}}">
+      <view class="row">
+        <view class="row-biao">已登录</view>
+        <view class="row-zhi">{{yongHu.zhangHao}}</view>
+      </view>
+      <view class="an-hang">
+        <button class="an ci" bindtap="tuiChu">退出登录</button>
+        <button class="an ci" bindtap="laMangQu">刷新我的标记</button>
+      </view>
+    </block>
+    <block wx:else>
+      <input class="input" placeholder="账号（至少 3 位）" data-k="zhangHao" bindinput="sheRu" value="{{zhangHao}}" />
+      <input class="input" password placeholder="密码（至少 6 位）" data-k="miMa" bindinput="sheRu" value="{{miMa}}" />
+      <view class="an-hang">
+        <button class="an ci" bindtap="dengLu">登录</button>
+        <button class="an ci" bindtap="zhuCe">注册</button>
+      </view>
+      <view class="ka-fu">账号存在服务端 MySQL（与 Web 端共用同一套接口），用于共享盲区标记</view>
+    </block>
+  </view>
+
+  <!-- 我的标记 -->
+  <view class="ka" wx:if="{{woDeMangQu.length}}">
+    <view class="ka-biao">社区共享的盲区标记（{{woDeMangQu.length}}）</view>
+    <view class="row" wx:for="{{woDeMangQu}}" wx:key="id" style="margin-top: 12rpx">
+      <view style="flex: 1">
+        <view class="row-zhi" style="text-align: left">{{item.beiZhu || '（无备注）'}}</view>
+        <view class="ka-fu">{{item.zhangHao}} · {{item.zuoBiao}}</view>
+      </view>
+      <button class="an ci" wx:if="{{item.wo}}" data-id="{{item.id}}" bindtap="shanMangQu">删除</button>
+    </view>
+  </view>
+
+  <!-- 设置 -->
+  <view class="ka">
+    <view class="ka-biao">服务端地址</view>
+    <input class="input" data-k="fuWuDiZhi" bindinput="sheRu" value="{{fuWuDiZhi}}" placeholder="https://你的域名（真机需 HTTPS 并加白名单）" />
+    <view class="an-hang">
+      <button class="an ci" bindtap="baoCunFuWu">保存</button>
+      <button class="an ci" bindtap="qingHuanCun">清空缓存（{{huanCunTiao}} 条）</button>
+    </view>
+    <view class="ka-fu">开发期可在开发者工具里勾「不校验合法域名」直连本机；真机预览请用 HTTPS 穿透域名</view>
+  </view>
+
+  <!-- 自检 -->
+  <view class="ka">
+    <view class="ka-biao">坐标系自检</view>
+    <view class="ka-fu">各端定位返回的坐标系约定不同，这里把原始值与转换结果都摆出来，真机核对一次即可</view>
+    <view class="an-hang">
+      <button class="an ci" bindtap="ceDingWei">测一次定位</button>
+    </view>
+    <view class="mq-hang" wx:if="{{dingWeiYuanShi}}">{{dingWeiYuanShi}}</view>
+    <view class="mq-hang" wx:if="{{dingWeiZhuanHuan}}">{{dingWeiZhuanHuan}}</view>
+  </view>
+
+  <view class="ka-fu" style="text-align: center">版本 {{banBen}}｜引擎与 Web 端同源（src/core）</view>
+</view>

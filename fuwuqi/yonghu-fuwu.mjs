@@ -117,6 +117,14 @@ export function chuangJianYongHuFuWu(cfg) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_zh (zhang_hao)
     )`);
+    // 管理员配置（评分维度 / 权重 / AI 接口地址与密钥等）：整份 JSON 存一行。
+    // 之前这份配置只躺在管理员那台浏览器的 localStorage 里，换浏览器打开就变空白，
+    // 现在落到数据库，谁打开都读得到（密钥不下发，见 moMiYao）
+    await lian.query(`CREATE TABLE IF NOT EXISTS peizhi (
+      id INT PRIMARY KEY,
+      nei_rong LONGTEXT NOT NULL,
+      geng_xin DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
     // 种子管理员 admin/admin（scrypt 哈希），首次初始化时写入
     const [rows] = await lian.query('SELECT id FROM admins LIMIT 1');
     if (!rows.length) {
@@ -141,6 +149,70 @@ export function chuangJianYongHuFuWu(cfg) {
       return false;
     }
     return true;
+  }
+
+  // 抹掉配置里的密钥再下发：不管是访客还是管理员浏览器，密钥一律不出服务端，
+  // 只回一个 miYaoYiCun 标记「服务端存过密钥了」，界面据此提示「留空即沿用」
+  function moMiYao(p) {
+    const ai = (p && p.ai) || {};
+    return {
+      ...p,
+      ai: {
+        ...ai,
+        miYao: '',
+        miYaoYiCun: !!ai.miYao,
+        aiKu: (ai.aiKu || []).map(k => ({ ...k, miYao: '', miYaoYiCun: !!k.miYao }))
+      }
+    };
+  }
+
+  // 读整份配置（服务端内部用，含密钥）
+  async function duPeiZhi() {
+    const [rows] = await chi.query('SELECT nei_rong FROM peizhi WHERE id = 1');
+    if (!rows.length) return null;
+    try {
+      return JSON.parse(rows[0].nei_rong);
+    } catch {
+      return null; // 内容坏了就当没配过，别把整个服务拖挂
+    }
+  }
+
+  // 存配置：请求里的密钥字段留空表示「沿用服务端已有的那把」——
+  // 因为下发时密钥被抹掉了，管理员面板里那格本来就是空的，一保存可不能把密钥抹没了
+  async function cunPeiZhi(xin) {
+    const jiu = (await duPeiZhi()) || {};
+    const jiuAi = jiu.ai || {};
+    const xinAi = (xin && xin.ai) || {};
+    const he = {
+      ...xin,
+      ai: {
+        ...xinAi,
+        miYao: xinAi.miYao || jiuAi.miYao || '',
+        aiKu: (xinAi.aiKu || []).map(k => {
+          if (k.miYao) return { ...k, miYao: k.miYao };
+          const yuan = (jiuAi.aiKu || []).find(o => o.ming && o.ming === k.ming);
+          return { ...k, miYao: (yuan && yuan.miYao) || '' };
+        })
+      }
+    };
+    await chi.query(
+      'INSERT INTO peizhi (id, nei_rong) VALUES (1, ?) ON DUPLICATE KEY UPDATE nei_rong = VALUES(nei_rong)',
+      [JSON.stringify(he)]
+    );
+    return he;
+  }
+
+  // 给内部调用方（dev server 的 /airelay 中转）取 AI 配置：这里带密钥，
+  // 大模型请求由服务端补上 Authorization，前端全程拿不到密钥
+  async function quAiPeiZhi() {
+    const p = await duPeiZhi();
+    const ai = (p && p.ai) || {};
+    return {
+      qiYong: !!ai.qiYong,
+      apiDiZhi: ai.apiDiZhi || '',
+      moXing: ai.moXing || '',
+      miYao: ai.miYao || ''
+    };
   }
 
   async function chuLi(req, res) {
@@ -339,6 +411,22 @@ export function chuangJianYongHuFuWu(cfg) {
         return hui(res, 200, { ok: true, token });
       }
 
+      // —— 管理员配置：读公开（密钥一律抹掉再下发），写必须管理员令牌 ——
+      if (lu === '/peiZhi/du' && req.method === 'GET') {
+        const p = await duPeiZhi();
+        return hui(res, 200, { ok: true, peiZhi: p ? moMiYao(p) : null });
+      }
+
+      if (lu === '/peiZhi/cun' && req.method === 'POST') {
+        if (!lingPaiYouXiao(req))
+          return hui(res, 401, { ok: false, xinxi: '请先以管理员身份登录' });
+        const { peiZhi } = await duBody(req);
+        if (!peiZhi || typeof peiZhi !== 'object')
+          return hui(res, 200, { ok: false, xinxi: '缺少配置内容' });
+        await cunPeiZhi(peiZhi);
+        return hui(res, 200, { ok: true });
+      }
+
       // —— 以下均为管理员接口：需要有效令牌 ——
       if (lu.startsWith('/guanliyuan/')) {
         if (!lingPaiYouXiao(req))
@@ -389,5 +477,6 @@ export function chuangJianYongHuFuWu(cfg) {
     }
   }
 
-  return { chuShiHua, chuLi };
+  // quAiPeiZhi 给 dev server 的 AI 中转用：那块代码与这里同进程，直接拿配置，密钥不出进程
+  return { chuShiHua, chuLi, quAiPeiZhi };
 }

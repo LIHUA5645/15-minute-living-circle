@@ -1,0 +1,305 @@
+/* 版权声明：肖沐樑  QQ：3387432690
+   完成时间：2026，10，06
+   三端共用的一套类名（各端只是后缀不同：wxss / acss / ttss），改这里三端观感一致 */
+page {
+  background: #f4f1ea;
+  color: #1f2a37;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.ye {
+  padding: 24rpx 24rpx 60rpx;
+}
+
+/* 卡片 */
+.ka {
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 6rpx 20rpx rgba(15, 23, 42, 0.06);
+}
+.ka-hang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ka-biao {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2a37;
+}
+.ka-zhi {
+  font-size: 28rpx;
+  color: #1f2a37;
+  max-width: 60%;
+  text-align: right;
+}
+.ka-fu {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #8a93a3;
+}
+
+/* 按钮 */
+.an-hang {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+  flex-wrap: wrap;
+}
+.an {
+  margin: 0;
+  padding: 0 28rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 14rpx;
+  font-size: 26rpx;
+  font-weight: 500;
+}
+.an::after {
+  border: none;
+}
+.an.ci {
+  background: #eef2f7;
+  color: #1f2a37;
+}
+.an.zhu {
+  background: #1a8f57;
+  color: #ffffff;
+  width: 100%;
+}
+.an.zhu[disabled] {
+  background: #c8d2dd;
+  color: #ffffff;
+}
+
+/* 胶囊选择 */
+.pai {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 12rpx;
+}
+.pai-an {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  border-radius: 14rpx;
+  background: #eef2f7;
+  color: #5b6675;
+  font-size: 26rpx;
+}
+.pai-an.on {
+  background: #e8f6ee;
+  color: #1a8f57;
+  font-weight: 600;
+}
+
+/* 进度 */
+.jindu {
+  margin-top: 18rpx;
+  height: 12rpx;
+  background: #eef2f7;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+.jindu-tiao {
+  height: 12rpx;
+  background: #1a8f57;
+  transition: width 0.25s;
+}
+
+/* 分数 */
+.fen-hang {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
+.fen {
+  font-size: 60rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+.fen-dan {
+  font-size: 22rpx;
+  color: #8a93a3;
+}
+
+/* 地图页 */
+.ye-map {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+.ditu {
+  width: 100vw;
+  height: 100vh;
+}
+.tuceng {
+  position: absolute;
+  left: 20rpx;
+  top: 20rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  max-width: 70vw;
+}
+.tuceng-an {
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 12rpx;
+  padding: 10rpx 20rpx;
+  font-size: 24rpx;
+  color: #5b6675;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.12);
+}
+.tuceng-an.on {
+  background: #1a8f57;
+  color: #ffffff;
+}
+.wu-bao {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 24rpx 32rpx;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  color: #5b6675;
+  box-shadow: 0 6rpx 20rpx rgba(15, 23, 42, 0.1);
+}
+.ka-di {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 24rpx 28rpx 40rpx;
+  box-shadow: 0 -6rpx 24rpx rgba(15, 23, 42, 0.12);
+}
+.ka-di-tou {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ka-di-biaoTi {
+  font-size: 30rpx;
+  font-weight: 600;
+  border-left: 8rpx solid #1a8f57;
+  padding-left: 14rpx;
+}
+.ka-di-guan {
+  color: #8a93a3;
+  font-size: 30rpx;
+  padding: 0 10rpx;
+}
+.ka-di-hang {
+  font-size: 26rpx;
+  color: #1f2a37;
+  margin-top: 10rpx;
+}
+.ka-di-jianYi {
+  margin-top: 14rpx;
+  padding: 14rpx 18rpx;
+  background: #f7f9fc;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #5b6675;
+}
+.ka-di-fu {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #1a8f57;
+}
+
+/* 报告页 */
+.wei-hang {
+  margin-bottom: 18rpx;
+}
+.wei-tou {
+  display: flex;
+  justify-content: space-between;
+  font-size: 26rpx;
+}
+.wei-tiao {
+  margin-top: 8rpx;
+  height: 14rpx;
+  background: #eef2f7;
+  border-radius: 8rpx;
+  overflow: hidden;
+}
+.wei-tiao-nei {
+  height: 14rpx;
+  border-radius: 8rpx;
+}
+.warn {
+  background: #fff7e6;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 24rpx;
+  color: #8a5a00;
+  margin-bottom: 12rpx;
+}
+.mq {
+  border: 1rpx solid #f6d6d6;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+.mq-tou {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.mq-tag {
+  font-size: 22rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 10rpx;
+  color: #ffffff;
+}
+.mq-hang {
+  font-size: 24rpx;
+  color: #5b6675;
+  margin-top: 8rpx;
+}
+.ai-wen {
+  font-size: 26rpx;
+  color: #1f2a37;
+  white-space: pre-wrap;
+}
+.ai-cuo {
+  font-size: 24rpx;
+  color: #b42318;
+}
+
+/* 我的 */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #eef2f7;
+}
+.row:last-child {
+  border-bottom: none;
+}
+.row-biao {
+  font-size: 26rpx;
+  color: #5b6675;
+}
+.row-zhi {
+  font-size: 26rpx;
+  color: #1f2a37;
+  max-width: 60%;
+  text-align: right;
+}
+.input {
+  background: #f7f9fc;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 26rpx;
+  margin-top: 12rpx;
+}

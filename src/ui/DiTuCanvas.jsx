@@ -207,6 +207,23 @@ export function DiTuCanvas({
         ctx.stroke();
       }
     }
+    // 跨水面的原圈轮廓：细虚线补出「圈本身没变，只是江面不填色」（与百度底图那路保持同一套观感）
+    ctx.setLineDash([7, 6]);
+    ctx.lineWidth = 1.6;
+    for (const c of report?.dengShiQuan?.shuiDuan || []) {
+      ctx.strokeStyle = MI_CAISE[c.miao] || '#2f9bff';
+      for (const duan of c.duan || []) {
+        if (duan.length < 2) continue;
+        ctx.beginPath();
+        duan.forEach((pt, i) => {
+          const { x, y } = toXY(pt);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
 
     // ③ 设施散点（内置六类 + 管理员自定义维度，未知类别回退圆形中性色）
     const poiSet = report?.poiSet;

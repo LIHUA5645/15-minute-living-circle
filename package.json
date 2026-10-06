@@ -16,6 +16,12 @@
     "lint": "eslint \"src/**/*.{js,jsx}\"",
     "format": "prettier --write \"src/**/*.{js,jsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,css}\"",
+    "fuwu": "node fuwuqi/fuwu-qi.mjs",
+    "fuwu:bg": "powershell -ExecutionPolicy Bypass -File scripts/changZhu-fuwu.ps1",
+    "fuwu:stop": "powershell -ExecutionPolicy Bypass -File scripts/tingZhi-fuwu.ps1",
+    "xcx:tongbu": "node scripts/tongbu-xcx.mjs",
+    "xcx:jiancha": "node scripts/tongbu-xcx.mjs --jiancha",
+    "xcx:zijian": "node tests/xcx-zijian.mjs",
     "electron:dev": "vite build && electron electron/main.cjs",
     "dist:win": "vite build && electron-builder --win --config electron/builder.yml"
   },

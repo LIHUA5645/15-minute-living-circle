@@ -26,7 +26,8 @@
 // 体检报告（Report）
 // {
 //   zhongXin, canshu, total, dengji,
-//   dengshiquan: { ceng: [{miao, polygon:[...]}], yangBenDian:[...], luXian:[...], geshe:[] },
+//   dengshiquan: { ceng: [{miao, polygon:[...]}], shuiDuan:[{miao, duan:[[...]]}],
+//                  yangBenDian:[...], luXian:[...], geshe:[], shuiYu:{qiYong,geShu,yanMaGe,duanShu} },
 //   fenleiPingfen: [{fenlei, score, C,A,D,B, shuliang}],
 //   mangquList: [{id, level, polygon, areaM2, quekou, zhongxin, jianyi, yujiFugaiRenkou}],
 //   warnings: [],
@@ -117,3 +118,17 @@ export const FENLEI_MING = {
   jiaotong: '交通',
   xiuxian: '休闲'
 };
+
+// 大模型是否配置可用：接口地址 + 密钥。
+// 密钥有两个来源——本地填的那把（ai.miYao），或已经保存在服务器上：
+// 服务端为了不让密钥出网，读配置时会把密钥抹掉、只回一个 miYaoYiCun 标记，
+// 所以判断「配好了没」必须把这两种情况都算上（调用时由服务端补密钥）
+export function aiPeiHaoLe(ai) {
+  return !!(ai && ai.apiDiZhi && (ai.miYao || ai.miYaoYiCun));
+}
+
+// 大模型请求该由谁带密钥：服务端已经存过密钥（miYaoYiCun）就一律由服务端代发，
+// 前端别再掺和——本机残留的旧密钥曾经把服务端那份新配置顶掉，表现就是「明明配好了却一直失败」
+export function fuWuDaiFa(ai) {
+  return !!(ai && ai.miYaoYiCun);
+}

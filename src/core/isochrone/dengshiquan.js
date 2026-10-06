@@ -12,6 +12,7 @@ import {
   pingMianJuLi
 } from '../geo/jichu.js';
 import { ouJiGuJI, tuiBiChongShi } from '../scheduler/xianliu.js';
+import { shuiYuYanMa } from '../geo/shuiyu.js';
 
 // 密度档位预设
 const MI_DU = {
@@ -302,6 +303,35 @@ function luWangXiFu(rings, luXian) {
   );
 }
 
+// 取出折线里落在水面上的连续段（给「跨水面的虚线轮廓」用）：
+// 环是闭合的，先从岸上的点起头再线性扫一遍，免得跨水的那一段被首尾拆成两半；
+// 每段两端各带上一个岸上点，虚线正好接住填色的边缘，不差出一格
+function shuiShangDuan(ring, zaiShui) {
+  const qi = ring.findIndex(p => !zaiShui(p.lng, p.lat));
+  if (qi < 0) return []; // 整圈都在水面上：没什么可补的
+  const lie = ring.slice(qi).concat(ring.slice(0, qi));
+  const duan = [];
+  let cur = null;
+  for (let i = 0; i < lie.length; i++) {
+    const p = lie[i];
+    if (zaiShui(p.lng, p.lat)) {
+      if (!cur) cur = [lie[i - 1]];
+      cur.push(p);
+    } else if (cur) {
+      cur.push(p);
+      if (cur.length >= 3) duan.push(cur);
+      cur = null;
+    }
+  }
+  // 环是从「岸上第一个点」起头扫的，跨水那一段若正好落在扫描的收尾处，就得绕回起点补上
+  // （lie 的末位是 ring[qi-1]，而它按 qi 的定义必然是水面点，所以这段不会在循环里自己收口）
+  if (cur) {
+    cur.push(lie[0]);
+    if (cur.length >= 3) duan.push(cur);
+  }
+  return duan;
+}
+
 // 主入口：生成等时圈
 export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   const { zhongXin, mubiaoMiao = 900 } = canShu;
@@ -362,11 +392,22 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
   }
   const field = new Array(G * G);
   const buKeDaMiao = mubiaoMiao * 2; // 不可达哨兵值：必须为有限数，否则等值线插值产生 NaN
+  // 水域掩膜：落在水面上的格子直接按「不可达」算，Marching Squares 就会贴着岸线绕开，
+  // 不再把江面整个圈进 15 分钟圈里（评分里「圈内设施」的判定也跟着变真实）。
+  // 有桥的地方路网仍然连通，圈会在桥附近收窄通过——那正是真实可达性
+  const yanMa = opt.shuiYu ? shuiYuYanMa(opt.shuiYu, G, x0, y0, dx, dy) : null;
+  let yanMaGe = 0;
   for (let j = 0; j < G; j++) {
     for (let i = 0; i < G; i++) {
+      const k = j * G + i;
+      if (yanMa && yanMa[k]) {
+        field[k] = buKeDaMiao;
+        yanMaGe++;
+        continue;
+      }
       const p = { lng: x0 + i * dx, lat: y0 + j * dy };
       const v = shiJian ? shiJian.qu(p) : chang(p);
-      field[j * G + i] = Number.isFinite(v) ? v : buKeDaMiao;
+      field[k] = Number.isFinite(v) ? v : buKeDaMiao;
     }
   }
 
@@ -378,13 +419,64 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
     if (rings.length) ceng.push({ miao, polygon: rings });
   }
 
+  // 水面上的原圈轮廓（虚线素材）：不加掩膜再提一次等值线，只挑出落在水面上的那几段。
+  // 用途只有一个——界面上用细虚线把「被江面截掉的那一截」补出来，让「圈本身还是原来那个圈」
+  // 看得见；填色、面积、评分一律仍以避让后的 ceng 为准。掩膜没生效时零开销
+  const shuiDuan = [];
+  if (yanMaGe) {
+    const fieldYuan = new Array(G * G);
+    for (let j = 0; j < G; j++) {
+      for (let i = 0; i < G; i++) {
+        const k = j * G + i;
+        if (field[k] !== buKeDaMiao) {
+          fieldYuan[k] = field[k];
+          continue;
+        }
+        const p = { lng: x0 + i * dx, lat: y0 + j * dy };
+        const v = shiJian ? shiJian.qu(p) : chang(p);
+        fieldYuan[k] = Number.isFinite(v) ? v : buKeDaMiao;
+      }
+    }
+    // 点是否落在水面上：查掩膜即可，O(1)，不必逐点做多边形判定。取 3×3 邻域（掩膜外扩一格）——
+    // 江面常由「岸线多边形 + 河心线缓冲带」叠加而成，两者之间会留出一条一格宽的缝，
+    // 只用本格判定会把跨江的那段虚线切成两截；外扩一格顺带让虚线两端压住填色边缘，接得更实
+    const zaiShui = (lng, lat) => {
+      const i0 = Math.round((lng - x0) / dx);
+      const j0 = Math.round((lat - y0) / dy);
+      for (let j = j0 - 1; j <= j0 + 1; j++) {
+        if (j < 0 || j >= G) continue;
+        for (let i = i0 - 1; i <= i0 + 1; i++) {
+          if (i < 0 || i >= G) continue;
+          if (yanMa[j * G + i] === 1) return true;
+        }
+      }
+      return false;
+    };
+    for (const miao of [300, 600, mubiaoMiao]) {
+      const duan = [];
+      for (const ring of marchingSquares(fieldYuan, G, x0, y0, dx, dy, miao)) {
+        for (const d of shuiShangDuan(ring, zaiShui)) duan.push(pingHuaXian(d, 1));
+      }
+      if (duan.length) shuiDuan.push({ miao, duan });
+    }
+  }
+
   return {
     ceng,
     yangBenDian: yangBen.filter(s => s.t > 0),
     luXian,
     geshe,
     rMax,
-    miDu: dangwei
+    miDu: dangwei,
+    // 被水面截掉的原圈轮廓（界面画细虚线用），未被截断的层级不出现在这里
+    shuiDuan,
+    // 水面避让情况：报告里要如实说明「这一轮到底避没避」
+    shuiYu: {
+      qiYong: !!yanMa,
+      geShu: (opt.shuiYu && opt.shuiYu.geShu) || 0,
+      yanMaGe,
+      duanShu: shuiDuan.reduce((s, c) => s + c.duan.length, 0)
+    }
   };
 }
 

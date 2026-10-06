@@ -1,0 +1,10 @@
+{
+  "pages": ["pages/tijian/tijian", "pages/ditu/ditu", "pages/baogao/baogao", "pages/wo/wo"],
+  "window": {
+    "navigationBarTitleText": "15 分钟生活圈体检",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f4f1ea",
+    "backgroundTextStyle": "light"
+  }
+}

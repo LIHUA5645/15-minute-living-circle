@@ -1,0 +1,18 @@
+{
+  "description": "15 分钟生活圈体检助手 · 微信小程序端（核心引擎与 Web 端同源，见 xcx/README.md）",
+  "appid": "touristappid",
+  "projectname": "15-minute-living-circle-wx",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "libVersion": "3.5.5",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "ignoreDevUnusedFiles": false,
+    "ignoreUploadUnusedFiles": true
+  },
+  "condition": {}
+}

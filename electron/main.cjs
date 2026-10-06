@@ -159,6 +159,8 @@ ipcMain.handle('ipDingWei', async () => {
 // 渲染层在桌面端把 /api 指到 http://127.0.0.1:37777（见 src/core/fuwuDiZhi.js）。
 // MySQL 连接参数复用 .env 的 DB_*；库表结构 / 限流规则 / 种子管理员与服务端完全一致。
 const YONGHU_DUANKOU = 37777;
+// 内嵌用户服务实例提到模块级：AI 中转要取它的 AI 配置（服务端代持密钥）
+let yongHuFuWu = null;
 // —— /airelay AI 接口中转（与 vite.config.js 的 ai-relay 中间件同构）——
 // 桌面端没有 vite 中间件，AI 对话 / 诊断 / 导航的出站请求改由主进程代理：
 // 前端传 {url, tou, body, fangFa}，主进程转发；密钥只在请求头里过一遍，不落库不落盘。
@@ -168,6 +170,19 @@ function huiYuanWang(t) {
   return String(t || '')
     .trimStart()
     .startsWith('<');
+}
+// 接口地址规整：与前端 src/core/zhenduan.js、vite.config.js 里那套规则保持一致
+function duiHuaJieKouZhi(u0) {
+  const u = String(u0 || '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (/\/responses\/chat\/completions$/i.test(u))
+    return u.replace(/\/responses\/chat\/completions$/i, '/chat/completions');
+  if (/\/chat\/completions$/i.test(u)) return u;
+  if (/\/responses$/i.test(u)) return u.replace(/\/responses$/i, '/chat/completions');
+  if (/\/completions$/i.test(u)) return u.replace(/\/completions$/i, '/chat/completions');
+  if (/\/v\d+$/i.test(u)) return u + '/chat/completions';
+  return u + '/chat/completions';
 }
 function curlQingQiu(execFile, url, tou, body, fangFa) {
   const canshu = [
@@ -207,7 +222,22 @@ async function aiZhongZhuan(req, res) {
   req.on('data', (c) => (s += c));
   req.on('end', async () => {
     try {
-      const { url, tou, body, fangFa } = JSON.parse(s || '{}');
+      let { url, tou, body, fangFa } = JSON.parse(s || '{}');
+      // 服务端代持密钥（与 vite.config.js 的 ai-relay 同构）：请求没自带 Authorization 时，
+      // 用数据库里管理员保存的那份配置补上——桌面端任何电脑打开都能用大模型，密钥不出主进程
+      if (!tou || !(tou.Authorization || tou.authorization)) {
+        if (!yongHuFuWu) throw new Error('本地服务还没就绪，稍等几秒再试');
+        const ai = await yongHuFuWu.quAiPeiZhi();
+        if (!ai.apiDiZhi || !ai.miYao) {
+          const que = !ai.apiDiZhi ? '接口地址' : 'API 密钥';
+          throw new Error(
+            `服务器上还没有可用的 AI 配置（缺 ${que}）：请打开管理员面板 → AI 设置，把「接口地址 + API 密钥 + 模型名称」填好并点「保存配置」`
+          );
+        }
+        url = duiHuaJieKouZhi(ai.apiDiZhi);
+        tou = { Authorization: 'Bearer ' + ai.miYao };
+        body = { ...(body || {}), model: ai.moXing || (body && body.model) || '' };
+      }
       if (!/^https:\/\//.test(String(url || ''))) throw new Error('仅支持 HTTPS 接口地址');
       const shiGET = fangFa === 'GET';
       let txt = '';
@@ -256,14 +286,14 @@ async function qiDongYongHuFuWu() {
   try {
     const { chuangJianYongHuFuWu } = await import('../fuwuqi/yonghu-fuwu.mjs');
     const http = require('http');
-    const fuwu = chuangJianYongHuFuWu({
+    yongHuFuWu = chuangJianYongHuFuWu({
       host: process.env.DB_HOST || '127.0.0.1',
       port: Number(process.env.DB_PORT || 3306),
       user: process.env.DB_USER || 'root',
       password: process.env.DB_PASS || ''
     });
     // 初始化失败（MySQL 没开）不拦启动：服务照常监听，请求时会以 500 报出具体原因
-    fuwu.chuShiHua().catch(e => console.error('[yonghu-fuwu] MySQL 初始化失败：', e.message));
+    yongHuFuWu.chuShiHua().catch(e => console.error('[yonghu-fuwu] MySQL 初始化失败：', e.message));
     require('http')
       .createServer((req, res) => {
         const lu = String(req.url || '/');
@@ -271,7 +301,7 @@ async function qiDongYongHuFuWu() {
         if (lu.startsWith('/airelay')) return aiZhongZhuan(req, res);
         // 前端统一走 /api 前缀，fuwu 服务内的路由不带前缀，剥掉再交给处理器
         req.url = lu.replace(/^\/api/, '');
-        fuwu.chuLi(req, res);
+        yongHuFuWu.chuLi(req, res);
       })
       .listen(YONGHU_DUANKOU, '127.0.0.1')
       .on('listening', () =>

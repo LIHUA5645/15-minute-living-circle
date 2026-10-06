@@ -4,15 +4,16 @@
 // 分区：用户管理 / 体检配置 / 盲区阈值 / AI 设置 / 账号安全 / 历史报告
 // 登录鉴权（后端 MySQL 校验 + 真实 IP 限流）；隐藏入口：连点左上角 logo 三次，或 URL 带 #guanliyuan
 import React, { useEffect, useState } from 'react';
-import { FENLEI_MING, MOREN_PEI_ZHI } from '../core/types.js';
-import { savePeiZhi, loadReports } from './peiZhi.js';
+import { FENLEI_MING, MOREN_PEI_ZHI, aiPeiHaoLe, fuWuDaiFa } from '../core/types.js';
+import { savePeiZhiFuWu, loadReports } from './peiZhi.js';
 import { fuWuUrl, fuWuDiZhi, sheZhiFuWuDiZhi } from '../core/fuwuDiZhi.js';
 import {
   dengLuGuanLiYuan,
   yongHuLieBiao,
   shanChuYongHu,
   zhongZhiMiMa,
-  guanLiYuanGaiMiMa
+  guanLiYuanGaiMiMa,
+  peiZhiDu
 } from '../core/yonghu.js';
 import guanLiLogoTu from '../../管理员logo.png'; // 管理员控制台品牌 logo（登录页与左侧导航共用）
 
@@ -241,8 +242,9 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     mangqu: { ...MOREN_PEI_ZHI.mangqu, ...(peiZhi.mangqu || {}) },
     ai: (() => {
       const a = { ...MOREN_PEI_ZHI.ai, ...(peiZhi.ai || {}) };
-      // 不做默认预填：从未启用（无密钥）且仍是旧版出厂示例值时展示为空，避免误导「已配置」
-      if (!a.miYao) {
+      // 不做默认预填：从未配置过（本地没密钥、服务器也没有）且仍是旧版出厂示例值时展示为空，
+      // 避免误导「已配置」；密钥存在服务器的情形（miYaoYiCun）算已配置，别把地址也清掉
+      if (!aiPeiHaoLe(a)) {
         if (!a.apiDiZhi || /api\.openai\.com/i.test(a.apiDiZhi)) a.apiDiZhi = '';
         if (a.moXing === 'gpt-4o-mini') a.moXing = '';
       }
@@ -261,6 +263,30 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
   const [moXingCuo, setMoXingCuo] = useState('');
   const [dangBeiZhu, setDangBeiZhu] = useState('');
   const [bianJiIdx, setBianJiIdx] = useState(-1);
+  // 服务器上那份配置的状态：管理员最常踩的坑就是「本机改完没上传」，换浏览器打开还是空白
+  const [fuWuTai, setFuWuTai] = useState({ zhuang: 'cha' });
+  // 读服务器上那份配置（打开面板 / 切到 AI 分区 / 保存之后各刷一次）
+  async function zhaFuWuTai() {
+    setFuWuTai({ zhuang: 'cha' });
+    try {
+      const j = await peiZhiDu();
+      if (!j || !j.ok) {
+        setFuWuTai({ zhuang: 'cuo', xinxi: (j && j.xinxi) || '服务端没返回结果' });
+        return;
+      }
+      if (!j.peiZhi) {
+        setFuWuTai({ zhuang: 'wu' });
+        return;
+      }
+      const a = j.peiZhi.ai || {};
+      setFuWuTai({ zhuang: 'you', ming: a.moXing || '(未填模型名)' });
+    } catch (e) {
+      setFuWuTai({ zhuang: 'cuo', xinxi: (e && e.message) || '连不上服务端' });
+    }
+  }
+  useEffect(() => {
+    if (open && auth) zhaFuWuTai();
+  }, [open, auth, ye]);
   const [bianJiZhi, setBianJiZhi] = useState(null);
   // 管理员是否亲手动过「启用」开关关掉：亲手关掉后保存时不自动启用
   const [shouDongGuanBi, setShouDongGuanBi] = useState(false);
@@ -324,25 +350,34 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     setAuth(false);
   }
 
-  function save() {
+  async function save() {
     // 填好了地址与密钥就视为可用：保存时自动启用，管理员不用再单独拨开关；
-    // 只有管理员刚才亲手动过开关关掉（shouDongGuanBi）才尊重手动关闭
+    // 只有管理员刚才亲手动过开关关掉（shouDongGuanBi）才尊重手动关闭。
+    // 注意密钥可能只存在服务器上（下发时被抹掉，只留 miYaoYiCun 标记），那种情况同样算「填好了」
     let ai = draft.ai;
-    if (ai.apiDiZhi && ai.miYao && !ai.qiYong && !shouDongGuanBi) {
+    if (aiPeiHaoLe(ai) && !ai.qiYong && !shouDongGuanBi) {
       ai = { ...ai, qiYong: true };
     }
     const zuiZhong = { ...draft, ai };
     setDraft(zuiZhong);
     setShouDongGuanBi(false);
-    savePeiZhi(zuiZhong);
+    const jie = await savePeiZhiFuWu(zuiZhong);
     onChange(zuiZhong);
-    alert('配置已保存并立即生效');
+    zhaFuWuTai(); // 保存后立刻回读服务器那份，成功与否一眼可见
+    // 顺带点出「缺哪一项」：缺了的话，配置传上去大模型照样用不了，别让人白高兴
+    const que = !ai.apiDiZhi ? '接口地址' : !(ai.miYao || ai.miYaoYiCun) ? 'API 密钥' : '';
+    const houZh = que ? `（注意：还缺${que}，大模型仍然用不了）` : '';
+    alert(
+      jie.fuWu
+        ? `配置已保存并同步到服务器${houZh}——换浏览器、换电脑打开都是这份`
+        : `配置只保存在本机，没能同步到服务器（${jie.xinxi}）${houZh}`
+    );
   }
 
-  function reset() {
+  async function reset() {
     const d = { ...MOREN_PEI_ZHI, mingGai: {} };
     setDraft(d);
-    savePeiZhi(d);
+    await savePeiZhiFuWu(d);
     onChange(d);
   }
 
@@ -377,7 +412,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     setDraft(next);
     setDangBeiZhu('');
     // 档案即时落盘：入档立刻写存储并通知主界面，不用再点一次「保存配置」也不会丢
-    savePeiZhi(next);
+    savePeiZhiFuWu(next); // 档案变更同样往服务端同步一份（内部自带本地写入，失败了也不影响本机）
     onChange(next);
     alert(`已存入常用配置档案（现有 ${ku.length} 份），点档案行即可整组切回`);
   }
@@ -389,11 +424,17 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     setMoXingCuo('');
   }
 
-  // 点常用配置档案 → 整组填入表单
+  // 点常用配置档案 → 整组填入表单（密钥若存在服务器上，档案里只有 miYaoYiCun 标记，一并带过来）
   function yongAiDang(k) {
     setDraft({
       ...draft,
-      ai: { ...draft.ai, apiDiZhi: k.apiDiZhi, miYao: k.miYao, moXing: k.moXing }
+      ai: {
+        ...draft.ai,
+        apiDiZhi: k.apiDiZhi,
+        miYao: k.miYao,
+        moXing: k.moXing,
+        miYaoYiCun: !!k.miYaoYiCun
+      }
     });
   }
 
@@ -425,7 +466,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     };
     const next = { ...draft, ai: { ...draft.ai, aiKu: ku } };
     setDraft(next);
-    savePeiZhi(next);
+    savePeiZhiFuWu(next); // 档案变更同样往服务端同步一份（内部自带本地写入，失败了也不影响本机）
     onChange(next);
     setBianJiIdx(-1);
   }
@@ -440,7 +481,7 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
     const ku = draft.ai.aiKu.filter((_, x) => x !== i);
     const next = { ...draft, ai: { ...draft.ai, aiKu: ku } };
     setDraft(next);
-    savePeiZhi(next);
+    savePeiZhiFuWu(next); // 档案变更同样往服务端同步一份（内部自带本地写入，失败了也不影响本机）
     onChange(next);
   }
 
@@ -472,8 +513,8 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
   // 自动获取模型列表：由接口地址推导 /models 端点，经服务端 /airelay 中转（解决 CORS）
   async function huoQuMoXing() {
     setMoXingCuo('');
-    if (!draft.ai.apiDiZhi || !draft.ai.miYao) {
-      setMoXingCuo('请先填写接口地址与 API 密钥，再获取模型列表');
+    if (!aiPeiHaoLe(draft.ai)) {
+      setMoXingCuo('请先填写接口地址与 API 密钥再获取（密钥已存在服务器上时可直接获取）');
       return;
     }
     setMoXingZhong(true);
@@ -482,8 +523,14 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: tuiDaoMoXingDiZhi(draft.ai.apiDiZhi),
-          tou: { Authorization: 'Bearer ' + draft.ai.miYao },
+          // 本地填了地址与密钥就按本地这份去取（方便先测再存）；服务端已存密钥、或本地没填，
+          // 就什么都不传，由服务端用服务器上那份配置补上
+          ...(draft.ai.miYao && !fuWuDaiFa(draft.ai)
+            ? {
+                url: tuiDaoMoXingDiZhi(draft.ai.apiDiZhi),
+                tou: { Authorization: 'Bearer ' + draft.ai.miYao }
+              }
+            : {}),
           fangFa: 'GET'
         })
       });
@@ -934,12 +981,28 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
                     {draft.ai.qiYong ? '已启用' : '已关闭'}
                   </button>
                 </div>
+                <div
+                  className={`a-tip ${
+                    fuWuTai.zhuang === 'you'
+                      ? 'a-tip-ok'
+                      : fuWuTai.zhuang === 'cuo'
+                        ? 'a-tip-err'
+                        : ''
+                  }`}
+                >
+                  {fuWuTai.zhuang === 'cha' && '正在读取服务器上的配置…'}
+                  {fuWuTai.zhuang === 'you' &&
+                    `服务器已保存这份配置（模型：${fuWuTai.ming}）——换浏览器、换电脑打开都能直接用。`}
+                  {fuWuTai.zhuang === 'wu' &&
+                    '服务器上还没有配置：本机改完记得点右上角「保存配置」上传，否则换个浏览器打开还是空白。'}
+                  {fuWuTai.zhuang === 'cuo' && `读不到服务器配置：${fuWuTai.xinxi}`}
+                </div>
                 <div className="a-tip">
                   配置兼容 OpenAI Chat Completions 格式的任意大模型服务商（OpenAI / DeepSeek /
                   通义千问 / 智谱等）。 启用后体检报告自动生成 AI
                   诊断叙述；未启用或调用失败时自动回退本地规则引擎，不影响体检流程。
                 </div>
-                {draft.ai.apiDiZhi && draft.ai.miYao && !draft.ai.qiYong && (
+                {aiPeiHaoLe(draft.ai) && !draft.ai.qiYong && (
                   <div className="a-tip">
                     已填写接口地址与密钥：点「保存配置」时会自动启用，无需手动拨开关；如需停用，请先把开关切到「已关闭」再保存。
                   </div>
@@ -956,16 +1019,21 @@ export function GuanLiYuan({ open, onClose, peiZhi, onChange }) {
                   />
                 </div>
                 <div className="a-field">
-                  <label className="a-label">API 密钥（仅保存在本机浏览器配置中）</label>
+                  <label className="a-label">API 密钥（存服务器，不下发到浏览器）</label>
                   <input
                     className="a-input"
                     type="password"
                     value={draft.ai.miYao}
-                    placeholder="sk-…"
+                    placeholder={draft.ai.miYaoYiCun ? '服务器已保存，留空即沿用' : 'sk-…'}
                     onChange={e =>
                       setDraft({ ...draft, ai: { ...draft.ai, miYao: e.target.value } })
                     }
                   />
+                  {draft.ai.miYaoYiCun && (
+                    <div className="a-tip">
+                      服务器上已存着密钥（这里读不到原文，是刻意的）：留空保存＝继续用原来那把；填入新值＝覆盖成新的。大模型请求由服务端代发，密钥不经过浏览器。
+                    </div>
+                  )}
                 </div>
                 <div className="a-field">
                   <label className="a-label">模型名称（可手填，或填好地址与密钥后自动获取）</label>

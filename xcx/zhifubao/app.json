@@ -1,0 +1,9 @@
+{
+  "pages": ["pages/tijian/tijian", "pages/ditu/ditu", "pages/baogao/baogao", "pages/wo/wo"],
+  "window": {
+    "defaultTitle": "15 分钟生活圈体检",
+    "titleBarColor": "#ffffff",
+    "pullRefresh": false,
+    "backgroundColor": "#f4f1ea"
+  }
+}

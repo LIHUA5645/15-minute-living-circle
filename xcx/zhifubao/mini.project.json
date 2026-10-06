@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "miniprogramRoot": "./",
+  "component2": true,
+  "compileOptions": {
+    "component2": true,
+    "enableParallelLoader": true,
+    "enableDistFileMinify": false
+  },
+  "developOptions": {
+    "hotReload": true
+  },
+  "axmlStrictCheck": false
+}

@@ -5,7 +5,16 @@
 //   ② 开源瓦片（DiTuCanvas）—— 不依赖任何 AK，百度不可用时自动降级
 // 两种引擎均叠加：等时圈热力分层 / 设施散点 / 服务盲区 / 体检中心
 import React, { useEffect, useRef, useState } from 'react';
-import { Cross, GraduationCap, ShoppingCart, Armchair, Bus, Trees, Shapes } from 'lucide';
+import {
+  Cross,
+  GraduationCap,
+  ShoppingCart,
+  Armchair,
+  Bus,
+  Trees,
+  Shapes,
+  UserRound
+} from 'lucide';
 import { MorphIcon } from 'morphicons/react';
 import { Route as LuYouLuXian, Satellite, Axis3d } from 'lucide';
 import { loadBmap } from './loadBmap.js';
@@ -114,14 +123,15 @@ const TU_BIAO = {
   xiuxian: Trees
 };
 const kebab = s => s.replace(/([A-Z])/g, '-$1').toLowerCase();
-function tuZhuanSvg(Tu) {
+// 后三个参数（描边色 / 边长 / 线宽）是给「白底玫红小徽章」那类用法留的口子，默认值仍是散点图标那套
+function tuZhuanSvg(Tu, se = '#ffffff', bian = 11, cu = 2.6) {
   const nei = Tu.map(([tag, attrs]) => {
     const a = Object.entries(attrs || {})
       .map(([k, v]) => `${kebab(k)}='${v}'`)
       .join(' ');
     return `<${tag} ${a}/>`;
   }).join('');
-  return `<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='#ffffff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'>${nei}</svg>`;
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${bian}' height='${bian}' viewBox='0 0 24 24' fill='none' stroke='${se}' stroke-width='${cu}' stroke-linecap='round' stroke-linejoin='round'>${nei}</svg>`;
 }
 const tuHuanCun = {};
 function sheShiBiaoJi(f, color) {
@@ -132,6 +142,22 @@ function sheShiBiaoJi(f, color) {
       `<g transform='translate(4.5,4.5)'>${tuZhuanSvg(TU_BIAO[f] || Shapes)}</g></svg>`;
   }
   return tuHuanCun[f];
+}
+
+// 自标盲区的图钉图形：玫红水滴 + 白色圆徽章 + lucide「用户」图标。
+// 小人取前端图标库的 UserRound 节点拼出来（不手搓 path），地图上这枚与右侧清单里的小徽章同源，
+// 改一处两边一起变。kuan/gao 是给信息窗标题那种小尺寸复用的（内部坐标固定 24x30，SVG 自己缩放）
+function ziBiaoBiaoJi(kuan = 24, gao = 30) {
+  const yao = 'ziBiao_' + kuan + '_' + gao;
+  if (tuHuanCun[yao]) return tuHuanCun[yao];
+  tuHuanCun[yao] =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${kuan}' height='${gao}' viewBox='0 0 24 30'>` +
+    `<ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/>` +
+    `<path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#d6409f' stroke='#ffffff' stroke-width='1.5'/>` +
+    `<circle cx='12' cy='11' r='4.9' fill='#ffffff'/>` +
+    `<g transform='translate(7.5,6.5)'>${tuZhuanSvg(UserRound, '#d6409f', 9, 2.8)}</g>` +
+    `</svg>`;
+  return tuHuanCun[yao];
 }
 
 function simpleKey(obj) {
@@ -1230,8 +1256,8 @@ export const MapCanvas = React.memo(function MapCanvas({
       map.setCenter(new B.Point(c0.lng, c0.lat));
     }
 
-    // ① 等时圈热力分层：仅当数据变化时重建
-    const isoKey = simpleKey(report?.dengShiQuan?.ceng);
+    // ① 等时圈热力分层：仅当数据变化时重建（含跨水面的虚线素材，见下）
+    const isoKey = simpleKey([report?.dengShiQuan?.ceng, report?.dengShiQuan?.shuiDuan]);
     if (isoKey !== keysRef.current.iso) {
       keysRef.current.iso = isoKey;
       clearLayer('iso');
@@ -1254,6 +1280,31 @@ export const MapCanvas = React.memo(function MapCanvas({
               fillColor: col,
               fillOpacity: opa
             })
+          );
+        }
+      }
+      // 江面上那几段原圈轮廓：细虚线补出来——填色止于岸边，但「圈本身没变、只是江面不填色」
+      // 一眼能看出来。数据来自生成端的 shuiDuan（未避让的等值线 ∩ 水面），未被截断的层级不会出现
+      for (const c of report?.dengShiQuan?.shuiDuan || []) {
+        const col = MI_CAISE[c.miao] || '#2f9bff';
+        for (const duan of c.duan || []) {
+          if (duan.length < 2) continue;
+          addTo(
+            'iso',
+            new B.Polyline(
+              duan.map(p => {
+                const q = Z(p);
+                return new B.Point(q.lng, q.lat);
+              }),
+              {
+                strokeColor: col,
+                strokeWeight: 2,
+                strokeOpacity: 0.85,
+                strokeStyle: 'dashed',
+                dashArray: [7, 6],
+                strokeLineCap: 'round'
+              }
+            )
           );
         }
       }
@@ -1438,13 +1489,9 @@ export const MapCanvas = React.memo(function MapCanvas({
           'yongHu',
           new B.Marker(new B.Point(q.lng, q.lat), {
             title: `自标盲区：${m.beiZhu}`,
-            icon: new B.Icon(
-              svgIcon(
-                `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#d6409f' stroke='#ffffff' stroke-width='1.5'/><circle cx='12' cy='11' r='4.7' fill='#ffffff'/><circle cx='12' cy='9.5' r='1.7' fill='#d6409f'/><path d='M9.2 13.9c0-1.7 1.3-2.7 2.8-2.7s2.8 1 2.8 2.7z' fill='#d6409f'/></svg>`
-              ),
-              new B.Size(24, 30),
-              { anchor: new B.Size(12, 30) }
-            )
+            icon: new B.Icon(ziBiaoBiaoJi(), new B.Size(24, 30), {
+              anchor: new B.Size(12, 30)
+            })
           })
         );
         // 点击图钉：信息窗展示这是什么盲点、谁标的、何时、坐标
@@ -1462,8 +1509,8 @@ export const MapCanvas = React.memo(function MapCanvas({
             '<div style="min-width:200px;max-width:240px">' +
             // 标题行：图钉 + 标题 + 虚线分隔，比旧版单行标题更精致
             '<div style="display:flex;align-items:center;gap:6px;padding-bottom:6px;margin-bottom:7px;border-bottom:1px dashed #e3e8ef">' +
-            // 标题图标：与地图上那枚玫红图钉同款（玫红圆徽章 + 白人形），替换掉原来的 📍
-            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" style="flex:0 0 auto"><circle cx="12" cy="12" r="11" fill="#d6409f"/><circle cx="12" cy="9.6" r="3.4" fill="#ffffff"/><path d="M5.6 19.4c0-3.4 2.9-5.4 6.4-5.4s6.4 2 6.4 5.4z" fill="#ffffff"/></svg>' +
+            // 标题图标：与地图上那枚玫红图钉同一份图形（同一个 ziBiaoBiaoJi 缩到小尺寸），替换掉原来的 📍
+            ziBiaoBiaoJi(13, 16) +
             '<b style="font-size:13.5px;color:#1f2a37">用户标记的盲区</b>' +
             '</div>' +
             `<div style="font-size:12.5px;color:#1f2a37;line-height:1.6">${m.beiZhu}</div>` +

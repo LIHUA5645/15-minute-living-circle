@@ -74,6 +74,17 @@ export function yongHuGaiMiMa(zhangHao, jiuMiMa, xinMiMa) {
   return tiJiao('/yonghu/gaiMiMa', { zhangHao, jiuMiMa, xinMiMa });
 }
 
+// —— 管理员配置：存服务端 MySQL，换浏览器 / 换机器打开也能读到同一份（密钥不下发） ——
+export async function peiZhiDu() {
+  const r = await fetch(fuWuUrl('/api/peiZhi/du'));
+  return r.json();
+}
+
+export function peiZhiCun(peiZhi) {
+  // 保存必须带管理员令牌：服务端会校验，没登录直接 401 并触发统一登出提示
+  return tiJiao('/peiZhi/cun', { peiZhi }, guanLiYuanLingPai());
+}
+
 // —— 用户标记盲区：登录后可用，MySQL 存储、全员实时共享（读公开，删仅限本人） ——
 export function mangQuBiaoJi(zhangHao, weiZhi, beiZhu) {
   return tiJiao('/mangqu/biaoJi', { zhangHao, lng: weiZhi.lng, lat: weiZhi.lat, beiZhu });

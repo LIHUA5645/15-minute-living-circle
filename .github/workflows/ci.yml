@@ -26,3 +26,7 @@ jobs:
         run: npm run test
       - name: 构建 Web
         run: npm run build
+      - name: 小程序三端一致性检查（引擎 / 共享层 / 生成视图 与真源比对）
+        run: npm run xcx:jiancha
+      - name: 小程序自检（引擎同源、提示词逐字一致等 28 项；无服务端时自动跳过依赖项）
+        run: npm run xcx:zijian

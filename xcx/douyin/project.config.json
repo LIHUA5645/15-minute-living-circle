@@ -1,0 +1,13 @@
+{
+  "description": "15 分钟生活圈体检助手 · 抖音小程序端（视图由微信端经同步脚本转换，见 xcx/README.md）",
+  "appid": "tt请替换为你的AppID",
+  "projectname": "15-minute-living-circle-tt",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "minified": true,
+    "postcss": true
+  }
+}

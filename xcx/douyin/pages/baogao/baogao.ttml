@@ -1,0 +1,135 @@
+<!-- 报告页：总分 → 维度 → 提示 → 盲区清单 → 建议 → AI 诊断 -->
+<view class="ye">
+  <block tt:if="{{youBaoGao}}">
+    <!-- 总分 -->
+    <view class="zong-ka">
+      <view class="zong-tou">
+        <view class="ka-biao">{{diMing || '本社区'}} · 15 分钟生活圈</view>
+        <view class="biao-qian" style="background: {{fenSe}}1f; color: {{fenSe}}">{{dengJiWen}}</view>
+      </view>
+      <view class="fen-hang">
+        <text class="fen" style="color: {{fenSe}}">{{total}}</text>
+        <text class="fen-dan">请求 {{qingQiuShu}} 次 · 耗时 {{haoShiWen}} · {{miDuWen}}档</text>
+      </view>
+      <view class="dai">
+        <view class="dai-nei" style="width: {{total}}%; background: {{fenSe}}"></view>
+      </view>
+      <view class="ka-fu" style="display: flex; justify-content: space-between">
+        <text>0</text>
+        <text>60 及格</text>
+        <text>85 优秀</text>
+        <text>100</text>
+      </view>
+    </view>
+
+    <!-- 六维 -->
+    <view class="ka">
+      <view class="qu-biao">六维得分</view>
+      <view class="wei-hang" tt:for="{{weiDu}}" tt:key="ming">
+        <view class="wei-tou">
+          <text>{{item.ming}}<text style="color: #98a2b3; font-size: 22rpx">　权重 {{item.quan}}%</text></text>
+          <text style="color: {{item.se}}; font-weight: 600">{{item.fen}} 分<text style="color: #98a2b3; font-weight: 400; font-size: 22rpx"> · 圈内 {{item.shu}} 处</text></text>
+        </view>
+        <view class="wei-tiao">
+          <view class="wei-tiao-nei" style="width: {{item.kuan}}%; background: {{item.se}}"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 提示与告警 -->
+    <view class="ka" tt:if="{{warn.length}}">
+      <view class="qu-biao">数据可信度与提示</view>
+      <view class="warn" tt:for="{{warn}}" tt:key="*this">
+        <view class="ic ic-jing" style="color: #b7791f; margin-top: 4rpx">!</view>
+        <view style="flex: 1">{{item}}</view>
+      </view>
+    </view>
+
+    <!-- 盲区清单 -->
+    <view class="ka">
+      <view class="ka-hang" style="margin-bottom: 6rpx">
+        <view class="qu-biao" style="margin-bottom: 0">服务盲区（{{mangQuList.length}} 处）</view>
+        <view class="ka-fu">「地图查看」可定位</view>
+      </view>
+      <view class="mq" tt:for="{{mangQuList}}" tt:key="id">
+        <view class="mq-tou">
+          <text class="mq-id">{{item.id}}</text>
+          <text class="mq-tag" style="background: {{item.se}}">{{item.dengJiWen}}</text>
+          <text class="ka-fu" style="margin-top: 0">面积 {{item.mianJiWen}}</text>
+        </view>
+        <view class="mq-hang"><text class="dian">缺口　</text>{{item.quekouWen}}</view>
+        <view class="mq-hang" tt:if="{{item.renKouWen}}"><text class="dian">影响人口　</text>{{item.renKouWen}}</view>
+        <view class="mq-hang" tt:if="{{item.zuoBiaoWen}}"><text class="dian">建议补建　</text>{{item.zuoBiaoWen}}</view>
+        <view class="ka-di-jianYi" tt:if="{{item.jianYi}}">{{item.jianYi}}</view>
+        <view class="an-hang">
+          <button class="an ci" data-id="{{item.id}}" bindtap="kanDiTu">地图查看</button>
+          <button class="an ci" data-id="{{item.id}}" bindtap="biaoJi">标记我的位置</button>
+        </view>
+      </view>
+    </view>
+
+    <!-- 改进建议 -->
+    <view class="ka" tt:if="{{jianYi.length}}">
+      <view class="qu-biao">改进建议</view>
+      <view class="mq-hang" tt:for="{{jianYi}}" tt:key="*this">
+        <text class="dian">·　</text>{{item}}
+      </view>
+    </view>
+
+    <!-- AI 诊断（与网页端一致：打开即生成、可切生成方式、失败如实说明并回退本地规则） -->
+    <view class="ka ai-ka">
+      <view class="ai-tou">
+        <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+
+        <view style="flex: 1; min-width: 0">
+          <view class="ka-biao">智能诊断</view>
+          <view class="ka-fu">{{ai.biaoQian || '正在准备…'}}</view>
+        </view>
+        <view class="ai-chi" bindtap="kaiShe"><view class="ic ic-can" style="color: #7c5cff"></view></view>
+      </view>
+
+      <!-- 生成方式（二选一） -->
+      <view class="ai-she" tt:if="{{ai.sheKai}}">
+        <view class="ai-she-an {{ai.sheZhi === 'ai' ? 'on' : ''}}" data-v="ai" bindtap="qieSheZhi">
+          <view class="ai-she-zi">大模型生成</view>
+          <view class="ka-fu">{{ai.aiKeYong ? (ai.moXing || '已配置') : '管理员未配置，暂不可选'}}</view>
+        </view>
+        <view class="ai-she-an {{ai.sheZhi === 'bendi' ? 'on' : ''}}" data-v="bendi" bindtap="qieSheZhi">
+          <view class="ai-she-zi">本地规则引擎</view>
+          <view class="ka-fu">不联网，按评分与盲区模板生成</view>
+        </view>
+      </view>
+
+      <view class="ai-wen" tt:if="{{ai.xianShiWen}}">{{ai.xianShiWen}}<text class="ai-guang" tt:if="{{ai.zhuangTai === 'daZi'}}">▍</text></view>
+      <view class="ai-cuo" tt:if="{{ai.huiTui && ai.cuoYin}}">
+        大模型没调通，这份结论是本地规则引擎写的。原因：{{ai.cuoYin}}
+      </view>
+      <view class="ai-cuo" tt:elif="{{ai.zhuangTai === 'cuo'}}">诊断生成失败：{{ai.cuoYin}}</view>
+
+      <view class="an-hang">
+        <button
+          class="an ci ling"
+          bindtap="shengCheng"
+          disabled="{{ai.zhuangTai === 'shengCheng' || ai.zhuangTai === 'daZi'}}"
+        >
+          {{ai.zhuangTai === 'shengCheng' || ai.zhuangTai === 'daZi' ? '生成中…' : '重新生成'}}
+        </button>
+        <button class="an ci ling" bindtap="quAi">问问 AI 助手</button>
+      </view>
+    </view>
+
+    <view class="an-hang" style="margin-bottom: 40rpx">
+      <button class="an ci" bindtap="huiDiTu">在地图上看覆盖</button>
+    </view>
+  </block>
+
+  <view class="ka" tt:else>
+    <view class="qu-biao">还没有报告</view>
+    <view class="ka-fu">
+      完整报告保存在本机内存：请回地图页定好位置后跑一轮体检（小程序被系统回收后需重跑）。
+    </view>
+    <view class="an-hang">
+      <button class="an zhu2" bindtap="huiDiTu">去体检</button>
+    </view>
+  </view>
+</view>

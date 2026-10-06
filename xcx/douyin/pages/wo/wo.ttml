@@ -1,0 +1,77 @@
+<!-- 我的：账号态 → 共享标记 → 服务端地址 → 坐标自检 → 关于 -->
+<view class="ye">
+  <!-- 账号 -->
+  <view class="ka">
+    <view class="yong-hu">
+      <view class="tou-xiang {{yongHu ? '' : 'hui'}}">{{touZiMu}}</view>
+      <view style="flex: 1; min-width: 0">
+        <view class="ka-biao">{{yongHu ? yongHu.zhangHao : '未登录'}}</view>
+        <view class="ka-fu">{{yongHu ? '可标记盲区并与社区共享' : '登录后可在报告页标记盲区，供社区共享'}}</view>
+      </view>
+    </view>
+    <view class="an-hang">
+      <block tt:if="{{yongHu}}">
+        <button class="an ci" bindtap="laMangQu">刷新我的标记</button>
+        <button class="an ci" bindtap="tuiChu">退出登录</button>
+      </block>
+      <block tt:else>
+        <button class="an zhu2" bindtap="quDengLu">去登录 / 注册</button>
+      </block>
+    </view>
+  </view>
+
+  <!-- 社区共享标记 -->
+  <view class="ka" tt:if="{{woDeMangQu.length}}">
+    <view class="qu-biao">社区共享的盲区标记（{{woDeMangQu.length}}）</view>
+    <view class="row" tt:for="{{woDeMangQu}}" tt:key="id">
+      <view style="flex: 1; min-width: 0">
+        <view class="row-zhi" style="text-align: left; max-width: 100%">{{item.beiZhu}}</view>
+        <view class="ka-fu">{{item.zhangHao}} · {{item.zuoBiao}}</view>
+      </view>
+      <button class="an ci" tt:if="{{item.wo}}" data-id="{{item.id}}" bindtap="shanMangQu">删除</button>
+    </view>
+  </view>
+
+  <!-- 服务端地址 -->
+  <view class="ka">
+    <view class="qu-biao">服务端地址</view>
+    <input class="input" data-k="fuWuDiZhi" bindinput="sheRu" value="{{fuWuDiZhi}}" placeholder="http://127.0.0.1:8787" />
+    <view class="an-hang">
+      <button class="an ci" bindtap="baoCunFuWu">保存</button>
+      <button class="an ci" bindtap="qingHuanCun">清空缓存（{{huanCunTiao}} 条）</button>
+    </view>
+    <view class="ka-fu">账号、AI 诊断、水域数据需要服务端：本地先跑 npm run fuwu；体检本身可用直连百度，不依赖它</view>
+  </view>
+
+  <!-- 坐标系自检 -->
+  <view class="ka">
+    <view class="qu-biao">坐标系自检</view>
+    <view class="ka-fu">各端定位返回的坐标系约定不同，这里把原始值与转换结果都摆出来，真机核对一次即可</view>
+    <view class="an-hang">
+      <button class="an ci" bindtap="ceDingWei">测一次定位</button>
+    </view>
+    <view class="mq-hang" tt:if="{{dingWeiYuanShi}}">{{dingWeiYuanShi}}</view>
+    <view class="mq-hang" tt:if="{{dingWeiZhuanHuan}}">{{dingWeiZhuanHuan}}</view>
+  </view>
+
+  <!-- 关于 -->
+  <view class="ka">
+    <view class="qu-biao">关于</view>
+    <view class="row">
+      <view class="row-biao">版本</view>
+      <view class="row-zhi">{{banBen}}</view>
+    </view>
+    <view class="row">
+      <view class="row-biao">平台</view>
+      <view class="row-zhi">{{pingTai}}端</view>
+    </view>
+    <view class="row">
+      <view class="row-biao">分析引擎</view>
+      <view class="row-zhi">与 Web 端同源（src/core）</view>
+    </view>
+    <view class="row">
+      <view class="row-biao">数据来源</view>
+      <view class="row-zhi">OSM 水域 + 百度地图</view>
+    </view>
+  </view>
+</view>

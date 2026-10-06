@@ -1,0 +1,174 @@
+<!-- 地图首页：地图占满屏，操作与结论浮在上面 -->
+<view class="ye-map">
+  <map
+    id="ditu"
+    class="ditu"
+    latitude="{{latitude}}"
+    longitude="{{longitude}}"
+    scale="{{scale}}"
+    show-location
+    polygons="{{polygons}}"
+    circles="{{circles}}"
+    markers="{{markers}}"
+    polyline="{{polyline}}"
+    bindtap="dianTu"
+    bindmarkertap="biaoJiTap"
+  ></map>
+
+  <!-- 顶部定位条 -->
+  <view class="ding-tiao">
+    <view class="ding-zuo">
+      <view class="ding-yuan"><view class="ic ic-ding" style="color: #12a150"></view></view>
+      <view class="ding-zi">
+        <view class="ding-ming">{{diMing}}</view>
+        <view class="ding-fu">{{youZhongXin ? zhongXinWen : '点右侧切换定位方式'}}</view>
+      </view>
+    </view>
+    <view class="ding-an" bindtap="qieKaiXuanDian">{{dingWeiZhong ? '定位中…' : '切换'}}</view>
+  </view>
+
+  <!-- 定位方式小面板 -->
+  <view class="xuan-pan" wx:if="{{xuanDianKai}}">
+    <view class="xuan-an" bindtap="dingWei"><view class="ic ic-zhun" style="color: #12a150"></view>用当前位置</view>
+    <view class="xuan-an" bindtap="xuanDian"><view class="ic ic-tu" style="color: #2f9bff"></view>在地图上选点</view>
+    <view class="xuan-an" bindtap="quTiaoZhen"><view class="ic ic-can" style="color: #7c5cff"></view>体检参数与历史</view>
+    <view class="xuan-an" bindtap="quAi">
+      <image class="ai-logo" src="/images/ailogo.png" mode="heightFix" style="height: 40rpx" />AI 助手（问问社区情况）
+    </view>
+    <view class="xuan-an" wx:if="{{youYongHu}}" bindtap="quWoDe">
+      <view class="ic ic-ren" style="color: #d6409f"></view>我的（{{yongHuHao}}）
+    </view>
+    <view class="xuan-an" wx:else bindtap="quDengLu">
+      <view class="ic ic-ren" style="color: #98a2b3"></view>登录 / 注册
+    </view>
+  </view>
+
+  <!-- 图层胶囊 -->
+  <scroll-view class="tuceng" scroll-x="true">
+    <view class="tuceng-an {{xianShi.iso ? 'on' : ''}}" data-k="iso" bindtap="qieHuan">等时圈</view>
+    <view class="tuceng-an {{xianShi.sheshi ? 'on' : ''}}" data-k="sheshi" bindtap="qieHuan">设施</view>
+    <view class="tuceng-an {{xianShi.mangqu ? 'on' : ''}}" data-k="mangqu" bindtap="qieHuan">盲区</view>
+    <view class="tuceng-an {{xianShi.yonghu ? 'on' : ''}}" data-k="yonghu" bindtap="qieHuan">我的标记</view>
+  </scroll-view>
+
+  <!-- 右侧常驻浮动入口：不点开「切换」也能进 AI 助手 / 重新定位 / 我的 -->
+  <view class="fu-an">
+    <view class="fu-an-an" bindtap="quAi">
+      <image class="ai-logo" src="/images/ailogo.png" mode="heightFix" style="height: 60rpx" />
+    </view>
+    <view class="fu-an-an" bindtap="dingWei">
+      <view class="ic ic-zhun" style="color: #12a150"></view>
+    </view>
+    <!-- 事件名不能用三目（小程序不支持动态事件绑定），拆成两个元素 -->
+    <view class="fu-an-an" wx:if="{{youYongHu}}" bindtap="quWoDe">
+      <view class="ic ic-ren" style="color: #475467"></view>
+    </view>
+    <view class="fu-an-an" wx:else bindtap="quDengLu">
+      <view class="ic ic-ren" style="color: #98a2b3"></view>
+    </view>
+  </view>
+
+  <!-- 底部区：信息卡 + 主卡 -->
+  <view class="di-qu">
+    <!-- 点地图命中的卡片 -->
+    <view class="ka-di" wx:if="{{ka}}">
+      <view class="ka-di-tou">
+        <view class="ka-di-biaoTi" style="border-color: {{ka.se}}">{{ka.biaoTi}}</view>
+        <view class="ka-di-guan" bindtap="guanKa">✕</view>
+      </view>
+      <view class="ka-di-hang" wx:for="{{ka.hang}}" wx:key="*this">{{item}}</view>
+      <view class="ka-di-jianYi" wx:if="{{ka.jianYi}}">{{ka.jianYi}}</view>
+      <view class="an-hang">
+        <block wx:if="{{ka.lei === 'sheshi'}}">
+          <button class="an ci ling xiao" bindtap="zouLu">{{zouLuZhong ? '算路中…' : '步行路线'}}</button>
+          <button class="an ci ling xiao" bindtap="daoHang">导航</button>
+          <button class="an ci ling xiao" bindtap="sheWeiZhongXin">设为中心</button>
+        </block>
+        <block wx:if="{{ka.lei === 'mangqu'}}">
+          <button class="an ci ling" bindtap="quBaoGao">看报告里的清单</button>
+        </block>
+      </view>
+      <view wx:if="{{luXianWen}}" class="ka-di-fu">{{luXianWen}}</view>
+    </view>
+
+    <!-- 主卡：体检入口 / 结论 -->
+    <view class="di-ka">
+      <view class="di-ba"></view>
+      <block wx:if="{{running}}">
+        <view class="di-hang">
+          <view class="di-biao">正在体检</view>
+          <view class="di-shu">{{jinDu}}%</view>
+        </view>
+        <view class="jindu"><view class="jindu-tiao" style="width: {{jinDu}}%"></view></view>
+        <view class="ka-fu">{{jieDuanWen}}（共 4 步，首次约 1~3 分钟）</view>
+      </block>
+
+      <block wx:elif="{{youBaoGao}}">
+        <view class="di-hang">
+          <text class="di-fen" style="color: {{fenSe}}">{{total}}</text>
+          <view class="di-zi">
+            <view class="di-biao">
+              {{diMing}}
+              <text class="biao-qian" style="background: {{fenSe}}1f; color: {{fenSe}}; margin-left: 10rpx">{{dengJiWen}}</text>
+            </view>
+            <view class="ka-fu">盲区 {{mangQuShu}} 处 · {{shiJianWen}}</view>
+          </view>
+        </view>
+        <view class="an-hang">
+          <button class="an zhu2" bindtap="quBaoGao">看报告</button>
+          <button class="an ci ling" bindtap="kaiShiTiJian">重新体检</button>
+        </view>
+      </block>
+
+      <block wx:else>
+        <view class="di-biao">定好位置，跑一轮 15 分钟生活圈体检</view>
+        <view class="ka-fu">会算出步行可达范围、设施覆盖、服务盲区与补建建议</view>
+        <!-- 主按钮独占一行、两个次按钮并排：分两个 .an-hang，不靠 flex 自动换行
+             （同一行里混放 width:100% 与 flex:1，会被 flex-shrink 压成一行并把文字切掉） -->
+        <view class="an-hang">
+          <button class="an zhu" bindtap="kaiShiTiJian">开始体检</button>
+        </view>
+        <view class="an-hang" style="margin-top: 16rpx">
+          <button class="an ci ling" bindtap="dingWei">用当前位置</button>
+          <button class="an ci ling" bindtap="xuanDian">在地图上选点</button>
+        </view>
+      </block>
+
+      <!-- 底部信息行：左参数开关、右「我的」入口（按钮只留两个，避免挤成两行） -->
+      <view class="di-jiao-hang">
+        <view class="di-lian" bindtap="qieKaiCanShu">
+          {{muBiaoWen}} · {{dangWeiWen}}档
+          <view class="chev {{canShuKai ? 'shang' : ''}}"></view>
+        </view>
+        <view class="di-lian" bindtap="quWoDe">我的<view class="chev you"></view></view>
+      </view>
+      <block wx:if="{{canShuKai}}">
+        <view class="pai">
+          <view
+            class="pai-an {{item.on ? 'on' : ''}}"
+            wx:for="{{muBiaoLie}}"
+            wx:key="miao"
+            data-miao="{{item.miao}}"
+            bindtap="xuanMuBiao"
+          >
+            {{item.ming}}
+          </view>
+        </view>
+        <view class="pai">
+          <view
+            class="pai-an {{item.on ? 'on' : ''}}"
+            wx:for="{{dangWeiLie}}"
+            wx:key="zhi"
+            data-zhi="{{item.zhi}}"
+            bindtap="xuanDangWei"
+          >
+            {{item.ming}}
+          </view>
+        </view>
+        <view class="ka-fu">精细档网格更密、结论更准，请求也更多（百度配额有限，演示建议用「标准」）</view>
+      </block>
+
+      <view class="di-jiao">{{pingTai}}端 · 数据通道 {{moShi}} · 水域 OpenStreetMap · 底图腾讯地图</view>
+    </view>
+  </view>
+</view>

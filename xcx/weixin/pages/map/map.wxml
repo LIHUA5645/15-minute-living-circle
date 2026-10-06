@@ -1,0 +1,49 @@
+<!-- 地图页：等时圈热力 + 跨水面虚线 + 设施 + 盲区 + 补建点 -->
+<view class="ye-map">
+  <map
+    id="ditu"
+    class="ditu"
+    latitude="{{latitude}}"
+    longitude="{{longitude}}"
+    scale="{{scale}}"
+    show-location
+    polygons="{{polygons}}"
+    circles="{{circles}}"
+    markers="{{markers}}"
+    polyline="{{polyline}}"
+    bindtap="dianTu"
+    bindmarkertap="biaoJiTap"
+  ></map>
+
+  <!-- 图层开关 -->
+  <view class="tuceng">
+    <view class="tuceng-an {{xianShi.iso ? 'on' : ''}}" data-k="iso" bindtap="qieHuan">等时圈</view>
+    <view class="tuceng-an {{xianShi.sheshi ? 'on' : ''}}" data-k="sheshi" bindtap="qieHuan">设施</view>
+    <view class="tuceng-an {{xianShi.mangqu ? 'on' : ''}}" data-k="mangqu" bindtap="qieHuan">盲区</view>
+    <view class="tuceng-an {{xianShi.yonghu ? 'on' : ''}}" data-k="yonghu" bindtap="qieHuan">我的标记</view>
+    <view class="tuceng-an" bindtap="quBaoGao">报告</view>
+  </view>
+
+  <view wx:if="{{!youBaoGao}}" class="wu-bao">还没有完整报告：先回首页跑一轮体检</view>
+
+  <!-- 底部卡片 -->
+  <view class="ka-di" wx:if="{{ka}}">
+    <view class="ka-di-tou">
+      <view class="ka-di-biaoTi" style="border-color: {{ka.se}}">{{ka.biaoTi}}</view>
+      <view class="ka-di-guan" bindtap="guanKa">✕</view>
+    </view>
+    <view class="ka-di-hang" wx:for="{{ka.hang}}" wx:key="*this">{{item}}</view>
+    <view class="ka-di-jianYi" wx:if="{{ka.jianYi}}">{{ka.jianYi}}</view>
+    <view class="an-hang">
+      <block wx:if="{{ka.lei === 'sheshi'}}">
+        <button class="an ci" bindtap="zouLu">{{zouLuZhong ? '算路中…' : '步行路线'}}</button>
+        <button class="an ci" bindtap="daoHang">导航</button>
+        <button class="an ci" bindtap="sheWeiZhongXin">设为体检中心</button>
+      </block>
+      <block wx:if="{{ka.lei === 'mangqu'}}">
+        <button class="an ci" bindtap="quBaoGao">看清单</button>
+      </block>
+    </view>
+    <view wx:if="{{luXianWen}}" class="ka-di-fu">{{luXianWen}}</view>
+  </view>
+</view>

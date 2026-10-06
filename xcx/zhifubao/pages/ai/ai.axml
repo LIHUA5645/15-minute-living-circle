@@ -1,0 +1,83 @@
+<!-- AI 助手：与网页端同一套提示词与上下文，问答内容同源；识别导航意图后落到真实设施再唤起系统地图 -->
+<view class="lt-ye">
+  <!-- 顶部状态 -->
+  <view class="lt-tou">
+    <view class="lt-tou-zi">
+      <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      <view style="flex: 1; min-width: 0">
+        <view class="ka-biao">AI 助手</view>
+        <view class="ka-fu">
+          {{aiKeYong ? ('已接入大模型' + (moXingWen ? ' · ' + moXingWen : '')) : (aiCuo ? '读不到服务器配置：' + aiCuo : '未接入大模型：可用「去最近的医院」这类说法走本地规则选点导航')}}
+        </view>
+      </view>
+    </view>
+    <view class="lt-an" onTap="qingKong">新对话</view>
+  </view>
+
+  <!-- 消息区 -->
+  <scroll-view class="lt-qu" scroll-y="true" scroll-into-view="{{gunDao}}" scroll-with-animation="true">
+    <!-- 欢迎态 + 推荐问法（与网页端同一批问法） -->
+    <block a:if="{{!lieBiao.length}}">
+      <view class="lt-huan">
+        <image class="ai-logo da" src="/images/ailogo.png" mode="heightFix" />
+        <view class="lt-huan-ming">你好，我是 AI 助手</view>
+        <view class="lt-huan-fu">能结合本轮体检结果聊聊你关心的问题</view>
+      </view>
+      <view class="lt-tui">
+        <view class="lt-tui-an" a:for="{{tuiJian}}" a:key="*this" data-w="{{item}}" onTap="dianTuiJian">
+          {{item}}
+        </view>
+      </view>
+    </block>
+
+    <view class="lt-hang {{item.role}}" a:for="{{lieBiao}}" a:key="id" id="m{{item.id}}">
+      <view class="lt-xiang" a:if="{{item.role !== 'user'}}">
+        <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      </view>
+      <view class="lt-qi {{item.role === 'user' ? 'wo' : (item.role === 'cuo' ? 'cuo' : 'ai')}}">{{item.wen}}</view>
+    </view>
+
+    <view class="lt-hang" a:if="{{zhong}}">
+      <view class="lt-xiang">
+        <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      </view>
+      <view class="lt-qi ai"><view class="lt-dian"><text></text><text></text><text></text></view></view>
+    </view>
+  </scroll-view>
+
+  <!-- 导航确认卡 -->
+  <view class="lt-dao" a:if="{{daoHang}}">
+    <view class="lt-dao-tou">
+      <view class="ic ic-ding" style="color: #12a150"></view>
+      <view style="flex: 1; min-width: 0">
+        <view class="di-biao">{{daoHang.ming}}</view>
+        <view class="ka-fu">{{daoHang.juWen}} · {{daoHang.liYou}}</view>
+      </view>
+    </view>
+    <view class="an-hang">
+      <button class="an zhu2" onTap="daiWoQu">带我去</button>
+      <button class="an ci ling" onTap="buQu">先不去</button>
+    </view>
+  </view>
+
+  <!-- 读不到服务器配置时的常驻提示条：会自动重连，也能点「重试」立刻重来，都不必退出重进 -->
+  <view class="lt-tishi" a:if="{{aiCuo}}" onTap="chongShiPeiZhi">
+    <view class="lt-tishi-wen">
+      读不到服务器配置 · 服务端地址 {{fuWuDiZhi || '（未设置）'}}{{chongLianZhong ? ' · 正在自动重连…' : ''}}
+    </view>
+    <view class="lt-tishi-an">重试</view>
+  </view>
+
+  <!-- 输入条 -->
+  <view class="lt-shu">
+    <input
+      class="lt-shu-in"
+      value="{{wen}}"
+      onInput="sheRu"
+      bindconfirm="faSong"
+      confirm-type="send"
+      placeholder="给 AI 助手发送消息"
+    />
+    <view class="lt-fa {{wen && !zhong ? '' : 'jin'}}" onTap="faSong">发送</view>
+  </view>
+</view>

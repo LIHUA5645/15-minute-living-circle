@@ -84,8 +84,16 @@ function zhaiYao(s) {
   return (h >>> 0).toString(36);
 }
 
+// Overpass 现在强制要求有意义的 User-Agent：浏览器 fetch 会自动带，node 里（预下载脚本 / 自测）
+// 不带就会直接 429。只在非浏览器环境补这个头——浏览器里补了反而多一次 CORS 预检
+const CHA_TOU =
+  typeof window === 'undefined'
+    ? { 'User-Agent': 'shenghuoquan-tijian/1.0 (15-minute living circle OSM fetch)' }
+    : null;
+
 // 带重试与缓存的 Overpass 查询（429/504 时轮换节点并指数退避）
-async function chaXun(ql, ciShu = 4) {
+// 导出：水域模块（adapters/shuiyu.js）复用同一套多节点容灾与缓存
+export async function chaXun(ql, ciShu = 4) {
   const key = zhaiYao(ql);
   const hit = huanCunQu(key);
   if (hit && Array.isArray(hit)) return hit;
@@ -96,7 +104,10 @@ async function chaXun(ql, ciShu = 4) {
       try {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), 90000);
-        const r = await fetch(`${host}?data=${encodeURIComponent(ql)}`, { signal: ctl.signal });
+        const r = await fetch(`${host}?data=${encodeURIComponent(ql)}`, {
+          signal: ctl.signal,
+          ...(CHA_TOU ? { headers: CHA_TOU } : {})
+        });
         clearTimeout(timer);
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const j = await r.json();

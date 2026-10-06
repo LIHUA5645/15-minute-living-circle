@@ -5,6 +5,7 @@
 //      经服务端 /airelay 中转调用（解决 CORS，密钥由请求携带不落后端日志）
 //   2) 本地规则路：无 AI 配置或调用失败时自动回退，基于评分与盲区数据模板生成，演示零风险
 import { fuWuUrl } from './fuwuDiZhi.js';
+import { aiPeiHaoLe, fuWuDaiFa } from './types.js';
 
 const V = 80; // 米/分钟（用于把秒换算成分钟描述）
 
@@ -88,7 +89,9 @@ async function yuanChengZhenDuan(report, ai) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       url: duiHuaJieKouZhi(ai.apiDiZhi),
-      tou: { Authorization: 'Bearer ' + ai.miYao },
+      // 只有「本地填了密钥、且服务端还没存过密钥」才自己带（纯本机调试场景）；
+      // 服务端存过就一律让它代发，免得本机残留的旧密钥顶掉服务端的新配置
+      ...(ai.miYao && !fuWuDaiFa(ai) ? { tou: { Authorization: 'Bearer ' + ai.miYao } } : {}),
       body: {
         model: ai.moXing,
         temperature: 0.6,
@@ -109,14 +112,25 @@ async function yuanChengZhenDuan(report, ai) {
   return wen.trim();
 }
 
-// —— 主入口：优先 AI，失败回退本地 ——
-export async function shengChengZhenDuan(report, peiZhi) {
+// —— 主入口 ——
+// sheZhi 由用户在报告卡的「设置」里指定：'ai' 强行走大模型 / 'bendi' 强行走本地规则；
+// 不传（或传空）时沿用老规矩——管理员启用了大模型就用大模型，没启用（或调用失败）回退本地规则
+export async function shengChengZhenDuan(report, peiZhi, sheZhi) {
   const ai = peiZhi && peiZhi.ai;
-  if (ai && ai.qiYong && ai.apiDiZhi && ai.miYao) {
+  const aiKeYong = aiPeiHaoLe(ai);
+  const zouAi = sheZhi === 'ai' ? true : sheZhi === 'bendi' ? false : !!(ai && ai.qiYong);
+  if (zouAi && aiKeYong) {
     try {
       return { wen: await yuanChengZhenDuan(report, ai), laiYuan: 'ai' };
-    } catch {
-      return { wen: benDiZhenDuan(report), laiYuan: 'bendi', jiangJi: true };
+    } catch (e) {
+      // 把失败原因带回去：界面上要如实说明「为什么没用大模型」，不然用户只看到回退、
+      // 却不知道该去改哪儿（接口地址？密钥？模型名？网络？）
+      return {
+        wen: benDiZhenDuan(report),
+        laiYuan: 'bendi',
+        jiangJi: true,
+        cuoYin: (e && e.message) || '调用失败'
+      };
     }
   }
   return { wen: benDiZhenDuan(report), laiYuan: 'bendi' };

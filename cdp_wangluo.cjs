@@ -309,6 +309,92 @@ const FEI_BUJIAN = `(async () => {
   );
 })()`;
 
+// 诊断结论卡的「生成方式设置」：点齿轮看浮层、点本地规则、看标签与偏好是否落盘
+const CHA_ZHEN_DUAN = `(async () => {
+  const deng = t => new Promise(j => setTimeout(j, t));
+  // 报告面板收起时先展开，否则里面的元素量不到
+  const youPan = document.querySelector('.right-panel');
+  if (youPan && youPan.classList.contains('hidden')) {
+    const kaiAn = [...document.querySelectorAll('.tog-btn')].find(
+      b => (b.title || '').indexOf('显示右侧报告') === 0
+    );
+    if (kaiAn) kaiAn.click();
+    await deng(900);
+  }
+  const ka = document.querySelector('.ai-card');
+  if (!ka) return JSON.stringify({ cuo: '报告面板里还没有诊断卡（体检没跑完？）' });
+  ka.scrollIntoView({ block: 'center' });
+  await deng(400);
+  const jg = { 初始标签: (ka.querySelector('.ai-biao') || {}).innerText || '(无)' };
+  jg.标签title = (ka.querySelector('.ai-biao') || {}).title || '(无)';
+  jg.卡片上的失败原因 = ((ka.querySelector('.ai-cuo-tip') || {}).innerText || '(无)').slice(0, 120);
+  try {
+    const p = JSON.parse(localStorage.getItem('sq_admin_conf') || '{}');
+    const a = p.ai || {};
+    jg.本地配置 = { 地址: a.apiDiZhi || '', 本地密钥: a.miYao || '(空)', 模型: a.moXing || '' };
+  } catch {
+    jg.本地配置 = '(取不到)';
+  }
+  const chi = ka.querySelector('.ai-she-an');
+  if (!chi) return JSON.stringify({ ...jg, cuo: '没找到设置齿轮' });
+  chi.click();
+  await deng(400);
+  const she = ka.querySelector('.ai-she');
+  jg.浮层出现 = !!she;
+  if (she) {
+    const xuan = [...she.querySelectorAll('.ai-she-xuan')];
+    jg.两个选项 = xuan.map(
+      b => (b.innerText || '').replace(/\\s+/g, ' ').slice(0, 34) + (b.disabled ? '［禁用］' : '')
+    );
+    if (xuan[1]) {
+      xuan[1].click(); // 选「本地规则引擎」
+      await deng(1800);
+      jg.点本地后标签 = (ka.querySelector('.ai-biao') || {}).innerText || '(无)';
+      jg.本地偏好已存 = localStorage.getItem('sq_zhenduan_she');
+      jg.正文开头 = ((ka.querySelector('.ai-wen') || {}).innerText || '').slice(0, 36);
+    }
+  }
+  return JSON.stringify(jg, null, 1);
+})()`;
+
+// 往浏览器里塞一份「本机旧配置」（含旧密钥），用来验证它不会把服务端那份配置顶掉
+const JIU_PEI_ZHI = `(() => {
+  const KEY = 'sq_admin_conf';
+  let p = {};
+  try {
+    p = JSON.parse(localStorage.getItem(KEY) || '{}');
+  } catch (e) {}
+  p.ai = {
+    qiYong: true,
+    apiDiZhi: 'https://ben-di-jiu.invalid/v1',
+    moXing: 'jiu-mo-xing',
+    miYao: 'sk-ben-di-jiu-mi-yao',
+    aiKu: []
+  };
+  localStorage.setItem(KEY, JSON.stringify(p));
+  localStorage.removeItem('sq_zhenduan_she');
+  return '已写入本机旧配置（地址 ben-di-jiu.invalid、旧密钥 sk-ben-di-jiu-mi-yao）';
+})()`;
+
+// 给管理员 AI 配置塞一份「假接口」，用来验证「大模型」选项与失败回退这条路（真密钥不落测试脚本）
+const JIA_AI = `(() => {
+  const KEY = 'sq_admin_conf';
+  let p = {};
+  try {
+    p = JSON.parse(localStorage.getItem(KEY) || '{}');
+  } catch (e) {}
+  p.ai = {
+    qiYong: true,
+    apiDiZhi: 'https://example.invalid/v1',
+    moXing: 'test-model',
+    miYao: 'sk-test-jia',
+    aiKu: []
+  };
+  localStorage.setItem(KEY, JSON.stringify(p));
+  localStorage.removeItem('sq_zhenduan_she'); // 顺带清掉用户偏好，回到「跟随管理员配置」
+  return '已写入假 AI 配置（example.invalid，必定失败，用于验证回退）';
+})()`;
+
 // 走一遍「点设施 → 进导航 → 退出导航」，看等时圈热力图与设施点在退出后是否原样恢复
 const WANG_FAN = `(async () => {
   const deng = t => new Promise(j => setTimeout(j, t));
@@ -405,9 +491,14 @@ const CHA_ISO = `(() => {
     tuCeng = { 多边形: duo, 折线: xian, 圆: yuan, 标记: dian, 其他: qiTa, 总数: lie.length };
   }
   const ceng = (rep && rep.dengShiQuan && rep.dengShiQuan.ceng) || [];
+  const sy = rep && rep.dengShiQuan && rep.dengShiQuan.shuiYu;
   return JSON.stringify(
     {
       报告里的等时圈层: ceng.length ? ceng.map(c => c.miao + '分/' + (c.polygon || []).length + '环') : '(空)',
+      水域避让: sy
+        ? '启用=' + sy.qiYong + ' 水面块数=' + sy.geShu + ' 被掩掉的格=' + sy.yanMaGe
+        : '(旧报告，无该字段)',
+      水域相关告警: ((rep && rep.warnings) || []).filter(w => /水域|水面/.test(w)),
       地图覆盖物: tuCeng,
       是否在导航: !!document.querySelector('.daoHang-quanPing'),
       顶部提示条: (document.querySelector('.buxing-tip') || {}).innerText || '(无)'
@@ -415,6 +506,22 @@ const CHA_ISO = `(() => {
     null,
     1
   );
+})()`;
+
+// 切到 OSM 数据源（不耗百度配额）并点「开始体检」，用来端到端验证水域掩膜
+const QI_TIJIAN = `(() => {
+  const sel = [...document.querySelectorAll('select')].find(s =>
+    [...s.options].some(o => o.value === 'osm')
+  );
+  if (sel) {
+    sel.value = 'osm';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  const an = document.querySelector('.run-btn');
+  if (!an) return '没找到「开始体检」按钮';
+  if (an.disabled) return '体检按钮当前不可点（可能正在体检）';
+  an.click();
+  return (sel ? '已切到 OSM 数据源，' : '未找到数据源下拉（按当前数据源跑），') + '并点了「开始体检」';
 })()`;
 
 // 点设施（走 MapCanvas 的 onPoiDianJi，与手点地图设施图标同一条路），看「路线方案」窗口有没有弹出来
@@ -472,13 +579,17 @@ const DIAN_SHE_SHI = `(async () => {
 })()`;
 
 // 在页面地图中心临时插一枚「新版自标图钉」，用来确认这枚 SVG 在百度 GL 里画得出来
-const CHA_TUDING = `(() => {
+const CHA_TUDING = `(async () => {
+  const deng = t => new Promise(j => setTimeout(j, t));
   const d = document.querySelector('.map-inner');
   if (!d) return '没有地图容器';
   const k = Object.keys(d).find(x => x.indexOf('__reactFiber$') === 0);
   let f = d[k];
   let map = null;
+  let onPick = null;
   while (f) {
+    const p = f.memoizedProps || {};
+    if (!onPick && typeof p.onPick === 'function') onPick = p.onPick;
     let s = f.memoizedState;
     while (s && !map) {
       const v = s.memoizedState;
@@ -488,17 +599,20 @@ const CHA_TUDING = `(() => {
     f = f.return;
   }
   if (!map) return '没拿到地图实例';
-  const B = window.BMapGL;
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='30' viewBox='0 0 24 30'><ellipse cx='12' cy='28.6' rx='5' ry='1.5' fill='rgba(15,23,42,0.28)'/><path d='M12 0C5.9 0 1 4.9 1 11c0 7.4 9.6 17.4 10.1 17.9.3.3.9.3 1.2 0C13.4 28.4 23 18.4 23 11 23 4.9 18.1 0 12 0z' fill='#d6409f' stroke='#ffffff' stroke-width='1.5'/><circle cx='12' cy='11' r='4.7' fill='#ffffff'/><circle cx='12' cy='9.5' r='1.7' fill='#d6409f'/><path d='M9.2 13.9c0-1.7 1.3-2.7 2.8-2.7s2.8 1 2.8 2.7z' fill='#d6409f'/></svg>";
-  const tu = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-  const zhong = map.getCenter();
-  const mk = new B.Marker(new B.Point(zhong.lng, zhong.lat), {
-    title: '测试：新版自标图钉',
-    icon: new B.Icon(tu, new B.Size(24, 30), { anchor: new B.Size(12, 30) })
-  });
-  map.addOverlay(mk);
-  window.__testDing = mk;
-  return '已在地图中心插入测试钉（' + zhong.lng.toFixed(5) + ',' + zhong.lat.toFixed(5) + '）';
+  // 库里那几条自标标记在桂林一带，而本机默认定位在长沙——先把中心挪过去，
+  // 共享标记按「附近 2 公里」过滤，不挪过去地图上根本不会有自标钉
+  if (onPick) {
+    onPick({ lng: 109.99707, lat: 25.0017546 });
+    await deng(3500);
+  }
+  // 数一数真实数据画出来的自标图钉（标题以「自标盲区」开头），别拿测试钉糊弄
+  let ziBiao = 0;
+  for (const o of map.getOverlays()) {
+    const t = o.getTitle && o.getTitle();
+    if (t && t.indexOf('自标盲区') === 0) ziBiao++;
+  }
+  const qingDan = document.querySelectorAll('.zi-biao-biao').length;
+  return '地图上自标钉 ' + ziBiao + ' 枚 / 右侧「自标」条目 ' + qingDan + ' 个（下面再截一张图看模样）';
 })()`;
 
 // 逐项实验：每一步都做同样的“视图微扰”（panBy 让 GL 需要新瓦片），再看瓦片请求数涨不涨
@@ -580,6 +694,33 @@ const zhu = async () => {
         shiBai.push(x.params.errorText + ' ' + u.replace(/^https?:\/\//, '').slice(0, 80));
         qing.delete(x.params.requestId);
       }
+    }
+    if (x.id === 818 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
+    }
+    if (x.id === 824) {
+      const sb = x.result && x.result.data;
+      if (sb) {
+        const lu = require('path').join(require('os').tmpdir(), 'quan_jietu.png');
+        require('fs').writeFileSync(lu, Buffer.from(sb, 'base64'));
+        console.log('已保存截图: ' + lu);
+      } else {
+        console.log('截图返回空');
+      }
+      process.exit(0);
+    }
+    if (x.id === 822 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
+    }
+    if (x.id === 820 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
+    }
+    if (x.id === 819 && x.result && x.result.result) {
+      console.log(x.result.result.value);
+      process.exit(0);
     }
     if (x.id === 814 && x.result && x.result.result) {
       console.log(x.result.result.value);
@@ -691,6 +832,83 @@ const zhu = async () => {
     return;
   }
 
+  if (MO === 'zhenduan') {
+    ws.send(
+      JSON.stringify({
+        id: 818,
+        method: 'Runtime.evaluate',
+        params: { expression: CHA_ZHEN_DUAN, returnByValue: true, awaitPromise: true }
+      })
+    );
+    return;
+  }
+
+  if (MO === 'jieTu') {
+    ws.send(JSON.stringify({ id: ++id, method: 'Page.enable', params: {} }));
+    // 先把左右浮层面板收起来，地图才看得全
+    ws.send(
+      JSON.stringify({
+        id: 825,
+        method: 'Runtime.evaluate',
+        params: {
+          expression:
+            "[...document.querySelectorAll('.tog-btn')].forEach(b => { if ((b.title||'').indexOf('隐藏') === 0) b.click(); }); '已收起面板'",
+          returnByValue: true
+        }
+      })
+    );
+    ws.send(
+      JSON.stringify({
+        id: 823,
+        method: 'Emulation.setDeviceMetricsOverride',
+        params: { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }
+      })
+    );
+    setTimeout(() => {
+      ws.send(
+        JSON.stringify({
+          id: 824,
+          method: 'Page.captureScreenshot',
+          params: { format: 'png', fromSurface: true }
+        })
+      );
+    }, 1400);
+    return;
+  }
+
+  if (MO === 'tijian') {
+    ws.send(
+      JSON.stringify({
+        id: 822,
+        method: 'Runtime.evaluate',
+        params: { expression: QI_TIJIAN, returnByValue: true }
+      })
+    );
+    return;
+  }
+
+  if (MO === 'jiupeizhi') {
+    ws.send(
+      JSON.stringify({
+        id: 820,
+        method: 'Runtime.evaluate',
+        params: { expression: JIU_PEI_ZHI, returnByValue: true }
+      })
+    );
+    return;
+  }
+
+  if (MO === 'jiaai') {
+    ws.send(
+      JSON.stringify({
+        id: 819,
+        method: 'Runtime.evaluate',
+        params: { expression: JIA_AI, returnByValue: true }
+      })
+    );
+    return;
+  }
+
   if (MO === 'wangfan') {
     ws.send(
       JSON.stringify({
@@ -730,7 +948,7 @@ const zhu = async () => {
       JSON.stringify({
         id: 815,
         method: 'Runtime.evaluate',
-        params: { expression: CHA_TUDING, returnByValue: true }
+        params: { expression: CHA_TUDING, returnByValue: true, awaitPromise: true }
       })
     );
     return;
