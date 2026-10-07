@@ -146,6 +146,19 @@ npm run test
 docker compose up -d --build   # 访问 http://localhost:8080
 ```
 
+### 部署方式一览（从本机到公网）
+
+| 方式 | 命令 / 入口 | 说明 |
+|---|---|---|
+| 本地开发 | `npm run dev` → http://localhost:5173 | Vite 开发服务器同时挂着 `/api`（账号）、`/airelay`（AI 中转）、`/bmapapi`（百度代理，服务端代持 AK），所以**开发态就能用 AI 与账号** |
+| 本地生产预览 | `npm run build` + `npm run preview` | 纯静态 `dist/`，**不含**上面三个中间件（AI 在线问答 / 账号不可用，其余功能照常） |
+| Docker 一键 | `docker compose up -d --build` → http://localhost:8080 | `Dockerfile` + `docker/nginx.conf`；示例数据随仓库分发，评审零配置即可跑通演示 |
+| 自有服务端托管 | `npm run fuwu:bg` → http://127.0.0.1:8787 | 一个进程同时提供 `/api` `/airelay` `/bmapapi` `/shuiyu` 与 `dist/` 静态页面；小程序端也连它（`npm run fuwu:stop` 停止） |
+| GitHub Pages（公网演示） | 推 `master` 自动触发 `.github/workflows/deploy-pages.yml` | 线上地址见文首；Secret（`VITE_BMAP_AK`）与分支保护等一次性配置见 [`github部署方法.md`](./github部署方法.md) |
+| Gitee Pages（国内镜像） | 构建 `dist/` → 推 `gh-pages` 分支 → Gitee 页面点「更新」 | 需实名认证 + 首次人工审核，见 `github部署方法.md` 第六节 |
+| 桌面安装包 | `npm run dist:win` | 产物在 `release/`，上传到 Releases 供下载（当前 Gitee 发行版可下） |
+| 小程序端 | 微信开发者工具导入目录 `xcx`；改完跑 `npm run xcx:tongbu` | 三端同构，详见「七、小程序端」与 [`xcx/README.md`](./xcx/README.md) |
+
 ## 六、桌面端打包（exe 安装包）
 
 ```bash
