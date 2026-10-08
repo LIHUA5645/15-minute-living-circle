@@ -17,7 +17,7 @@ function huiQu() {
     ceng = 0;
   }
   if (ceng > 1) plat.navigateBack();
-  else plat.redirectTo('/pages/ditu/ditu');
+  else plat.quYe('/pages/ditu/ditu');
 }
 
 function duiHua(url, data) {

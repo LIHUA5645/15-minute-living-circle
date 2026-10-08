@@ -71,8 +71,14 @@ import {
   Settings,
   Check,
   Sparkles,
-  UserRound
+  UserRound,
+  Sun,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudFog
 } from 'lucide';
+import { quTianQi } from '../core/tianQi.js'; // 顶栏天气 chip 与 AI 天气感知共用（30 分钟缓存）
 
 // 悬浮面板层级计数器（各面板共享）：点击谁谁置顶，最高只到 29（顶栏 z30 之下），满了就整体重排
 let mianBanCeng = 20;
@@ -281,6 +287,9 @@ function AiHuiZhang({ da }) {
   );
 }
 
+// 天气档位 → lucide 图标（顶栏天气 chip 用）；tianQiTu 返回的档位名在这里落地成组件
+const TQ_TU = { qing: Sun, yun: Cloud, yu: CloudRain, xue: CloudSnow, wu: CloudFog };
+
 const COLOR = {
   yiliao: '#ff6b6b',
   jiaoyu: '#ffd166',
@@ -312,7 +321,7 @@ const ZHEN_DUAN_SHE_KEY = 'sq_zhenduan_she';
 
 // AI 诊断卡：体检完成后自动生成诊断叙述（大模型优先，本地规则兜底），打字机逐字浮现。
 // 标题右侧的齿轮是「生成方式设置」：可以让用户自己挑大模型还是本地规则引擎
-function AiZhenDuanKa({ report, peiZhi }) {
+function AiZhenDuanKa({ report, peiZhi, huiBao }) {
   const [wen, setWen] = useState('');
   const [xianShiWen, setXianShiWen] = useState('');
   const [zhuangTai, setZhuangTai] = useState('shengCheng'); // shengCheng | daZi | wanCheng
@@ -341,6 +350,9 @@ function AiZhenDuanKa({ report, peiZhi }) {
     shengChengZhenDuan(report, peiZhi, sheBiao).then(j => {
       if (!huo) return;
       setWen(j.wen);
+      // 诊断结论回报给父组件：在线问答（aiLiaoTian）会把它注入上下文，
+      // 用户在诊断卡片旁问「为什么短板是养老」时，AI 结合这份结论答
+      if (huiBao) huiBao(j.wen || '');
       setLaiYuan(j.laiYuan);
       setHuiTui(!!j.jiangJi);
       setCuoYin(j.cuoYin || '');
@@ -534,6 +546,12 @@ export function App() {
   const [mode, setMode] = useState(ak ? (isElectron ? 'server' : 'bmap') : 'osm');
   const [center, setCenter] = useState({ lng: YANGLI[0].lng, lat: YANGLI[0].lat });
   const [curName, setCurName] = useState(YANGLI[0].name);
+  // 顶栏天气 chip：跟当前中心点走（换城市定位后自动换天气）；30 分钟缓存与 AI 天气感知共享，
+  // 拉失败就 null 不渲染 —— 与小程序主卡的天气同一个取向：锦上添花，绝不弹错打扰主流程
+  const [tianQi, setTianQi] = useState(null);
+  // 报告页 AI 诊断叙述（AiZhenDuanKa 生成后回报到这里）：在线问答注入上下文用，
+  // 用户在诊断卡片旁问「为什么短板是养老」，AI 结合这份结论答
+  const zhenDuanWenRef = useRef('');
   const [mubiaoFen, setMubiaoFen] = useState(15);
   const [dangwei, setDangwei] = useState('standard');
   const [running, setRunning] = useState(false);
@@ -2317,6 +2335,17 @@ export function App() {
     setTimeout(() => faQiLiaoTian(wen), 0);
   }, [report, running]);
 
+  // —— 顶栏天气：跟当前中心点走（缓存 30 分钟，模块内去重），center 真的变了才重查 ——
+  useEffect(() => {
+    let huo = true;
+    quTianQi(center).then(x => {
+      if (huo) setTianQi(x);
+    });
+    return () => {
+      huo = false;
+    };
+  }, [center.lng, center.lat]);
+
   // —— AI 导航：不再有独立输入框，统一走下方对话输入 ——
   // 对话里出现导航意图（如「帮我找最近的医院」）时自动选点并画步行路线，
   // 结果展示在本区，同时回一条聊天气泡；普通问题仍走在线问答
@@ -2642,11 +2671,14 @@ export function App() {
     if (aiKai) {
       let j = null;
       try {
-        j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai, {
-          lng: center.lng,
-          lat: center.lat,
-          ming: curName
-        });
+        j = await aiLiaoTian(
+          liaoTianLieBiao,
+          wen,
+          report,
+          peiZhi && peiZhi.ai,
+          { lng: center.lng, lat: center.lat, ming: curName },
+          zhenDuanWenRef.current
+        );
       } catch {
         j = null; // 网络异常：掉到词元兜底
       }
@@ -2708,11 +2740,14 @@ export function App() {
       }
     }
     // 在线问答（AI 未启用时 aiLiaoTian 会返回配置引导）
-    const j = await aiLiaoTian(liaoTianLieBiao, wen, report, peiZhi && peiZhi.ai, {
-      lng: center.lng,
-      lat: center.lat,
-      ming: curName
-    });
+    const j = await aiLiaoTian(
+      liaoTianLieBiao,
+      wen,
+      report,
+      peiZhi && peiZhi.ai,
+      { lng: center.lng, lat: center.lat, ming: curName },
+      zhenDuanWenRef.current
+    );
     setLiaoTianZhong(false);
     const huiTiao = j.ok ? { role: 'ai', wen: j.hui } : { role: 'cuo', wen: j.xinxi };
     setLiaoTianLieBiao([...xinLie, huiTiao]);
@@ -2876,6 +2911,18 @@ export function App() {
             <MorphIcon icon={Map} size={13} spring="snappy" />
             底图 · 百度地图
           </span>
+          {/* 当前位置天气：跟体检中心走的实时天气（与小程序主卡、AI 天气感知同一份缓存数据源）；
+              拉不到就不渲染，不占顶栏位置 */}
+          {tianQi && (
+            <span
+              className="tian-qi-chip"
+              title={`当前位置天气：${tianQi.wendu}°C ${tianQi.wen}`}
+            >
+              <MorphIcon icon={TQ_TU[tianQi.tu] || Cloud} size={13} spring="snappy" />
+              <b>{tianQi.wendu}°</b>
+              <span>{tianQi.wen}</span>
+            </span>
+          )}
           {yongHu ? (
             <>
               <button
@@ -3792,7 +3839,7 @@ export function App() {
         {report && (
           <div className="sec">
             <div className="sec-title">{peiZhi?.ai?.qiYong ? 'AI 诊断' : '诊断结论'}</div>
-            <AiZhenDuanKa report={report} peiZhi={peiZhi} />
+            <AiZhenDuanKa report={report} peiZhi={peiZhi} huiBao={w => (zhenDuanWenRef.current = w)} />
           </div>
         )}
 

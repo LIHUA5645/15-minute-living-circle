@@ -6,6 +6,7 @@
 //   ② 点数保形抽稀：setData 传大数组代价高，等时圈每环压到 180 点以内，拐点仍保留
 //   ③ 设施散点用「小半径圆」而不是 marker 图标——零图标资源，颜色按维度区分，点哪一片都能命中
 import { wgs84ZhuanGcj02, gcj02ZhuanWgs84 } from '../core/geo/zuobiao.js';
+import { FENLEI_MING } from '../core/types.js';
 
 export const MI_CAISE = { 300: '#3ddc97', 600: '#2f9bff', 900: '#ff6b6b' };
 export const MI_OPA = { 300: 0.34, 600: 0.22, 900: 0.12 };
@@ -76,7 +77,10 @@ export function dengShiQuanPolygons(ceng, zuiDa = 180) {
   for (const c of lie) {
     const se = MI_CAISE[c.miao] || '#2f9bff';
     for (const huan of c.polygon || []) {
-      const pts = chouXi(huan, zuiDa).map(dian);
+      // 过滤非法点：NaN 坐标交给原生渲染层会被判成「路径无效」，整个图形都不出来
+      const pts = chouXi(huan, zuiDa)
+        .map(dian)
+        .filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
       if (pts.length < 3) continue;
       chu.push({
         points: pts,
@@ -90,34 +94,73 @@ export function dengShiQuanPolygons(ceng, zuiDa = 180) {
 }
 
 // ② 跨水面的原圈轮廓：细虚线（填色止于岸边，虚线把「圈还是原来那个圈」续过去）
+// 每段都要过三关：点数 ≥ 2、坐标有限、不能整段缩成一个点 —— 任一条不满足，原生渲染层都会
+// 报「MultiPolyline.geometries … paths 属性无效」，所以在这里就丢掉
 export function shuiDuanLines(shuiDuan) {
   const chu = [];
   for (const c of shuiDuan || []) {
     const se = MI_CAISE[c.miao] || '#2f9bff';
     for (const d of c.duan || []) {
       if (!d || d.length < 2) continue;
-      chu.push({ points: d.map(dian), color: se, width: 2, dottedLine: true });
+      const pts = d.map(dian).filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+      if (pts.length < 2) continue;
+      if (pts.every(p => p.latitude === pts[0].latitude && p.longitude === pts[0].longitude)) continue;
+      chu.push({ points: pts, color: se, width: 2, dottedLine: true });
     }
   }
   return chu;
 }
 
-// ③ 设施散点：小半径圆（16 米≈7 像素），颜色按维度；不用图标资源，也省掉 100+ 个 marker 的开销
-export function sheShiCircles(poiSet, xianshi, zuiDa = 120) {
+// ③ 设施标记：地图上的设施用 marker 画，图标是 xcx/common/images/sheshi-<类别>.png 六张小圆徽章
+// （类别色圆底 + 白色形状），观感与网页端 src/ui/MapCanvas.jsx 的 sheShiBiaoJi 一致。
+// 为什么这里必须用图片（README §10 的总则是「不引图片资源」）：小程序 <map> 的 marker 图标只认 iconPath 的
+// **图片路径**（官方文档：项目目录 / 网络 / 代码包路径），不认 data URI / base64 / SVG；网页端是百度地图，
+// 可以把内联 SVG 转 data URI 直接塞给 B.Icon —— 两端能力不同，同一段代码搬不过来。
+// 所以地图标记按 README「图片资源」那一节的规范走：真源放 xcx/common/images/，
+// 由 scripts/shengcheng-sheshi-tubiao.ps1 生成、tongbu-xcx.mjs 按字节分发到三端，标记里用 /images/xxx.png。
+// 形状与网页端 src/ui/sheShiXing.js 的 SHE_SHI_XING 一一对应（十字/三角/方块/竖六边形/圆/菱形），
+// 保证「左侧图例 ↔ 地图散点」对得上；颜色取自本文件上面的 FENLEI_SE，两边同一套色板。
+// marker id 从 300 起编号：100~199 是补建点、200~299 是「我的标记」，互不干扰（见 pages/ditu.js 的 biaoJiTap）
+const SHE_SHI_MARKER_ID = 300;
+const SHE_SHI_MEI_LEI = 25; // 每类最多画这么多个：marker 比色块重（原生逐个按图绘制），六类封顶 150 个
+
+// 设施 markers：iconPath 指向六张小圆徽章，点击弹纯文字气泡显示名称（不塞 emoji，见 README §10）
+export function sheShiMarkers(poiSet, xianshi, meiLei = SHE_SHI_MEI_LEI) {
   const chu = [];
   const ge = (poiSet && poiSet.fenleiSet) || {};
+  let xu = SHE_SHI_MARKER_ID;
   for (const f of Object.keys(ge)) {
     if (xianshi && xianshi[f] === false) continue;
-    const se = FENLEI_SE[f] || '#8a93a3';
-    for (const p of (ge[f] || []).slice(0, zuiDa)) {
+    for (const p of (ge[f] || []).slice(0, meiLei)) {
       const q = dian(p);
+      if (!Number.isFinite(q.latitude) || !Number.isFinite(q.longitude)) continue;
       chu.push({
+        id: xu++,
         latitude: q.latitude,
         longitude: q.longitude,
-        radius: 16,
-        fillColor: touMing(se, 0.9),
-        color: '#ffffff',
-        strokeWidth: 1
+        iconPath: `/images/sheshi-${f}.png`,
+        width: 20,
+        height: 20,
+        callout: {
+          content: p.name || FENLEI_MING[f] || f,
+          color: '#1f2a37',
+          fontSize: 11,
+          borderRadius: 6,
+          bgColor: '#ffffff',
+          padding: 5,
+          display: 'BYCLICK',
+          textAlign: 'center'
+        },
+        // 点图标时平台只回 markerId（见微信文档 markertap 的 e.detail），认不出是哪个设施 ——
+        // 这里带上卡片与算路要用的字段，页面拿 id 在里面反查即可。
+        // 坐标保持引擎的 WGS-84（页面要算路 / 打开地图时自己转 GCJ-02，与「点地图命中设施」一致）
+        poi: {
+          name: p.name || '',
+          lng: Number(p.lng),
+          lat: Number(p.lat),
+          address: p.address || '',
+          fenlei: f
+        }
       });
     }
   }
@@ -150,8 +193,10 @@ export function mangQuCircles(mangquList, zuiDa = 40) {
       longitude: q.longitude,
       radius: ban,
       fillColor: touMing(se, 0.16),
-      color: touMing(se, 0.75),
-      strokeWidth: 1.4
+      // 描边给实色、宽度给整数：原生渲染层对「样式宽度」的容忍度很低，
+      // 层次靠 fillColor 的透明度已经够了，不再叠加半透明描边
+      color: se,
+      strokeWidth: 1
     });
   }
   return chu;
@@ -211,7 +256,9 @@ export function buJianMarkers(mangquList) {
 // ⑥ 步行路线
 export function luXianPolyline(polyline) {
   if (!polyline || polyline.length < 2) return [];
-  return [{ points: polyline.map(dian), color: '#2f86f7', width: 5, arrowLine: false }];
+  const pts = polyline.map(dian).filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+  if (pts.length < 2) return [];
+  return [{ points: pts, color: '#2f86f7', width: 5, arrowLine: false }];
 }
 
 // 格式化

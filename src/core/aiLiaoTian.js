@@ -7,10 +7,12 @@ import { duiHuaJieKouZhi } from './zhenduan.js';
 import { liangDianJuLi } from './geo/jichu.js';
 import { fuWuUrl } from './fuwuDiZhi.js';
 import { aiPeiHaoLe, fuWuDaiFa } from './types.js';
+import { quTianQi } from './tianQi.js';
 
 // 主入口：lishi 历史对话（[{role:'user'|'ai', wen}]）；wen 本条提问；report 本轮体检报告；
-// ai 管理员 AI 配置；zhongXin 用户当前地图中心 {lng, lat, ming}（可选，用于位置感知）
-export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
+// ai 管理员 AI 配置；zhongXin 用户当前地图中心 {lng, lat, ming}（可选，用于位置感知）；
+// zhengDuan 报告页当前展示的 AI 诊断叙述（可选）—— 注入上下文，用户问「为什么/哪里」时结合它答
+export async function aiLiaoTian(lishi, wen, report, ai, zhongXin, zhengDuan) {
   // 先区分「没配置」和「配置了但没开启用开关」，给用户可执行的提示
   if (!aiPeiHaoLe(ai)) {
     return {
@@ -37,6 +39,16 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
   // 体检摘要塞进系统提示，让模型「看得见」本轮结果；
   // 同时注入用户当前地图中心——若报告中心与当前中心相距超过 500m，明确告知模型「报告已过期」，
   // 避免用户重新定位后 AI 还拿着旧位置的坐标说事
+  // 当前天气一并注入（生活相关：用户问「今天适合骑车去吗」这类问题 AI 才答得上来）；
+  // quTianQi 与顶栏 chip 共享同一份 30 分钟缓存，失败返回 null 就跳过 —— 回答不该被天气接口抖动拖累
+  const tianQi = await quTianQi(zhongXin);
+  const tianQiMiao = tianQi
+    ? ` 用户当前所在地的实时天气：${tianQi.wendu}°C ${tianQi.wen}。用户问到出行安排、散步、穿衣等生活话题时，可结合这个天气给建议（但不要每句都提天气）。`
+    : '';
+  // 报告页的 AI 诊断结论一并注入：用户在诊断卡片旁问「为什么短板是养老」，AI 要结合结论答
+  const zdMiao = zhengDuan
+    ? ` 报告页当前展示的 AI 诊断结论如下（用户问「为什么/哪里」时优先结合它回答）：${String(zhengDuan).slice(0, 300)}`
+    : '';
   const baoZuo = report && report.zhongXin;
   const baoMiao =
     report &&
@@ -117,6 +129,8 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
         '你是「15 分钟生活圈智能体检助手」的在线问答助手，用简体中文简洁、口语化地回答，' +
         '话题围绕社区生活圈、设施配套、体检报告解读。回答控制在 200 字以内。当前上下文：' +
         zhaiYao +
+        tianQiMiao +
+        zdMiao +
         (sheShiMiao ? ' ' + sheShiMiao : '') +
         mingXiMiao +
         ' —— 你需要自己语义判断用户这句话是想导航去某地，还是在提问：' +

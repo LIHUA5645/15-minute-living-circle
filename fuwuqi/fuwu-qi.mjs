@@ -13,6 +13,7 @@
 //   /bmapapi  百度 Web 服务代理：服务端代持 AK + 多 AK 配额轮换
 //   /airelay  AI 接口中转：服务端代持密钥，前端/小程序全程不接触密钥
 //   /shuiyu   水域数据：预置样例 → 本地缓存 → Overpass 多节点
+//   /zhoubian 周边地名：本地缓存 → Overpass 多节点（「定位周边推荐」用）
 //   /jianKang 健康检查（部署探活用）
 //   /*        若存在 dist/ 则一并托管（Web 端与小程序同机部署时省一个静态服务器）
 import { createServer } from 'node:http';
@@ -21,10 +22,12 @@ import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chuangJianYongHuFuWu } from './yonghu-fuwu.mjs';
+import { chuangJianYuYin } from './yuyin.mjs';
 import {
   chuangJianBmapDaiLi,
   chuangJianAiZhongJi,
-  chuangJianShuiYuZhongJian
+  chuangJianShuiYuZhongJian,
+  chuangJianZhouBianZhongJian
 } from './zhongJian.mjs';
 
 const GEN = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -56,6 +59,9 @@ const yongHuFuWu = chuangJianYongHuFuWu({
   password: env.DB_PASS || ''
 });
 
+// 语音识别中转（密钥仍由服务端代持；未配置时接口如实报「没配」，不影响其它功能）
+const yuYin = chuangJianYuYin({ ak: env.BAIDU_YUYIN_AK, sk: env.BAIDU_YUYIN_SK });
+
 const bmapDaiLi = chuangJianBmapDaiLi({
   akLie: [env.BAIDU_SERVER_AK, env.BAIDU_SERVER_AK2].filter(Boolean)
 });
@@ -70,6 +76,17 @@ const shuiYuZhongJian = chuangJianShuiYuZhongJian({
   huoShuiYu: async (zx, banJingMi) => {
     const { huoShuiYu } = await import('../src/adapters/shuiyu.js');
     return huoShuiYu(zx, banJingMi);
+  }
+});
+
+// 周边地点：只落盘缓存（没有预置样例——地名随位置而变，预置意义不大），
+// 结果同样存 fuwuqi/shuju，键前缀 zhoubian_ 与水域的 shuiyu_ 区分开
+const zhouBianZhongJian = chuangJianZhouBianZhongJian({
+  huanCunMuLu: join(GEN, 'fuwuqi', 'shuju'),
+  // 懒加载同上：只有真点开「切换」面板要推荐时才载入 Overpass 查询器
+  huoZhouBian: async (zx, banJingMi) => {
+    const { huoZhouBian } = await import('../src/adapters/zhoubian.js');
+    return huoZhouBian(zx, banJingMi);
   }
 });
 
@@ -144,6 +161,10 @@ const fu = createServer(async (req, res) => {
         })
       );
     }
+    // 语音识别必须排在 /api 之前：/api 前缀会被「用户与配置」服务整段吃掉
+    if (lu === '/api/yuyin' || lu.startsWith('/api/yuyin/')) {
+      return yuYin(req, res);
+    }
     if (lu === '/api' || lu.startsWith('/api/')) {
       bo('/api');
       return yongHuFuWu.chuLi(req, res);
@@ -159,6 +180,10 @@ const fu = createServer(async (req, res) => {
     if (lu === '/shuiyu' || lu.startsWith('/shuiyu/')) {
       bo('/shuiyu');
       return shuiYuZhongJian(req, res);
+    }
+    if (lu === '/zhoubian' || lu.startsWith('/zhoubian/')) {
+      bo('/zhoubian');
+      return zhouBianZhongJian(req, res);
     }
     if (existsSync(distMuLu)) return jingTai(req, res);
     res.statusCode = 404;
@@ -182,7 +207,9 @@ fu.listen(PORT, '0.0.0.0', async () => {
       ? `  开发者工具填 http://127.0.0.1:${PORT}；真机预览要填内网地址：${lan.map(x => `http://${x.diZhi}:${PORT}`).join(' 或 ')}`
       : `  小程序端请把 peizhi.js 里的 fuWuDiZhi 指向本机内网 IP 或 HTTPS 穿透域名`
   );
-  console.log('  接口：/api 用户与配置 ｜ /bmapapi 百度 Web 服务 ｜ /airelay AI 中转 ｜ /shuiyu 水域数据 ｜ /jianKang 健康检查');
+  console.log(
+    '  接口：/api 用户与配置 ｜ /bmapapi 百度 Web 服务 ｜ /airelay AI 中转 ｜ /shuiyu 水域数据 ｜ /zhoubian 周边地名 ｜ /jianKang 健康检查'
+  );
   try {
     await yongHuFuWu.chuShiHua();
     console.log('  MySQL 已就绪（shenghuoquan 库）');

@@ -278,6 +278,29 @@ body {
   opacity: 0.85;
   display: block;
 }
+/* 顶栏天气 chip：跟体检中心走的实时天气（29° 晴）。琥珀色图标在蓝底上像一点阳光，
+   与「底图·百度地图」chip 同一构图但图标带色、更醒目 */
+.tian-qi-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+.tian-qi-chip svg {
+  color: #ffd166;
+  display: block;
+}
+.tian-qi-chip b {
+  font-weight: 700;
+}
+.tian-qi-chip span {
+  opacity: 0.9;
+}
 .tog-btn {
   display: inline-flex;
   align-items: center;

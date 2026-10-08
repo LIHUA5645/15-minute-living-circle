@@ -153,6 +153,16 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
 
   const mangquDian = [];
   let juZhenKeYong = false;
+  // 分类缺口统计：在**全体候选格**里分别数「该类步行超时」的格数（按覆盖小格数加权）。
+  // 与盲区判定刻意分开：盲区要求三类同时超时（见下），而分类缺口要回答的是
+  // 「短板到底是菜市场、药店还是小学」，所以按类各记一份
+  const chaoShiGe = { caiShiChang: 0, yaoDian: 0, xiaoXue: 0 };
+  const jiChaoShi = (g, chao) => {
+    const n = g._geShu || 1;
+    if (chao.cai) chaoShiGe.caiShiChang += n;
+    if (chao.yao) chaoShiGe.yaoDian += n;
+    if (chao.xiao) chaoShiGe.xiaoXue += n;
+  };
   if (qiDian.length && typeof provider.routeMatrix === 'function') {
     const dests = [
       ...dCai.map(p => ({ lng: p.lng, lat: p.lat })),
@@ -174,7 +184,9 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
           ...row.slice(dCai.length, dCai.length + dYao.length).map(m => m.durationSec)
         );
         const xiao = Math.min(...row.slice(dCai.length + dYao.length).map(m => m.durationSec));
-        if (cai > XIAN_CAI && yao > XIAN_YAO && xiao > XIAN_XIAO) {
+        const chao = { cai: cai > XIAN_CAI, yao: yao > XIAN_YAO, xiao: xiao > XIAN_XIAO };
+        jiChaoShi(qiDian[k], chao);
+        if (chao.cai && chao.yao && chao.xiao) {
           qiDian[k]._shiChang = { cai, yao, xiao };
           mangquDian.push(qiDian[k]);
         }
@@ -187,7 +199,9 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
       const cai = (g._d.caiShiChang * 1.35) / (80 / 60);
       const yao = (g._d.yaoDian * 1.35) / (80 / 60);
       const xiao = (g._d.xiaoXue * 1.35) / (80 / 60);
-      if (cai > XIAN_CAI && yao > XIAN_YAO && xiao > XIAN_XIAO) {
+      const chao = { cai: cai > XIAN_CAI, yao: yao > XIAN_YAO, xiao: xiao > XIAN_XIAO };
+      jiChaoShi(g, chao);
+      if (chao.cai && chao.yao && chao.xiao) {
         g._shiChang = { cai, yao, xiao };
         mangquDian.push(g);
       }
@@ -235,6 +249,8 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
     const yiJu = `实测最近菜市场平均步行 ${fen(caiPing)}、药店 ${fen(yaoPing)}、小学 ${fen(xiaoPing)}，均超过 ${Math.round(T_MUBIAO / 60)} 分钟阈值`;
     return {
       id: 'MQ' + (idx + 1),
+      // 覆盖的小格数（代表点已按 400m 抽稀，这里还原成真实格数，面积/人口/占比都按它算）
+      geShu,
       level: geShu > 12 ? 'red' : 'orange',
       // 盲区统一用「圆心 + 半径」表示，渲染层直接画圆：网格点本来就是散点，
       // 连成多边形只会得到折返的长条，画圆更干净也更符合阅读习惯
@@ -252,8 +268,28 @@ async function shiBieMangQu(provider, canShu, poiSet, opt = {}) {
     };
   });
 
+  // 汇总统计：稿子上那排指标（盲区格 x/y、点位占比、盲区面积、分类缺口）都从这里取，
+  // 口径与清单一致（都用聚类后的 list），免得界面上的数与清单对不上
+  const geShuZong = qiDian.reduce((s, g) => s + (g._geShu || 1), 0);
+  const mangQuGe = list.reduce((s, m) => s + (m.geShu || 0), 0);
+  const bi = (a, b) => (b ? Number((a / b).toFixed(4)) : 0);
+  const tongJi = {
+    juZhen: juZhenKeYong, // 是否真用上了批量距离矩阵（界面上如实标引擎口径）
+    buMi: bu, // 单格边长（米）
+    geShuZong, // 候选居住格总数（分母）
+    mangQuGe, // 盲区格数
+    mangQuMianJiM2: list.reduce((s, m) => s + m.areaM2, 0), // 盲区面积（与清单各条之和一致）
+    mangQuDianWeiBi: bi(mangQuGe, geShuZong), // 盲区点位占比
+    chaoShiGe, // 各类超时格数（全体候选格口径）
+    fenleiQueKou: {
+      caiShiChang: bi(chaoShiGe.caiShiChang, geShuZong),
+      yaoDian: bi(chaoShiGe.yaoDian, geShuZong),
+      xiaoXue: bi(chaoShiGe.xiaoXue, geShuZong)
+    }
+  };
+
   if (opt.jinDu) opt.jinDu(jin1, 'mangqu');
-  return list;
+  return { list, tongJi };
 }
 
 export { shiBieMangQu };

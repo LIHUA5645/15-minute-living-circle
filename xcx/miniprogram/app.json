@@ -1,13 +1,11 @@
 {
   "pages": [
     "pages/ditu/ditu",
-    "pages/tijian/tijian",
     "pages/baogao/baogao",
-    "pages/wo/wo",
-    "pages/denglu/denglu",
     "pages/ai/ai",
-    "pages/index/index",
-    "pages/example/index"
+    "pages/wo/wo",
+    "pages/tijian/tijian",
+    "pages/denglu/denglu"
   ],
   "window": {
     "backgroundColor": "#f4f1ea",
@@ -15,6 +13,19 @@
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTitleText": "15 分钟生活圈体检",
     "navigationBarTextStyle": "black"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#8a94a6",
+    "selectedColor": "#12a150",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/ditu/ditu", "text": "地图" },
+      { "pagePath": "pages/baogao/baogao", "text": "生活圈" },
+      { "pagePath": "pages/ai/ai", "text": "助手" },
+      { "pagePath": "pages/wo/wo", "text": "我的" }
+    ]
   },
   "permission": {
     "scope.userLocation": {

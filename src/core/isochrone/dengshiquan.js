@@ -9,7 +9,8 @@ import {
   liangDianJuLi,
   waiBaoJuXing,
   chuangJianWangGe,
-  pingMianJuLi
+  pingMianJuLi,
+  mianJi
 } from '../geo/jichu.js';
 import { ouJiGuJI, tuiBiChongShi } from '../scheduler/xianliu.js';
 import { shuiYuYanMa } from '../geo/shuiyu.js';
@@ -461,8 +462,47 @@ export async function shengChengDengshiquan(provider, canShu, opt = {}) {
     }
   }
 
+  // 汇总统计：等时圈面积 / 最远可达 / 绕行系数——报告与小程序「生活圈」页那排指标直接用，
+  // 口径只在这里算一次，Web 与三端小程序共用，免得各端各算一套对不上
+  const mianJiGe = {}; // 档位(秒) → 面积 m²
+  for (const c of ceng) {
+    let s = 0;
+    // 等距投影的鞋带公式对环的方向敏感（顺/逆时针会出负值），取绝对值累加；
+    // 本项目的等时圈是「可达区域」，不存在被反包围的孔洞
+    for (const ring of c.polygon) s += Math.abs(mianJi(ring));
+    mianJiGe[c.miao] = Math.round(s);
+  }
+  const zuiYuanGe = {}; // 档位(秒) → 该档采样点里离中心最远的直线距离（米）
+  for (const c of ceng) {
+    let d = 0;
+    for (const s of yangBen)
+      if (s.t > 0 && s.t <= c.miao) d = Math.max(d, liangDianJuLi(zhongXin, s));
+    zuiYuanGe[c.miao] = Math.round(d);
+  }
+  // 绕行系数：实测路程 ÷ 直线距离，取中位数（抗个别绕远样本）。
+  // 只有带 polyline 的采样点能算（真实算路），派生锚点没有折线就跳过；
+  // 一个都算不出来就为 null，界面显示「—」，绝不编数
+  const raoLie = [];
+  for (const s of yangBen) {
+    if (!s.polyline || s.polyline.length < 2) continue;
+    const zhi = liangDianJuLi(zhongXin, s);
+    if (zhi < 50) continue; // 离中心太近的点，绕行比没有意义
+    let lu = 0;
+    for (let i = 1; i < s.polyline.length; i++)
+      lu += liangDianJuLi(s.polyline[i - 1], s.polyline[i]);
+    if (lu > 0) raoLie.push(lu / zhi);
+  }
+  raoLie.sort((a, b) => a - b);
+  const tongJi = {
+    mianJi: mianJiGe,
+    zuiYuan: zuiYuanGe,
+    raoXing: raoLie.length ? Number(raoLie[Math.floor(raoLie.length / 2)].toFixed(2)) : null,
+    yangBenShu: yangBen.length
+  };
+
   return {
     ceng,
+    tongJi,
     yangBenDian: yangBen.filter(s => s.t > 0),
     luXian,
     geshe,

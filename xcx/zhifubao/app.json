@@ -1,9 +1,27 @@
 {
-  "pages": ["pages/tijian/tijian", "pages/ditu/ditu", "pages/baogao/baogao", "pages/wo/wo"],
+  "pages": [
+    "pages/ditu/ditu",
+    "pages/baogao/baogao",
+    "pages/ai/ai",
+    "pages/wo/wo",
+    "pages/tijian/tijian",
+    "pages/denglu/denglu"
+  ],
   "window": {
     "defaultTitle": "15 分钟生活圈体检",
     "titleBarColor": "#ffffff",
     "pullRefresh": false,
     "backgroundColor": "#f4f1ea"
+  },
+  "tabBar": {
+    "textColor": "#8a94a6",
+    "selectedColor": "#12a150",
+    "backgroundColor": "#ffffff",
+    "items": [
+      { "pagePath": "pages/ditu/ditu", "name": "地图" },
+      { "pagePath": "pages/baogao/baogao", "name": "生活圈" },
+      { "pagePath": "pages/ai/ai", "name": "助手" },
+      { "pagePath": "pages/wo/wo", "name": "我的" }
+    ]
   }
 }

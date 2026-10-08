@@ -1,28 +1,100 @@
-<!-- 报告页：总分 → 维度 → 提示 → 盲区清单 → 建议 → AI 诊断 -->
+<!-- 生活圈（tabBar 第 2 个）：结论 → 步行等时圈/服务盲区 → 六维 → 提示 → 盲区清单 → 建议 → AI 诊断 -->
 <view class="ye">
   <block wx:if="{{youBaoGao}}">
-    <!-- 总分 -->
-    <view class="zong-ka">
-      <view class="zong-tou">
-        <view class="ka-biao">{{diMing || '本社区'}} · 15 分钟生活圈</view>
-        <view class="biao-qian" style="background: {{fenSe}}1f; color: {{fenSe}}">{{dengJiWen}}</view>
-      </view>
-      <view class="fen-hang">
-        <text class="fen" style="color: {{fenSe}}">{{total}}</text>
-        <text class="fen-dan">请求 {{qingQiuShu}} 次 · 耗时 {{haoShiWen}} · {{miDuWen}}档</text>
-      </view>
-      <view class="dai">
-        <view class="dai-nei" style="width: {{total}}%; background: {{fenSe}}"></view>
-      </view>
-      <view class="ka-fu" style="display: flex; justify-content: space-between">
-        <text>0</text>
-        <text>60 及格</text>
-        <text>85 优秀</text>
-        <text>100</text>
+    <!-- ① 一句话结论 -->
+    <view class="jl-ka">
+      <view class="jl-zi">{{jielun}}</view>
+      <view class="jl-fu">{{jielunFu}}</view>
+      <view class="jl-shu">
+        <text>综合 {{total}} 分 · {{dengJiWen}}</text>
+        <text>{{miDuWen}}档 · 请求 {{qingQiuShu}} 次 · {{haoShiWen}}</text>
       </view>
     </view>
 
-    <!-- 六维 -->
+    <!-- ② 步行等时圈 · 服务盲区 -->
+    <view class="ka">
+      <view class="ka-hang">
+        <view class="deng-ti">步行等时圈 · 服务盲区</view>
+        <view class="dang-pai">
+          <view
+            class="dang-an {{item.on ? 'on' : ''}}"
+            wx:for="{{dangWeiLie}}"
+            wx:key="miao"
+            data-miao="{{item.miao}}"
+            bindtap="xuanDang"
+          >{{item.ming}}</view>
+        </view>
+      </view>
+
+      <view class="ka-hang" style="margin-top: 16rpx">
+        <view class="mo-pai">
+          <view class="mo-an {{dituMoShi === 'jiaohu' ? 'on' : ''}}" data-m="jiaohu" bindtap="qieMoShi">交互地图</view>
+          <view class="mo-an {{dituMoShi === 'shiliang' ? 'on' : ''}}" data-m="shiliang" bindtap="qieMoShi">矢量示意图</view>
+        </view>
+        <!-- 底图与数据分开说：小程序 map 组件的底图是微信内置的腾讯位置服务（平台绑定，改不了）；
+             等时圈、POI 这些「数据」才是来自百度地图开放平台 —— 原文案「数据源：百度」容易让人
+             误以为底图也该是百度，看到腾讯 logo 反而以为是 bug -->
+        <view class="mo-yuan">底图 · 微信内置地图 ｜ 数据 · 百度地图开放平台</view>
+      </view>
+
+      <!-- 交互地图（原生 map，可拖动缩放）／矢量示意图（canvas，无底图）。
+           注意 tqZhongXin 是 {latitude, longitude}（dian() 的字段名），别绑成 .lng/.lat ——
+           取错字段组件拿到 undefined，不报错但瓦片一张都不加载 -->
+      <view class="tu-kuang">
+        <map
+          wx:if="{{dituMoShi === 'jiaohu'}}"
+          class="tu-ti"
+          longitude="{{tqZhongXin.longitude}}"
+          latitude="{{tqZhongXin.latitude}}"
+          scale="14"
+          polygons="{{tqPolygons}}"
+          polyline="{{tqLines}}"
+          circles="{{tqCircles}}"
+          markers="{{tqMarkers}}"
+          show-location
+          enable-rotate="{{false}}"
+        />
+        <canvas wx:else canvas-id="shiYi" class="tu-ti shi-yi"></canvas>
+      </view>
+
+      <!-- 四个主指标 -->
+      <view class="zhi-hang">
+        <view class="zhi" wx:for="{{zhiA}}" wx:key="ming">
+          <view class="zhi-zhi" style="color: {{item.se}}">{{item.zhi}}<text class="zhi-dan" wx:if="{{item.dan}}">{{item.dan}}</text></view>
+          <view class="zhi-ming">{{item.ming}}</view>
+          <view class="zhi-fu" wx:if="{{item.fu}}">{{item.fu}}</view>
+        </view>
+      </view>
+
+      <!-- 图例 -->
+      <view class="tu-li" wx:for="{{tuLi}}" wx:key="ming">
+        <view class="tu-li-kuai" style="background: {{item.se}}"></view>
+        <view class="tu-li-wen">{{item.ming}}</view>
+      </view>
+
+      <!-- 三个盲区指标 -->
+      <view class="zhi-b-hang">
+        <view class="zhi-b" wx:for="{{zhiB}}" wx:key="ming">
+          <view class="zhi-zhi" style="color: {{item.se}}">{{item.zhi}}<text class="zhi-dan" wx:if="{{item.dan}}">{{item.dan}}</text></view>
+          <view class="zhi-ming">{{item.ming}}</view>
+        </view>
+      </view>
+
+      <!-- 六维评分雷达：canvas 自绘（三层网格 + 数据多边形），维度与分类缺口一一对应 -->
+      <view class="que-tou">六维评分雷达 · 各维度得分（满分 100）</view>
+      <canvas type="2d" id="leiDa" class="lei-da"></canvas>
+
+      <!-- 分类缺口 -->
+      <view class="que-tou">分类缺口 · 各格里该类步行超时的比例</view>
+      <view class="que-hang" wx:for="{{queKou}}" wx:key="ming">
+        <view class="que-ming">{{item.ming}}</view>
+        <view class="que-tiao"><view class="que-tiao-nei" style="width: {{item.kuan}}%; background: {{item.se}}"></view></view>
+        <view class="que-bi" style="color: {{item.se}}">{{item.biWen}}</view>
+      </view>
+      <view class="ka-fu">「盲区」要求菜市场/药店/小学同时超时；分类缺口按类统计，用来看短板到底在哪一类。</view>
+    </view>
+
+    <!-- ③ 六维 -->
     <view class="ka">
       <view class="qu-biao">六维得分</view>
       <view class="wei-hang" wx:for="{{weiDu}}" wx:key="ming">
@@ -36,7 +108,7 @@
       </view>
     </view>
 
-    <!-- 提示与告警 -->
+    <!-- ④ 提示与告警 -->
     <view class="ka" wx:if="{{warn.length}}">
       <view class="qu-biao">数据可信度与提示</view>
       <view class="warn" wx:for="{{warn}}" wx:key="*this">
@@ -45,7 +117,7 @@
       </view>
     </view>
 
-    <!-- 盲区清单 -->
+    <!-- ⑤ 盲区清单 -->
     <view class="ka">
       <view class="ka-hang" style="margin-bottom: 6rpx">
         <view class="qu-biao" style="margin-bottom: 0">服务盲区（{{mangQuList.length}} 处）</view>
@@ -62,13 +134,14 @@
         <view class="mq-hang" wx:if="{{item.zuoBiaoWen}}"><text class="dian">建议补建　</text>{{item.zuoBiaoWen}}</view>
         <view class="ka-di-jianYi" wx:if="{{item.jianYi}}">{{item.jianYi}}</view>
         <view class="an-hang">
-          <button class="an ci" data-id="{{item.id}}" bindtap="kanDiTu">地图查看</button>
-          <button class="an ci" data-id="{{item.id}}" bindtap="biaoJi">标记我的位置</button>
+          <!-- 等分一行（.ling 平分 + .xiao 收字号内边距），不再各占一整行 -->
+          <button class="an ci ling xiao" data-id="{{item.id}}" bindtap="kanDiTu">地图查看</button>
+          <button class="an ci ling xiao" data-id="{{item.id}}" bindtap="biaoJi">标记我的位置</button>
         </view>
       </view>
     </view>
 
-    <!-- 改进建议 -->
+    <!-- ⑥ 改进建议 -->
     <view class="ka" wx:if="{{jianYi.length}}">
       <view class="qu-biao">改进建议</view>
       <view class="mq-hang" wx:for="{{jianYi}}" wx:key="*this">
@@ -76,7 +149,7 @@
       </view>
     </view>
 
-    <!-- AI 诊断（与网页端一致：打开即生成、可切生成方式、失败如实说明并回退本地规则） -->
+    <!-- ⑦ AI 诊断（与网页端一致：打开即生成、可切生成方式、失败如实说明并回退本地规则） -->
     <view class="ka ai-ka">
       <view class="ai-tou">
         <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
@@ -114,22 +187,133 @@
         >
           {{ai.zhuangTai === 'shengCheng' || ai.zhuangTai === 'daZi' ? '生成中…' : '重新生成'}}
         </button>
-        <button class="an ci ling" bindtap="quAi">问问 AI 助手</button>
+        <!-- 不再跳去助手 tab：在本页升起 AI 半屏浮层（与地图页同一套，见 common/aiFu.js） -->
+        <button class="an ci ling" bindtap="kaiAiFu">问问 AI 助手</button>
       </view>
     </view>
 
+    <!-- 水印式入口：辅助动作不与主按钮抢视觉，小字淡灰居中 -->
     <view class="an-hang" style="margin-bottom: 40rpx">
-      <button class="an ci" bindtap="huiDiTu">在地图上看覆盖</button>
+      <button class="shui-yin-an" bindtap="huiDiTu">在地图上看覆盖</button>
     </view>
   </block>
 
   <view class="ka" wx:else>
-    <view class="qu-biao">还没有报告</view>
+    <view class="qu-biao">还没有生活圈报告</view>
     <view class="ka-fu">
-      完整报告保存在本机内存：请回地图页定好位置后跑一轮体检（小程序被系统回收后需重跑）。
+      完整报告保存在本机内存：请回「地图」页定好位置后跑一轮体检（小程序被系统回收后需重跑）。
     </view>
     <view class="an-hang">
       <button class="an zhu2" bindtap="huiDiTu">去体检</button>
     </view>
+  </view>
+
+  <!-- AI 半屏浮层：点「问问 AI 助手」升起来，就在本页问完，不跳「助手」tab。
+       抽屉常驻渲染、只切 .kai（transform 过渡），所以升起与落下都有动画。
+       字段与方法来自 common/aiFu.js（与地图页共用一份），样式是 app.wxss 的 .ai-fu* 系列 -->
+  <view class="ai-fu-zhe" wx:if="{{aiFuKai}}" bindtap="guanAiFu"></view>
+  <view class="ai-fu {{aiFuKai ? 'kai' : ''}}">
+    <!-- 顶部把手：与底部卡片的把手同一个手势语言；点它收起浮层 -->
+    <view class="ai-fu-ba" bindtap="guanAiFu" aria-role="button" aria-label="收起 AI 浮层"></view>
+    <view class="ai-fu-tou">
+      <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      <view class="ai-fu-tou-wen">
+        <view class="ka-biao">AI 助手</view>
+        <view class="ai-fu-zhuang" wx:if="{{aiKeYong}}">已接入大模型</view>
+        <view class="ka-fu" wx:else>未接入大模型：可用「去最近的医院」这类说法走本地规则选点</view>
+      </view>
+      <view class="hh-guan" bindtap="guanAiFu" aria-role="button" aria-label="收起 AI 浮层">
+        <view class="ic ic-cha"></view>
+      </view>
+    </view>
+
+    <scroll-view class="ai-fu-lie" scroll-y="true" scroll-into-view="{{aiGun}}" scroll-with-animation="true">
+      <view class="ai-fu-tie">
+        <!-- 进入聊天的状态总结卡（与助手页同源文案） -->
+        <view class="lt-zhao" wx:if="{{zhaoHu}}">{{zhaoHu}}</view>
+        <view class="lt-hang {{item.role}}" wx:for="{{aiLie}}" wx:key="id" id="a{{item.id}}">
+          <view class="lt-xiang" wx:if="{{item.role !== 'user'}}">
+            <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+          </view>
+          <view class="lt-qi {{item.role === 'user' ? 'wo' : (item.role === 'cuo' ? 'cuo' : 'ai')}}">
+            <view wx:if="{{item.wen}}">{{item.wen}}</view>
+            <view
+              wx:if="{{item.an}}"
+              class="lt-an-nei"
+              bindtap="quAiTiJian"
+              hover-class="an-an-on"
+              aria-role="button"
+            >{{item.an}}</view>
+          </view>
+        </view>
+        <view class="lt-hang" wx:if="{{aiZhong}}" id="a-zhong">
+          <view class="lt-xiang">
+            <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+          </view>
+          <view class="lt-qi ai"><view class="lt-dian"><text></text><text></text><text></text></view></view>
+        </view>
+        <view class="ai-fu-kong" wx:if="{{!aiLie.length && !aiZhong}}">问点社区的事，我结合本轮体检回答你</view>
+      </view>
+    </scroll-view>
+
+    <!-- 待发送附件预览（与助手页同款） -->
+    <view class="fu-yu" wx:if="{{fujian.length}}">
+      <view class="fu-yu-an" wx:for="{{fujian}}" wx:key="lu">
+        <image wx:if="{{item.lei === 'image'}}" class="fu-yu-tu" src="{{item.lu}}" mode="aspectFill" />
+        <view wx:else class="fu-yu-wen">
+          <view class="ic ic-wenjian"></view>
+          <view class="fu-yu-ming">{{item.ming}}</view>
+        </view>
+        <view class="fu-yu-shan" data-i="{{index}}" bindtap="shanFuJian">✕</view>
+      </view>
+    </view>
+
+    <view class="ai-fu-shu">
+      <view class="lt-qie" bindtap="qieMoShi" hover-class="an-an-on" aria-role="button" aria-label="切换语音或键盘">
+        <view class="ic {{yuYinMoShi ? 'ic-jianpan' : 'ic-mai'}}"></view>
+      </view>
+      <view
+        wx:if="{{yuYinMoShi}}"
+        class="lt-shu-in lt-an-shuo"
+        bindtouchstart="maiAn"
+        bindtouchmove="maiDong"
+        bindtouchend="maiSong"
+        bindtouchcancel="maiQuXiao"
+        aria-role="button"
+        aria-label="按住说话"
+      >
+        {{luYinZhong ? '松开发送，上滑取消' : '按住 说话'}}
+      </view>
+      <block wx:else>
+        <view class="lt-jia" bindtap="xuanFuJian" hover-class="an-an-on" aria-role="button" aria-label="添加图片或文件">
+          <view class="ic ic-jia"></view>
+        </view>
+        <input
+          class="lt-shu-in"
+          value="{{aiWen}}"
+          bindinput="aiSheRu"
+          bindconfirm="aiFaSong"
+          confirm-type="send"
+          placeholder="问问社区情况…"
+        />
+        <view class="lt-fa {{(aiWen || fujian.length) && !aiZhong ? '' : 'jin'}}" bindtap="aiFaSong">
+          <view class="ic ic-fei"></view>
+          <text>发送</text>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 录音浮层：松开发送 / 上滑取消（与助手页同款） -->
+  <view class="lu-ceng {{luYinQuXiao ? 'quXiao' : ''}}" wx:if="{{luYinZhong}}">
+    <view class="lu-bo">
+      <view class="lu-bo-i" style="animation-delay: 0s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.18s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.36s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.12s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.3s"></view>
+    </view>
+    <view class="lu-ceng-wen">{{luYinQuXiao ? '松开手指，取消发送' : '松开发送，上滑取消'}}</view>
+    <view class="lu-ceng-miao">{{luYinMiao}}″</view>
   </view>
 </view>

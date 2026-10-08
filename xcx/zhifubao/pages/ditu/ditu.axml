@@ -7,6 +7,7 @@
     longitude="{{longitude}}"
     scale="{{scale}}"
     show-location
+    setting="{{diTuGong}}"
     polygons="{{polygons}}"
     circles="{{circles}}"
     markers="{{markers}}"
@@ -24,15 +25,34 @@
         <view class="ding-fu">{{youZhongXin ? zhongXinWen : '点右侧切换定位方式'}}</view>
       </view>
     </view>
-    <view class="ding-an" onTap="qieKaiXuanDian">{{dingWeiZhong ? '定位中…' : '切换'}}</view>
+    <view class="ding-an" onTap="qieKaiXuanDian" hover-class="an-an-on" aria-role="button">{{dingWeiZhong ? '定位中…' : '切换'}}</view>
   </view>
 
   <!-- 定位方式小面板 -->
   <view class="xuan-pan" a:if="{{xuanDianKai}}">
+    <!-- 定位周边推荐：坐标对用户没意义，地名才有；点一下就把体检中心挪过去。
+         数据由服务端 /zhoubian 提供（Overpass + 按网格缓存），拿不到就只剩「当前位置」 -->
+    <view class="zhou-pan" a:if="{{zhouBian.length || zhouBianZhong}}">
+      <view class="zhou-biao">周边的位置{{zhouBianZhong ? ' · 读取中…' : ''}}</view>
+      <scroll-view class="zhou-lie" scroll-x="true">
+        <view
+          class="zhou-an {{item.dangQian ? 'on' : ''}}"
+          a:for="{{zhouBian}}"
+          a:key="ming"
+          data-i="{{index}}"
+          onTap="dianZhouBian"
+          hover-class="an-an-on"
+          aria-role="button"
+        >
+          <text class="zhou-ming">{{item.ming}}</text>
+          <text class="zhou-fu">{{item.fu}}</text>
+        </view>
+      </scroll-view>
+    </view>
     <view class="xuan-an" onTap="dingWei"><view class="ic ic-zhun" style="color: #12a150"></view>用当前位置</view>
     <view class="xuan-an" onTap="xuanDian"><view class="ic ic-tu" style="color: #2f9bff"></view>在地图上选点</view>
     <view class="xuan-an" onTap="quTiaoZhen"><view class="ic ic-can" style="color: #7c5cff"></view>体检参数与历史</view>
-    <view class="xuan-an" onTap="quAi">
+    <view class="xuan-an" onTap="kaiAiFu">
       <image class="ai-logo" src="/images/ailogo.png" mode="heightFix" style="height: 40rpx" />AI 助手（问问社区情况）
     </view>
     <view class="xuan-an" a:if="{{youYongHu}}" onTap="quWoDe">
@@ -43,21 +63,44 @@
     </view>
   </view>
 
-  <!-- 图层胶囊 -->
-  <scroll-view class="tuceng" scroll-x="true">
-    <view class="tuceng-an {{xianShi.iso ? 'on' : ''}}" data-k="iso" onTap="qieHuan">等时圈</view>
-    <view class="tuceng-an {{xianShi.sheshi ? 'on' : ''}}" data-k="sheshi" onTap="qieHuan">设施</view>
-    <view class="tuceng-an {{xianShi.mangqu ? 'on' : ''}}" data-k="mangqu" onTap="qieHuan">盲区</view>
-    <view class="tuceng-an {{xianShi.yonghu ? 'on' : ''}}" data-k="yonghu" onTap="qieHuan">我的标记</view>
-  </scroll-view>
+  <!-- 设施六类细分：默认展开（点「设施」胶囊可收起，收起后不占地方）。
+       每类是「类别色线条图标 + 名称」，选中时描边也换成类别色 —— 颜色本身就是图例，与地图散点一一对应 -->
+  <view class="she-pan" a:if="{{sheShiKai}}">
+    <view class="she-an quan {{youSheShi ? 'on' : ''}}" onTap="quanSheShi" hover-class="an-an-on" aria-role="button"
+      >全部</view
+    >
+    <view
+      class="she-an {{item.on ? 'on' : ''}}"
+      a:for="{{sheShiLie}}"
+      a:key="k"
+      data-k="{{item.k}}"
+      style="{{item.on ? 'border-color: ' + item.se : ''}}"
+      onTap="xuanSheShi"
+      hover-class="an-an-on"
+      aria-role="button"
+    >
+      <!-- 面板是白底：用去圆底的线条版图标（同一批 lucide 图标、类别色），比带圆底的徽章清爽 -->
+      <image class="she-tubiao" src="/images/sheshi-xian-{{item.k}}.png" mode="aspectFit" />
+      <text class="she-ming">{{item.ming}}</text>
+    </view>
+    <!-- 设施散点来自体检抓取的 poiSet：跑过体检的会存一份截断副本，冷启动后地图照样有标记；
+         没跑过的就是空的 —— 两种口径分开说，别让人对着空地图反复点类别 -->
+    <view class="she-shuo" a:if="{{!youBaoGao}}">
+      {{youJiuSheShi ? '地图上是上次体检的设施；跑一轮可更新覆盖与盲区' : '设施标记来自体检结果：先点「开始体检」跑一轮就能看到'}}
+    </view>
+  </view>
 
-  <!-- 右侧常驻浮动入口：不点开「切换」也能进 AI 助手 / 重新定位 / 我的 -->
+  <!-- 右侧常驻浮动入口：不点开「切换」也能唤 AI 浮层 / 重新定位 / 我的 -->
   <view class="fu-an">
-    <view class="fu-an-an" onTap="quAi">
+    <view class="fu-an-an" onTap="kaiAiFu" aria-role="button" aria-label="打开 AI 浮层">
       <image class="ai-logo" src="/images/ailogo.png" mode="heightFix" style="height: 60rpx" />
     </view>
     <view class="fu-an-an" onTap="dingWei">
       <view class="ic ic-zhun" style="color: #12a150"></view>
+    </view>
+    <!-- 回到定位点并放大：地图拖走/缩小后一键回中（回的是中心点，可能是被设为中心的某个设施） -->
+    <view class="fu-an-an" onTap="huiDaoZhongXin" aria-role="button" aria-label="回到定位点并放大">
+      <view class="ic ic-hui" style="color: #2f9bff"></view>
     </view>
     <!-- 事件名不能用三目（小程序不支持动态事件绑定），拆成两个元素 -->
     <view class="fu-an-an" a:if="{{youYongHu}}" onTap="quWoDe">
@@ -66,6 +109,281 @@
     <view class="fu-an-an" a:else onTap="quDengLu">
       <view class="ic ic-ren" style="color: #98a2b3"></view>
     </view>
+  </view>
+
+  <!-- 顶部地图条：底图设置（路况 / 卫星 / 3D）+ 数据图层（等时圈 / 设施 / 盲区 / 我的标记）合成一条。
+       路况 / 卫星 / 3D 保留**图标 + 文字**（这三个词去掉了就认不出）；
+       数据图层四项只留图标（四项都带文字会把整行挤满、「我的标记」被右缘裁掉），语义放 aria-label。
+       选中态统一蓝色渐变（同网页端工具条） -->
+  <scroll-view class="gong-tiao" scroll-x="{{!souKai}}">
+    <view class="gong-nei">
+      <!-- 平时：七项开关 + 一个放大镜；点放大镜整条换成下面的输入行 -->
+      <block a:if="{{!souKai}}">
+      <view
+        class="gong-an {{luKuang ? 'on' : ''}}"
+        data-k="luKuang"
+        onTap="qieDiTuGong"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="实时路况图层"
+        ><view class="ic ic-lu"></view>路况</view
+      >
+      <view
+        class="gong-an {{weiXing ? 'on' : ''}}"
+        data-k="weiXing"
+        onTap="qieDiTuGong"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="卫星影像与普通地图切换"
+        ><view class="ic ic-wx"></view>卫星</view
+      >
+      <view
+        class="gong-an {{qingXie ? 'on' : ''}}"
+        data-k="qingXie"
+        onTap="qieDiTuGong"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="3D 倾斜视角"
+        ><view class="ic ic-3d"></view>3D</view
+      >
+      <view class="gong-fen"></view>
+      <view
+        class="gong-an tu {{xianShi.iso ? 'on' : ''}}"
+        data-k="iso"
+        onTap="qieHuan"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="等时圈图层"
+        ><view class="ic ic-huan"></view></view
+      >
+      <!-- 「设施」右下角的小三角表示点得开：展开六类筛选面板，展开时三角翻上来 -->
+      <view
+        class="gong-an tu zhan {{youSheShi ? 'on' : ''}} {{sheShiKai ? 'kai' : ''}}"
+        onTap="qieSheShi"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="设施图层：展开或收起六类筛选"
+        ><view class="ic ic-she"></view></view
+      >
+      <view
+        class="gong-an tu {{xianShi.mangqu ? 'on' : ''}}"
+        data-k="mangqu"
+        onTap="qieHuan"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="盲区图层"
+        ><view class="ic ic-mq"></view></view
+      >
+      <view
+        class="gong-an tu {{xianShi.yonghu ? 'on' : ''}}"
+        data-k="yonghu"
+        onTap="qieHuan"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="我的标记图层"
+        ><view class="ic ic-biao"></view></view
+      >
+      <view class="gong-fen"></view>
+      <!-- 搜索：平时只占一个图标的位置 -->
+      <view
+        class="gong-an"
+        onTap="kaiSou"
+        hover-class="an-an-on"
+        aria-role="button"
+        aria-label="搜索附近的地点"
+        ><view class="ic ic-sou"></view></view
+      >
+      </block>
+      <!-- 搜索态：整条变成输入行 -->
+      <view a:else class="sou-hang">
+        <view class="ic ic-sou sou-tu"></view>
+        <input
+          class="sou-shu"
+          value="{{souWen}}"
+          focus="{{true}}"
+          placeholder="搜附近的地点：医院 / 超市 / 公园…"
+          placeholder-class="sou-zhan"
+          onInput="souRu"
+          bindconfirm="souSuo"
+          confirm-type="search"
+        />
+        <view class="sou-qu" onTap="guanSou" aria-role="button" aria-label="收起搜索">取消</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 搜索结果区：有词显示结果；没词显示分类快捷 + 历史记录（与网页端搜索面板同一套）。
+       点结果 / 点历史都把它当目的地弹卡片（卡片里就能算路 / 用地图软件导航 / 设为体检中心） -->
+  <view class="sou-lie" a:if="{{souKai}}">
+    <block a:if="{{souWen}}">
+      <view
+        class="sou-tiao"
+        a:for="{{souLie}}"
+        a:key="uid"
+        data-i="{{index}}"
+        onTap="dianSouJie"
+        hover-class="an-an-on"
+        aria-role="button"
+      >
+        <view class="ic ic-sou"></view>
+        <view class="sou-zi">
+          <view class="sou-ming">{{item.name}}</view>
+          <view class="sou-fu">{{item.fu}}</view>
+        </view>
+      </view>
+      <view class="sou-kong" a:if="{{souZhong}}">搜索中…</view>
+      <view class="sou-kong" a:elif="{{!souLie.length}}">附近没搜到「{{souWen}}」—— 换个说法试试（如「医院」「菜市场」）</view>
+    </block>
+    <block a:else>
+      <!-- 分类快捷：与网页端 SOU_LEI 同一套词与徽章色，点一下直接搜这类 -->
+      <view class="sou-kuai-hang">
+        <view
+          class="sou-kuai"
+          a:for="{{souKuai}}"
+          a:key="ming"
+          data-ci="{{item.ci}}"
+          onTap="dianSouKuai"
+          hover-class="an-an-on"
+          aria-role="button"
+          aria-label="搜{{item.ming}}"
+        >
+          <!-- 类别色的 lucide 复刻图标（与网页端 SOU_LEI 同一批） -->
+          <view class="ic {{item.tu}}" style="color: {{item.se}}"></view>{{item.ming}}
+        </view>
+      </view>
+      <!-- 历史记录：点一条直接回到当时搜到的那个点，不再打接口 -->
+      <block a:if="{{souLiShi.length}}">
+        <view class="sou-biao">
+          <text>历史记录</text>
+          <text class="sou-qing" onTap="qingSouLi" hover-class="an-an-on" aria-role="button" aria-label="清空搜索历史">清空</text>
+        </view>
+        <view
+          class="sou-tiao"
+          a:for="{{souLiShi}}"
+          a:key="shi"
+          data-i="{{index}}"
+          onTap="dianSouLi"
+          hover-class="an-an-on"
+          aria-role="button"
+        >
+          <view class="ic ic-zhong"></view>
+          <view class="sou-zi"><view class="sou-ming">{{item.w}}</view></view>
+        </view>
+      </block>
+    </block>
+    <view class="sou-kong" a:if="{{souZhong}}">搜索中…</view>
+  </view>
+
+  <!-- AI 半屏浮层：在地图上直接问，不跳页。
+       抽屉常驻渲染、只切 .kai（transform 过渡），这样升起与落下都有动画 -->
+  <view class="ai-fu-zhe" a:if="{{aiFuKai}}" onTap="guanAiFu"></view>
+  <view class="ai-fu {{aiFuKai ? 'kai' : ''}}">
+    <!-- 顶部把手：与底部主卡（.di-ba）同一个手势语言；点它收起浮层，别让把手成为"只看得见拖不动"的摆设 -->
+    <view class="ai-fu-ba" onTap="guanAiFu" aria-role="button" aria-label="收起 AI 浮层"></view>
+    <view class="ai-fu-tou">
+      <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      <view class="ai-fu-tou-wen">
+        <view class="ka-biao">AI 助手</view>
+        <!-- 接入状态做成小绿胶囊，比一行灰字更像"在线"；未接入时保留整句话，那句里带着办法 -->
+        <view class="ai-fu-zhuang" a:if="{{aiKeYong}}">已接入大模型</view>
+        <view class="ka-fu" a:else>未接入大模型：可用「去最近的医院」这类说法走本地规则选点</view>
+      </view>
+      <view class="hh-guan" onTap="guanAiFu" aria-role="button" aria-label="收起 AI 浮层">
+        <view class="ic ic-cha"></view>
+      </view>
+    </view>
+
+    <scroll-view class="ai-fu-lie" scroll-y="true" scroll-into-view="{{aiGun}}" scroll-with-animation="true">
+      <view class="ai-fu-tie">
+        <!-- 进入聊天的状态总结卡（与助手页同源文案） -->
+        <view class="lt-zhao" a:if="{{zhaoHu}}">{{zhaoHu}}</view>
+        <view class="lt-hang {{item.role}}" a:for="{{aiLie}}" a:key="id" id="a{{item.id}}">
+          <view class="lt-xiang" a:if="{{item.role !== 'user'}}">
+            <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+          </view>
+          <view class="lt-qi {{item.role === 'user' ? 'wo' : (item.role === 'cuo' ? 'cuo' : 'ai')}}">
+            <view a:if="{{item.wen}}">{{item.wen}}</view>
+            <view
+              a:if="{{item.an}}"
+              class="lt-an-nei"
+              onTap="quAiTiJian"
+              hover-class="an-an-on"
+              aria-role="button"
+            >{{item.an}}</view>
+          </view>
+        </view>
+        <view class="lt-hang" a:if="{{aiZhong}}" id="a-zhong">
+          <view class="lt-xiang">
+            <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+          </view>
+          <view class="lt-qi ai"><view class="lt-dian"><text></text><text></text><text></text></view></view>
+        </view>
+        <view class="ai-fu-kong" a:if="{{!aiLie.length && !aiZhong}}">问点社区的事，我结合本轮体检回答你</view>
+      </view>
+    </scroll-view>
+
+    <!-- 待发送附件预览（与助手页同款） -->
+    <view class="fu-yu" a:if="{{fujian.length}}">
+      <view class="fu-yu-an" a:for="{{fujian}}" a:key="lu">
+        <image a:if="{{item.lei === 'image'}}" class="fu-yu-tu" src="{{item.lu}}" mode="aspectFill" />
+        <view a:else class="fu-yu-wen">
+          <view class="ic ic-wenjian"></view>
+          <view class="fu-yu-ming">{{item.ming}}</view>
+        </view>
+        <view class="fu-yu-shan" data-i="{{index}}" onTap="shanFuJian">✕</view>
+      </view>
+    </view>
+
+    <view class="ai-fu-shu">
+      <!-- 语音 / 键盘模式切换（与助手页同款交互） -->
+      <view class="lt-qie" onTap="qieMoShi" hover-class="an-an-on" aria-role="button" aria-label="切换语音或键盘">
+        <view class="ic {{yuYinMoShi ? 'ic-jianpan' : 'ic-mai'}}"></view>
+      </view>
+      <!-- 语音模式：按住说话，松手识别即发，上滑取消 -->
+      <view
+        a:if="{{yuYinMoShi}}"
+        class="lt-shu-in lt-an-shuo"
+        bindtouchstart="maiAn"
+        bindtouchmove="maiDong"
+        bindtouchend="maiSong"
+        bindtouchcancel="maiQuXiao"
+        aria-role="button"
+        aria-label="按住说话"
+      >
+        {{luYinZhong ? '松开发送，上滑取消' : '按住 说话'}}
+      </view>
+      <block a:else>
+        <!-- 文字模式：加号（附件）+ 输入框 + 发送 -->
+        <view class="lt-jia" onTap="xuanFuJian" hover-class="an-an-on" aria-role="button" aria-label="添加图片或文件">
+          <view class="ic ic-jia"></view>
+        </view>
+        <input
+          class="lt-shu-in"
+          value="{{aiWen}}"
+          onInput="aiSheRu"
+          bindconfirm="aiFaSong"
+          confirm-type="send"
+          placeholder="问问社区情况…"
+        />
+        <view class="lt-fa {{(aiWen || fujian.length) && !aiZhong ? '' : 'jin'}}" onTap="aiFaSong">
+          <view class="ic ic-fei"></view>
+          <text>发送</text>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 录音浮层：松开发送 / 上滑取消（与助手页同款） -->
+  <view class="lu-ceng {{luYinQuXiao ? 'quXiao' : ''}}" a:if="{{luYinZhong}}">
+    <view class="lu-bo">
+      <view class="lu-bo-i" style="animation-delay: 0s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.18s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.36s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.12s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.3s"></view>
+    </view>
+    <view class="lu-ceng-wen">{{luYinQuXiao ? '松开手指，取消发送' : '松开发送，上滑取消'}}</view>
+    <view class="lu-ceng-miao">{{luYinMiao}}″</view>
   </view>
 
   <!-- 底部区：信息卡 + 主卡 -->
@@ -78,22 +396,55 @@
       </view>
       <view class="ka-di-hang" a:for="{{ka.hang}}" a:key="*this">{{item}}</view>
       <view class="ka-di-jianYi" a:if="{{ka.jianYi}}">{{ka.jianYi}}</view>
-      <view class="an-hang">
-        <block a:if="{{ka.lei === 'sheshi'}}">
-          <button class="an ci ling xiao" onTap="zouLu">{{zouLuZhong ? '算路中…' : '步行路线'}}</button>
-          <button class="an ci ling xiao" onTap="daoHang">导航</button>
+      <block a:if="{{ka.lei === 'sheshi'}}">
+        <!-- 出行方式：点哪个算哪个，算完把线画在地图上（网页端是四种并行算好再让用户挑） -->
+        <view class="pai">
+          <view
+            class="pai-an {{luMo === item.mo ? 'on' : ''}}"
+            a:for="{{luMoLie}}"
+            a:key="mo"
+            data-mo="{{item.mo}}"
+            onTap="suanLu"
+            hover-class="an-an-on"
+            aria-role="button"
+          >
+            <!-- 图标与网页端同款 lucide（Footprints/Bike/Car/Bus），由截图管线生成为透明 PNG（/images/luxing-*.png） -->
+            <image class="pai-tu" src="/images/luxing-{{item.mo}}.png" mode="aspectFit" />{{item.ming}}</view>
+        </view>
+        <view class="an-hang" style="margin-top: 16rpx">
+          <!-- 站内导航是主动作（主色），设为中心次之；「用地图软件导航」降为摘要行右侧的辅助链接 -->
+          <button class="an zhu ling xiao" onTap="kaiDaoHang">站内导航</button>
           <button class="an ci ling xiao" onTap="sheWeiZhongXin">设为中心</button>
-        </block>
-        <block a:if="{{ka.lei === 'mangqu'}}">
-          <button class="an ci ling" onTap="quBaoGao">看报告里的清单</button>
-        </block>
+        </view>
+      </block>
+      <view class="an-hang" a:if="{{ka.lei === 'mangqu'}}">
+        <button class="an ci ling" onTap="quBaoGao">看报告里的清单</button>
       </view>
-      <view a:if="{{luXianWen}}" class="ka-di-fu">{{luXianWen}}</view>
+      <!-- 路线摘要 + 站内导航入口：算出路线后才能导航；导航中整行变成行进信息条 -->
+      <view a:if="{{luZhong || luXianWen || daoHang}}" class="ka-di-fu dao-hang-hang">
+        <block a:if="{{daoHang}}">
+          <text a:if="{{daoHang.daoDa}}">✓ 已到达目的地附近</text>
+          <text a:else>导航中<text a:if="{{daoHang.pian}}">（偏离路线约 {{daoHang.pian}} 米）</text> · 剩余约 {{daoHang.shengMi}} 米 / {{daoHang.miao}} 分钟</text>
+          <text class="dao-hang-ting" onTap="tingDaoHang">{{daoHang.daoDa ? '完成' : '退出导航'}}</text>
+        </block>
+        <block a:elif="{{luXianWen}}">
+          <text>{{luZhong ? '算路中…' : luXianWen}}</text>
+          <!-- 地图软件是辅助推荐：降为摘要行右侧的辅助链接 -->
+          <text a:if="{{!luZhong}}" class="dao-hang-kai" onTap="daoHang">用地图软件导航</text>
+        </block>
+        <text a:else>算路中…</text>
+      </view>
     </view>
 
     <!-- 主卡：体检入口 / 结论 -->
     <view class="di-ka">
       <view class="di-ba"></view>
+      <!-- 当前位置天气：绝对定位在主卡右上角常驻（三种卡片态都显示），拉不到就整块不渲染；
+           图标随现象变（晴/云/雨/雪/雾五档，tianQiTu 映射），失败静默是刻意的 —— 天气是锦上添花 -->
+      <view class="tian-qi" a:if="{{tianQiWen}}">
+        <view class="ic {{tianQiTu}}"></view>
+        <text>{{tianQiWen}}</text>
+      </view>
       <block a:if="{{running}}">
         <view class="di-hang">
           <view class="di-biao">正在体检</view>
@@ -122,53 +473,16 @@
 
       <block a:else>
         <view class="di-biao">定好位置，跑一轮 15 分钟生活圈体检</view>
-        <view class="ka-fu">会算出步行可达范围、设施覆盖、服务盲区与补建建议</view>
-        <!-- 主按钮独占一行、两个次按钮并排：分两个 .an-hang，不靠 flex 自动换行
-             （同一行里混放 width:100% 与 flex:1，会被 flex-shrink 压成一行并把文字切掉） -->
+        <view class="ka-fu">{{youJiuSheShi ? '地图上是上次体检的设施；跑一轮可更新覆盖、盲区与补建建议' : '会算出步行可达范围、设施覆盖、服务盲区与补建建议'}}</view>
+        <!-- 三个入口并成一行：少占一行高度（约 100rpx），地图能多露一截。
+             等分靠 .ling，收紧字号与内边距靠 .xiao —— 三个都加，免得出现"某个字大某个字小"的参差；
+             文字不换行也由 .an.xiao 保证 -->
         <view class="an-hang">
-          <button class="an zhu" onTap="kaiShiTiJian">开始体检</button>
-        </view>
-        <view class="an-hang" style="margin-top: 16rpx">
-          <button class="an ci ling" onTap="dingWei">用当前位置</button>
-          <button class="an ci ling" onTap="xuanDian">在地图上选点</button>
+          <button class="an zhu ling xiao" onTap="kaiShiTiJian">开始体检</button>
+          <button class="an ci ling xiao" onTap="dingWei">用当前位置</button>
+          <button class="an ci ling xiao" onTap="xuanDian">在地图上选点</button>
         </view>
       </block>
-
-      <!-- 底部信息行：左参数开关、右「我的」入口（按钮只留两个，避免挤成两行） -->
-      <view class="di-jiao-hang">
-        <view class="di-lian" onTap="qieKaiCanShu">
-          {{muBiaoWen}} · {{dangWeiWen}}档
-          <view class="chev {{canShuKai ? 'shang' : ''}}"></view>
-        </view>
-        <view class="di-lian" onTap="quWoDe">我的<view class="chev you"></view></view>
-      </view>
-      <block a:if="{{canShuKai}}">
-        <view class="pai">
-          <view
-            class="pai-an {{item.on ? 'on' : ''}}"
-            a:for="{{muBiaoLie}}"
-            a:key="miao"
-            data-miao="{{item.miao}}"
-            onTap="xuanMuBiao"
-          >
-            {{item.ming}}
-          </view>
-        </view>
-        <view class="pai">
-          <view
-            class="pai-an {{item.on ? 'on' : ''}}"
-            a:for="{{dangWeiLie}}"
-            a:key="zhi"
-            data-zhi="{{item.zhi}}"
-            onTap="xuanDangWei"
-          >
-            {{item.ming}}
-          </view>
-        </view>
-        <view class="ka-fu">精细档网格更密、结论更准，请求也更多（百度配额有限，演示建议用「标准」）</view>
-      </block>
-
-      <view class="di-jiao">{{pingTai}}端 · 数据通道 {{moShi}} · 水域 OpenStreetMap · 底图腾讯地图</view>
     </view>
   </view>
 </view>

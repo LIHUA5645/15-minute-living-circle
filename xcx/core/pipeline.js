@@ -83,7 +83,7 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
   }
 
   // 3. 盲区（占总进度 85~100%）
-  const mangquList = await shiBieMangQu(provider, canShu, poiSet, {
+  const { list: mangquList, tongJi: mangquTongJi } = await shiBieMangQu(provider, canShu, poiSet, {
     huanCun: hc,
     xianliu,
     jinDu: opt.jinDu,
@@ -110,6 +110,8 @@ export async function yunXingTijian(provider, canShu, opt = {}) {
     poiSet,
     fenleiPingfen,
     mangquList,
+    // 盲区汇总（格数 / 点位占比 / 面积 / 分类缺口），界面上一排指标直接用，别再各算一套
+    mangquTongJi,
     jianYi,
     warnings,
     xinxi: {

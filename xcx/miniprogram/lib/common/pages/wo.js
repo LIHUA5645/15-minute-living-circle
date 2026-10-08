@@ -3,7 +3,8 @@
 // 完成时间：2026，10，06
 // 「我的」页：账号态、共享盲区标记、服务端地址、缓存清理、坐标系自检、关于。
 // 登录/注册已独立成页（pages/denglu/denglu），这里只做入口与状态展示。
-import { plat } from '../plat.js';
+import { plat, biaoTab } from '../plat.js';
+import { BAN_BEN } from '../banBen.js';
 import { fuWu, duFuWuDiZhi, cunFuWuDiZhi } from '../peizhi.js';
 import { duTai, sheYongHu } from '../zhuangTai.js';
 import { chuangJianCunChu } from '../cunchu.js';
@@ -20,7 +21,8 @@ export function chuangJianWo() {
       woDeMangQu: [],
       dingWeiYuanShi: '',
       dingWeiZhuanHuan: '',
-      banBen: '1.0'
+      // 版本号 + 构建标识（同步脚本生成，内容一变号就变）：对外显示 V1.0，括号里的号用来确认跑的是最新一版
+      banBen: 'V1.0（' + BAN_BEN + '）'
     },
 
     onLoad() {
@@ -29,6 +31,7 @@ export function chuangJianWo() {
     },
 
     onShow() {
+      biaoTab(this, 3);
       this.setData({ fuWuDiZhi: duFuWuDiZhi() });
       this.shuaTai();
     },

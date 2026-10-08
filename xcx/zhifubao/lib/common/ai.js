@@ -10,7 +10,9 @@
 import { plat } from './plat.js';
 import { fuWu, duFuWuDiZhi, tanCeFuWu } from './peizhi.js';
 import { liangDianJuLi } from '../core/geo/jichu.js';
-import { aiPeiHaoLe, fuWuDaiFa, MOREN_PEI_ZHI } from '../core/types.js';
+import { aiPeiHaoLe, fuWuDaiFa, MOREN_PEI_ZHI, FENLEI_MING } from '../core/types.js';
+import { quTianQi } from './adapters/bmapXcx.js';
+import { duTai } from './zhuangTai.js';
 
 const BU_SU = 80; // 米/分钟（把直线距离折算成步行分钟）
 
@@ -266,10 +268,14 @@ export async function shengChengZhenDuan(report, tiJianPeiZhi, sheZhi) {
 export function aiBuKeYongShuoMing(ai) {
   if (!aiPeiHaoLe(ai)) {
     if (zuiHouCuo)
+      // 分场景给「下一步动作」：笼统一句「请确认服务端已启动」，开发者工具里最常见的原因是
+      // 没勾「不校验合法域名」，真机则是 127.0.0.1 指手机自己——两种场景的解法完全不同
       return (
         '读不到服务器上的 AI 配置：' +
         zuiHouCuo +
-        '。请确认服务端已启动、地址能从当前设备访问（手机预览还要换成 HTTPS 域名并在小程序后台加白名单），然后重试；也能在「我的」页改服务端地址。'
+        '\n① 开发者工具：先在项目根目录跑 npm run fuwu（终端会打印可用地址），再到「详情 → 本地设置」勾选「不校验合法域名、web-view、TLS 版本以及 HTTPS 证书」\n' +
+        '② 真机预览：127.0.0.1 指的是手机自己——请在「我的」页把服务端地址改成电脑的内网地址（服务端启动日志里打印的那个 http://192.168.x.x:8787），手机与电脑连同一个 WiFi\n' +
+        '③ 用域名访问：HTTPS 域名需要在微信公众平台后台配好 request 合法域名'
       );
     return '管理员尚未配置大模型的接口地址与密钥，请在管理员控制台「AI 设置」里填写并点「保存配置」。';
   }
@@ -285,12 +291,50 @@ export function aiBuKeYongShuoMing(ai) {
  * ai 管理员 AI 配置；zhongXin 当前中心 {lng,lat,ming}
  * @returns {{ok:true, hui:string} | {ok:false, xinxi:string}}
  */
+/* 打招呼文案：进入聊天时给用户的一段「状态总结」—— 有报告报要点，没有就引导体检。
+   天气可选（quTianQi 异步拿到后再补一次展示也行）。不入库，每次进入都新鲜生成 */
+export function zhaoHuWen(report, tianQi, diMing) {
+  const DENG = { you: '优', liang: '良', zhong: '中', cha: '待改进' };
+  const duan = ['你好，我是这里的生活圈助手。'];
+  if (report) {
+    const pf = (report.fenleiPingfen || []).slice().sort((a, b) => Number(b.score) - Number(a.score));
+    const you = pf[0];
+    const ruo = pf[pf.length - 1];
+    duan.push(
+      `你刚完成「${diMing || '当前位置'}」的体检：综合 ${report.total} 分（${DENG[report.dengji] || report.dengji} 级）`
+    );
+    if (you && ruo && you.fenlei !== ruo.fenlei) {
+      duan.push(`，${FENLEI_MING[you.fenlei] || you.fenlei}最充足（${Number(you.score)} 分）`);
+      if (Number(ruo.score) !== Number(you.score)) {
+        duan.push(`、${FENLEI_MING[ruo.fenlei] || ruo.fenlei}（${Number(ruo.score)} 分）相对薄弱`);
+      }
+    }
+    duan.push(`；检测到 ${(report.mangquList || []).length} 个服务盲区。`);
+  } else {
+    duan.push('这里还没有体检报告：定好位置跑一轮，我就能给你出一份生活圈诊断。');
+  }
+  if (tianQi) duan.push(`当前天气 ${tianQi.wendu}°C ${tianQi.wen}。`);
+  duan.push('关于报告、周边设施、出行安排，直接问我就好。');
+  return duan.join('');
+}
+
 export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
   // 「AI 为什么用不了」只有这一处判据（页面也调它），避免同类提示出现两种说法
   const buKe = aiBuKeYongShuoMing(ai);
   if (buKe) return { ok: false, xinxi: buKe };
 
   // 体检摘要塞进系统提示；报告中心与当前中心相距超过 500 米就明确告知「报告已过期」
+  // 当前天气一并注入（生活相关：用户问「今天适合散步去公园吗」这类问题 AI 才答得上来）；
+  // quTianQi 失败返回 null，这里跳过 —— AI 回答不该被一次天气接口抖动拖累
+  const tianQi = await quTianQi(zhongXin);
+  const tianQiMiao = tianQi
+    ? ` 用户当前所在地的实时天气：${tianQi.wendu}°C ${tianQi.wen}。用户问到出行安排、散步、穿衣等生活话题时，可结合这个天气给建议（但不要每句都提天气）。`
+    : '';
+  // 报告页的 AI 诊断结论一并注入：用户在诊断卡片旁问「为什么短板是养老」，AI 要结合结论答
+  const zdWen = duTai().zhengDuanWen;
+  const zdMiao = zdWen
+    ? ` 报告页当前展示的 AI 诊断结论如下（用户问「为什么/哪里」时优先结合它回答）：${zdWen.slice(0, 300)}`
+    : '';
   const baoZuo = report && report.zhongXin;
   const baoMiao =
     report &&
@@ -354,6 +398,8 @@ export async function aiLiaoTian(lishi, wen, report, ai, zhongXin) {
         '你是「15 分钟生活圈智能体检助手」的在线问答助手，用简体中文简洁、口语化地回答，' +
         '话题围绕社区生活圈、设施配套、体检报告解读。回答控制在 200 字以内。当前上下文：' +
         zhaiYao +
+        tianQiMiao +
+        zdMiao +
         (sheShiMiao ? ' ' + sheShiMiao : '') +
         mingXiMiao +
         ' —— 你需要自己语义判断用户这句话是想导航去某地，还是在提问：' +
@@ -459,7 +505,7 @@ export async function aiXuanDian(wen, report, zhongXin, ai) {
       // 所以没有报告时直接告诉他先去跑一轮（与网页端 src/core/aiDaohang.js 同一套话术）
       xinxi: report
         ? '本轮体检没有检索到任何设施（多为百度接口配额超限或数据源异常，也可能是这个位置附近确实没有），暂时无法规划导航。等配额恢复后重新体检后再试。'
-        : '还没有可用的体检结果，暂时无法规划导航：请先回地图页跑一轮体检，再来问我「带我去最近的医院」这类问题。'
+        : '还没有体检结果，暂时无法规划导航。先回地图页跑一轮体检，再回来问我。'
     };
 
   // ① 大模型路：候选清单（限 120 条）+ 用户需求 → 只输出 JSON
@@ -521,4 +567,75 @@ export function duLiaoTianJiLu(zhangHao) {
 
 export function cunLiaoTianJiLu(zhangHao, lieBiao) {
   plat.setStorage(LT_KEY + (zhangHao || 'youke'), (lieBiao || []).slice(-100)); // 最多留 100 条
+}
+
+/* ───────────── 多会话（历史对话侧栏） ───────────── */
+
+const HH_KEY = 'sq_lt_huiHua_';
+
+// 一条会话：{ id, shiJian, jiLu: [{role, wen}] }
+// 整体形状：{ dangQian: id, lie: [会话…] }，按账号分开存
+function hhKey(zhangHao) {
+  return HH_KEY + (zhangHao || 'youke');
+}
+
+/**
+ * 读全部会话。老版本只存了一条记录（单会话），这里平滑迁移成第一条会话——
+ * 用户升级后历史不会丢；迁移只读旧 key、不删，方便回退旧版本时仍能看到记录
+ */
+export function duHuiHua(zhangHao) {
+  const v = plat.getStorage(hhKey(zhangHao));
+  if (v && Array.isArray(v.lie)) {
+    return { dangQian: v.dangQian || (v.lie[0] && v.lie[0].id) || '', lie: v.lie };
+  }
+  // storage 空了（十有八九是「清除缓存」清的）→ 从用户文件回填：
+  // USER_DATA_PATH 不受清缓存影响，会话历史靠这份副本活下来
+  const pan = plat.panDu && plat.panDu('lt_huiHua_' + (zhangHao || 'youke'));
+  if (pan && Array.isArray(pan.lie)) {
+    try {
+      plat.setStorage(hhKey(zhangHao), pan); // 回填 storage，之后走快的路径
+    } catch {
+      /* 忽略 */
+    }
+    return { dangQian: pan.dangQian || (pan.lie[0] && pan.lie[0].id) || '', lie: pan.lie };
+  }
+  const jiu = duLiaoTianJiLu(zhangHao);
+  const id = xinHuiHuaId();
+  return { dangQian: id, lie: jiu.length ? [{ id, shiJian: Date.now(), jiLu: jiu }] : [] };
+}
+
+export function cunHuiHua(zhangHao, zhuang) {
+  const shu = {
+    dangQian: (zhuang && zhuang.dangQian) || '',
+    // 每条会话最多留 100 条消息，与会话数上限一起控制存储占用
+    lie: ((zhuang && zhuang.lie) || []).slice(0, 30).map(h => ({ ...h, jiLu: (h.jiLu || []).slice(-100) }))
+  };
+  plat.setStorage(hhKey(zhangHao), shu);
+  // 同时写用户文件：storage 会被「清除缓存」一锅端，这份副本让历史扛住清缓存
+  if (plat.panCun) plat.panCun('lt_huiHua_' + (zhangHao || 'youke'), shu);
+}
+
+export function xinHuiHuaId() {
+  return 'h' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+}
+
+/** 新会话：空记录、当前时间 */
+/* 一轮新体检完成后进聊天：把旧会话归档（留在历史列表可回看），自动开一个新会话。
+   判据 = 本轮报告生成时间（tai.baoGaoShi）晚于当前会话的时间 —— 说明这份报告是上次聊天之后出的，
+   旧话题已经聊完，新报告该配新话题。归档动作幂等：新会话时间戳总是更新，不会反复触发 */
+export function guiDangKaiXin(zhangHao, hh) {
+  const t = duTai();
+  if (!t.baoGaoShi || !hh) return hh;
+  const ben = hh.lie.find(h => h.id === hh.dangQian);
+  if (!ben || !(ben.jiLu || []).length) return hh; // 空会话不用归档
+  if (t.baoGaoShi <= (ben.shiJian || 0)) return hh; // 会话比报告新：没有新体检
+  const xin = kongHuiHua();
+  hh.lie = [xin, ...hh.lie];
+  hh.dangQian = xin.id;
+  cunHuiHua(zhangHao, hh);
+  return hh;
+}
+
+export function kongHuiHua() {
+  return { id: xinHuiHuaId(), shiJian: Date.now(), jiLu: [] };
 }

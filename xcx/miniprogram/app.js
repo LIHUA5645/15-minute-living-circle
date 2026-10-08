@@ -1,5 +1,6 @@
 // 小程序启动：① 恢复本项目状态（中心点/参数/登录用户/上次结论摘要）② 保留 quickstart 的云开发初始化
 import { huiFu } from './lib/common/zhuangTai.js';
+import { BAN_BEN } from './lib/common/banBen.js';
 
 App({
   globalData: {
@@ -10,6 +11,7 @@ App({
 
   onLaunch() {
     // ① 本项目状态恢复（存储异常不该拦住启动）
+    console.log('[15 分钟生活圈] 构建标识 ' + BAN_BEN + '（改了代码重新同步后会变，对不上说明没编译到最新）');
     try {
       huiFu();
     } catch (e) {

@@ -1,5 +1,6 @@
 // 支付宝端启动：恢复本地状态（本端不依赖云开发，逻辑比微信端更薄）
 import { huiFu } from './lib/common/zhuangTai.js';
+import { BAN_BEN } from './lib/common/banBen.js';
 
 App({
   onLaunch() {

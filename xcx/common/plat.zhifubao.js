@@ -132,6 +132,62 @@ export const zhifubao = {
     return huiBao(yao('getSystemInfo'), {}).catch(() => ({}));
   },
 
+  /* 地图上下文（与 plat.wxLei.js 同语义） */
+  diTuBen(id) {
+    try {
+      return yao('createMapContext')(id);
+    } catch {
+      return null;
+    }
+  },
+
+  /* 持续定位（与 plat.wxLei.js 同语义）：支付宝的 onLocationChange 形状基本一致，失败静默交由调用方提示 */
+  dingWeiChiXu(huiCha) {
+    const hui = r => huiCha({ latitude: r.latitude, longitude: r.longitude });
+    return yao('startLocationUpdate')({
+      success: () => yao('onLocationChange')(hui),
+      fail: e => huiCha(null, new Error((e && e.errorMessage) || (e && e.errMsg) || '持续定位启动失败（需定位权限）'))
+    });
+  },
+  dingWeiTing() {
+    try {
+      yao('offLocationChange')();
+      yao('stopLocationUpdate')({});
+    } catch {
+      /* 忽略 */
+    }
+  },
+
+  /* 用户文件持久化（panCun / panDu / panShan）：与 plat.wxLei.js 同一套语义 ——
+     「清除缓存」清 storage 不清 USER_DATA_PATH 用户文件，历史记录用它扛住清缓存。
+     支付宝的 FileSystemManager 同步 API 形状与微信一致，失败一律静默 */
+  panLu(du) {
+    return `${(quanJu.env && quanJu.env.USER_DATA_PATH) || ''}/sq_${du}.json`;
+  },
+  panCun(du, shu) {
+    try {
+      yao('getFileSystemManager')().writeFileSync(this.panLu(du), JSON.stringify(shu), 'utf8');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  panDu(du) {
+    try {
+      const wen = yao('getFileSystemManager')().readFileSync(this.panLu(du), 'utf8');
+      return JSON.parse(wen);
+    } catch {
+      return null;
+    }
+  },
+  panShan(du) {
+    try {
+      yao('getFileSystemManager')().unlinkSync(this.panLu(du));
+    } catch {
+      /* 文件本来就不存在也算删成 */
+    }
+  },
+
   navigateTo(url) {
     return huiBao(yao('navigateTo'), { url }).catch(() => null);
   },
@@ -140,5 +196,95 @@ export const zhifubao = {
   },
   navigateBack() {
     return huiBao(yao('navigateBack'), { delta: 1 }).catch(() => null);
+  },
+  // tabBar 页只能 switchTab
+  switchTab(url) {
+    return huiBao(yao('switchTab'), { url }).catch(() => null);
+  },
+
+  // ── 语音输入 ──
+
+  // 支付宝的录音 API 与微信差异较大（my.startRecord / my.getRecorderManager 支持度不一），
+  // 这里如实拒绝并给一句人话，不做半吊子实现
+  luYinKai() {
+    return Promise.reject(new Error('当前平台暂不支持语音输入，可改用键盘输入'));
+  },
+  luYinTing() {
+    return Promise.resolve('');
+  },
+  duBase64(lu) {
+    return new Promise((jie, ju) => {
+      try {
+        const v = yao('getFileSystemManager')().readFileSync(lu, 'base64');
+        jie(String(v || ''));
+      } catch (e) {
+        ju(new Error('读取录音失败：' + ((e && e.errorMessage) || (e && e.message) || '')));
+      }
+    });
+  },
+
+  // ── 附件（图片 / 文件）──
+
+  // 底部动作表：my 的参数名是 items、回调给 index（与 wx 的 itemList / tapIndex 不同）
+  actionSheet(items) {
+    return huiBao(yao('showActionSheet'), { items })
+      .then(r => Number(r.index))
+      .catch(() => -1);
+  },
+
+  // 选图片：相机 + 相册（支付宝返回的是本地路径数组，没有大小信息）
+  xuanTu({ shu = 1 } = {}) {
+    return huiBao(yao('chooseImage'), { count: shu, sourceType: ['camera', 'album'] }).then(r =>
+      (r.apFilePaths || r.tempFilePaths || []).map(lu => ({ lu, daXiao: 0 }))
+    );
+  },
+
+  // 选文件：靠 my.chooseFile；缺失时给一句人话，不静默失败
+  xuanWenJian({ shu = 1 } = {}) {
+    if (typeof quanJu.chooseFile !== 'function')
+      return Promise.reject(new Error('当前平台暂不支持选择文件，可改用图片或把内容粘贴到输入框'));
+    return huiBao(yao('chooseFile'), { count: shu, type: 'file' }).then(r =>
+      (r.tempFiles || []).map(f => ({ lu: f.path || f.filePath, ming: f.name || '文件', daXiao: f.size || 0 }))
+    );
+  },
+
+  // 读文本文件正文：docx / pdf 是二进制，端上读出来是乱码，只对文本类调用
+  duWenBen(lu, zuiDa = 3000) {
+    return new Promise((jie, ju) => {
+      try {
+        yao('getFileSystemManager')().readFile({
+          filePath: lu,
+          encoding: 'utf-8',
+          success: r => jie(String((r && r.data) || '').slice(0, zuiDa)),
+          fail: e => ju(new Error((e && e.errorMessage) || '读取文件失败'))
+        });
+      } catch (e) {
+        ju(e);
+      }
+    });
+  },
+
+  // 临时文件存到本地，换回持久路径（历史里的图片才不会变空白）
+  baoFile(lu) {
+    return new Promise(jie => {
+      try {
+        yao('getFileSystemManager')().saveFile({
+          tempFilePath: lu,
+          success: r => jie((r && r.savedFilePath) || lu),
+          fail: () => jie(lu)
+        });
+      } catch {
+        jie(lu);
+      }
+    });
+  },
+
+  // 页面 canvas 上下文（画等时圈矢量示意图用）
+  canvas(id, ben) {
+    try {
+      return quanJu.createCanvasContext(id, ben);
+    } catch {
+      return null;
+    }
   }
 };

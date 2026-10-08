@@ -1,47 +1,87 @@
 <!-- AI 助手：与网页端同一套提示词与上下文，问答内容同源；识别导航意图后落到真实设施再唤起系统地图 -->
 <view class="lt-ye">
-  <!-- 顶部状态 -->
+  <!-- 顶部状态：左侧形象与接入状态，右侧「历史 / 新对话」两个动作并成一组 -->
   <view class="lt-tou">
     <view class="lt-tou-zi">
       <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
-      <view style="flex: 1; min-width: 0">
+      <view class="lt-tou-wen">
         <view class="ka-biao">AI 助手</view>
         <view class="ka-fu">
           {{aiKeYong ? ('已接入大模型' + (moXingWen ? ' · ' + moXingWen : '')) : (aiCuo ? '读不到服务器配置：' + aiCuo : '未接入大模型：可用「去最近的医院」这类说法走本地规则选点导航')}}
         </view>
       </view>
     </view>
-    <view class="lt-an" onTap="qingKong">新对话</view>
+
+    <view class="lt-zu">
+      <!-- 历史对话：从左侧滑出的抽屉（展开动画见 .hh-ce / .hh-ce.kai） -->
+      <view class="an-an" onTap="kaiHuiHua" hover-class="an-an-on">
+        <view class="ic ic-lie"></view>
+        <text>历史</text>
+      </view>
+      <view class="an-an zhu" onTap="qingKong" hover-class="an-an-on">
+        <view class="ic ic-jia"></view>
+        <text>新对话</text>
+      </view>
+    </view>
   </view>
 
   <!-- 消息区 -->
   <scroll-view class="lt-qu" scroll-y="true" scroll-into-view="{{gunDao}}" scroll-with-animation="true">
-    <!-- 欢迎态 + 推荐问法（与网页端同一批问法） -->
-    <block a:if="{{!lieBiao.length}}">
-      <view class="lt-huan">
-        <image class="ai-logo da" src="/images/ailogo.png" mode="heightFix" />
-        <view class="lt-huan-ming">你好，我是 AI 助手</view>
-        <view class="lt-huan-fu">能结合本轮体检结果聊聊你关心的问题</view>
-      </view>
-      <view class="lt-tui">
-        <view class="lt-tui-an" a:for="{{tuiJian}}" a:key="*this" data-w="{{item}}" onTap="dianTuiJian">
-          {{item}}
+    <!-- 内层 .lt-tie 负责「贴底」：消息不满一屏时贴着输入框排（像微信），多了就正常滚 -->
+    <view class="lt-tie">
+      <!-- 进入聊天的状态总结卡：报告要点 + 天气，每次进入都新鲜生成（不入库） -->
+      <view class="lt-zhao" a:if="{{zhaoHu}}">{{zhaoHu}}</view>
+      <!-- 欢迎态 + 推荐问法（与网页端同一批问法） -->
+      <block a:if="{{!lieBiao.length}}">
+        <view class="lt-huan">
+          <image class="ai-logo da" src="/images/ailogo.png" mode="heightFix" />
+          <view class="lt-huan-ming">你好，我是 AI 助手</view>
+          <view class="lt-huan-fu">能结合本轮体检结果聊聊你关心的问题</view>
+        </view>
+        <view class="lt-tui">
+          <view class="lt-tui-an" a:for="{{tuiJian}}" a:key="*this" data-w="{{item}}" onTap="dianTuiJian">
+            {{item}}
+          </view>
+        </view>
+      </block>
+
+      <view class="lt-hang {{item.role}}" a:for="{{lieBiao}}" a:key="id" id="m{{item.id}}">
+        <view class="lt-xiang" a:if="{{item.role !== 'user'}}">
+          <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+        </view>
+        <view class="lt-qi {{item.role === 'user' ? 'wo' : (item.role === 'cuo' ? 'cuo' : 'ai')}}">
+          <!-- 附件：图片直接显示，文件显示成卡片 -->
+          <view class="fu-lie" a:if="{{item.fu && item.fu.length}}">
+            <block a:for="{{item.fu}}" a:for-item="f" a:key="lu">
+              <image a:if="{{f.lei === 'image'}}" class="fu-tu" src="{{f.lu}}" mode="widthFix" />
+              <view a:else class="fu-wen">
+                <view class="ic ic-wenjian"></view>
+                <view class="fu-wen-nei">
+                  <view class="fu-wen-ming">{{f.ming}}</view>
+                  <view class="fu-wen-dx">{{f.daXiaoWen}}</view>
+                </view>
+              </view>
+            </block>
+          </view>
+          <view a:if="{{item.wen}}">{{item.wen}}</view>
+          <!-- 卡住的提示（没跑体检 / 没检索到设施）带一个直达出口，别让用户自己找路 -->
+          <view
+            a:if="{{item.an}}"
+            class="lt-an-nei"
+            onTap="quTiJian"
+            hover-class="an-an-on"
+            aria-role="button"
+          >{{item.an}}</view>
         </view>
       </view>
-    </block>
 
-    <view class="lt-hang {{item.role}}" a:for="{{lieBiao}}" a:key="id" id="m{{item.id}}">
-      <view class="lt-xiang" a:if="{{item.role !== 'user'}}">
-        <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+      <!-- 思考气泡也带 id：思考时要滚到它，否则滚到最后一条提问会让「…」露不出来 -->
+      <view class="lt-hang" a:if="{{zhong}}" id="m-zhong">
+        <view class="lt-xiang">
+          <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
+        </view>
+        <view class="lt-qi ai"><view class="lt-dian"><text></text><text></text><text></text></view></view>
       </view>
-      <view class="lt-qi {{item.role === 'user' ? 'wo' : (item.role === 'cuo' ? 'cuo' : 'ai')}}">{{item.wen}}</view>
-    </view>
-
-    <view class="lt-hang" a:if="{{zhong}}">
-      <view class="lt-xiang">
-        <image class="ai-logo xiao" src="/images/ailogo.png" mode="heightFix" />
-      </view>
-      <view class="lt-qi ai"><view class="lt-dian"><text></text><text></text><text></text></view></view>
     </view>
   </scroll-view>
 
@@ -63,21 +103,111 @@
   <!-- 读不到服务器配置时的常驻提示条：会自动重连，也能点「重试」立刻重来，都不必退出重进 -->
   <view class="lt-tishi" a:if="{{aiCuo}}" onTap="chongShiPeiZhi">
     <view class="lt-tishi-wen">
-      读不到服务器配置 · 服务端地址 {{fuWuDiZhi || '（未设置）'}}{{chongLianZhong ? ' · 正在自动重连…' : ''}}
+      读不到服务器配置 · 服务端地址 {{fuWuDiZhi || '（未设置）'}}{{fuWuTiShi}}{{chongLianZhong ? ' · 正在自动重连…' : ''}}
     </view>
     <view class="lt-tishi-an">重试</view>
   </view>
 
+  <!-- 历史对话侧栏：抽屉常驻渲染、只切换 .kai 类，滑入滑出都有过渡；
+       遮罩用 a:if（它只是淡入淡出，不需要过渡态） -->
+  <view class="hh-zhe" a:if="{{huiHuaKai}}" onTap="guanHuiHua"></view>
+  <view class="hh-ce {{huiHuaKai ? 'kai' : ''}}">
+    <view class="hh-tou">
+      <view class="hh-ming">历史对话</view>
+      <!-- 收起：图标（项目规则：语义图标一律 CSS 自绘，不引图片资源），文字留给无障碍朗读 -->
+      <view class="hh-guan" onTap="guanHuiHua" aria-role="button" aria-label="收起历史对话">
+        <view class="ic ic-cha"></view>
+      </view>
+    </view>
+    <scroll-view class="hh-lie" scroll-y="true">
+      <view
+        class="hh-xiang {{item.dangQian ? 'on' : ''}}"
+        a:for="{{huiHua}}"
+        a:key="id"
+        data-id="{{item.id}}"
+        onTap="qieHuanHuiHua"
+      >
+        <view class="hh-xiang-nei">
+          <view class="hh-xiang-ming">{{item.ming}}</view>
+          <view class="hh-xiang-fu">{{item.shiJianWen}} · {{item.shu}} 条</view>
+        </view>
+        <!-- catchTap：删除不能顺带触发整条的「切换会话」 -->
+        <view class="hh-shan" hover-class="hh-shan-on" catchTap="shanHuiHua" data-id="{{item.id}}">删</view>
+      </view>
+      <view class="hh-kong" a:if="{{!huiHua.length}}">还没有历史对话</view>
+    </scroll-view>
+    <view class="hh-xin" onTap="qingKong">＋ 新对话</view>
+  </view>
+
+  <!-- 录音浮层：松开发送 / 上滑取消（与微信一致的位置与观感）。
+       声波柱是动画模拟——小程序没有录音音量回调，做不到真实音量，但状态一眼可辨 -->
+  <view class="lu-ceng {{luYinQuXiao ? 'quXiao' : ''}}" a:if="{{luYinZhong}}">
+    <view class="lu-bo">
+      <view class="lu-bo-i" style="animation-delay: 0s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.18s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.36s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.12s"></view>
+      <view class="lu-bo-i" style="animation-delay: 0.3s"></view>
+    </view>
+    <view class="lu-ceng-wen">{{luYinQuXiao ? '松开手指，取消发送' : '松开发送，上滑取消'}}</view>
+    <view class="lu-ceng-miao">{{luYinMiao}}″</view>
+  </view>
+
+  <!-- 待发送的附件：图片给缩略图、文件给名字与大小，右上角可移除 -->
+  <view class="fu-yu" a:if="{{fujian.length}}">
+    <view class="fu-yu-an" a:for="{{fujian}}" a:key="lu">
+      <image a:if="{{item.lei === 'image'}}" class="fu-yu-tu" src="{{item.lu}}" mode="aspectFill" />
+      <view a:else class="fu-yu-wen">
+        <view class="ic ic-wenjian"></view>
+        <view class="fu-yu-ming">{{item.ming}}</view>
+      </view>
+      <view class="fu-yu-shan" data-i="{{index}}" onTap="shanFuJian">✕</view>
+    </view>
+  </view>
+
   <!-- 输入条 -->
   <view class="lt-shu">
-    <input
-      class="lt-shu-in"
-      value="{{wen}}"
-      onInput="sheRu"
-      bindconfirm="faSong"
-      confirm-type="send"
-      placeholder="给 AI 助手发送消息"
-    />
-    <view class="lt-fa {{wen && !zhong ? '' : 'jin'}}" onTap="faSong">发送</view>
+    <!-- 语音 / 键盘切换：微信同款位置（输入条最左） -->
+    <view
+      class="lt-qie"
+      onTap="qieMoShi"
+      hover-class="an-an-on"
+      aria-role="button"
+      aria-label="{{yuYinMoShi ? '切换到键盘输入' : '切换到语音输入'}}"
+    >
+      <view class="ic {{yuYinMoShi ? 'ic-jianpan' : 'ic-mai'}}"></view>
+    </view>
+
+    <!-- 文字模式：加号 + 输入框 + 发送 -->
+    <block a:if="{{!yuYinMoShi}}">
+      <!-- 添加附件：拍照 / 相册 / 从聊天记录选文件（docx、pdf 等） -->
+      <view class="lt-jia" onTap="xuanFuJian" hover-class="an-an-on" aria-role="button" aria-label="添加图片或文件">
+        <view class="ic ic-jia"></view>
+      </view>
+      <input
+        class="lt-shu-in"
+        value="{{wen}}"
+        onInput="sheRu"
+        bindconfirm="faSong"
+        confirm-type="send"
+        placeholder="给 AI 助手发送消息"
+      />
+      <view class="lt-fa {{wen && !zhong ? '' : 'jin'}}" onTap="faSong">
+        <view class="ic ic-fei"></view>
+        <text>发送</text>
+      </view>
+    </block>
+
+    <!-- 语音模式：整条输入框被「按住 说话」替换掉（不是旁边多个按钮），松手即发 -->
+    <view
+      a:else
+      class="lt-shuo {{luYinZhong ? 'on' : ''}}"
+      bindtouchstart="maiAn"
+      bindtouchmove="maiDong"
+      bindtouchend="maiSong"
+      bindtouchcancel="maiQuXiao"
+      aria-role="button"
+      aria-label="按住说话"
+    >按住 说话</view>
   </view>
 </view>

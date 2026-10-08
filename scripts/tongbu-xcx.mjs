@@ -11,6 +11,7 @@
 // 用法：
 //   node scripts/tongbu-xcx.mjs            同步（覆盖各端 lib 与生成视图）
 //   node scripts/tongbu-xcx.mjs --jiancha  只检查是否与真源一致（CI/提交前用，不一致就非零退出）
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,12 +20,26 @@ const GEN = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const JIAN_CHA = process.argv.includes('--jiancha');
 
 // 引擎里这些模块直接依赖浏览器（fetch/sessionStorage/window），小程序端不用也不该带：
-// 账号、AI 诊断、服务地址改由 xcx/common 下的模块承担（走 plat + 自有服务端）
-const PAI_CHU = ['yonghu.js', 'fuwuDiZhi.js', 'zhenduan.js', 'aiLiaoTian.js', 'aiDaohang.js'];
+// 账号、AI 诊断、服务地址改由 xcx/common 下的模块承担（走 plat + 自有服务端）。
+// tianQi.js 同名但两端各有一份：Web 版走 fetch + fuwuDiZhi，小程序版走 plat.request（xcx/common/tianQi.js）
+const PAI_CHU = ['yonghu.js', 'fuwuDiZhi.js', 'zhenduan.js', 'aiLiaoTian.js', 'aiDaohang.js', 'tianQi.js'];
 
 // 二进制资源后缀：共享层里的图片只按字节复制到各端 images/（见 tongBuTuPian），
 // 绝不能被 tongBuMu 当文本复制——那样 PNG 会被解坏，且体积翻倍占主包额度
 const BU_BIN = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.ttf', '.woff', '.woff2'];
+
+// 支付宝 / 抖音用的都是原生 tabBar（webview 已经让开 tab 栏），把「给 tabBar 让位」的几条规则还原：
+// 微信端是自定义 tabBar，页面占满整屏，必须自己让出那 100rpx —— 所以只有这两端需要这段覆盖
+const YUAN_SHENG_TABBAR = `
+/* ── 【脚本生成】支付宝 / 抖音为原生 tabBar，webview 已让开 tab 栏，撤销微信端的让位规则 ── */
+.ye { padding-bottom: 80rpx !important; }
+/* 底部抽屉与输入条改回贴底：原生 tabBar 在 webview 之外，不需要再让出那 100rpx */
+.di-qu { bottom: 0 !important; }
+.lt-ye { padding-bottom: 112rpx !important; }
+.lt-shu { bottom: 0 !important; }
+/* AI 半屏浮层同理：只保留离开底边的那 12rpx 悬浮缝，去掉微信端为自定义 tabBar 让的 100rpx */
+.ai-fu { bottom: 12rpx !important; }
+`;
 
 // 三端：微信端是「视图真源」（miniprogram 目录由用户工程指定为 miniprogramRoot），另两端视图由它生成
 const DUAN = [
@@ -117,7 +132,13 @@ function shengChengShiTu(duan) {
   for (const ye of ['ditu', 'tijian', 'baogao', 'wo', 'denglu', 'ai']) zou(join('pages', ye));
   // 全局样式：微信端 app.wxss 是多端共用的样式真源（app.js / app.json 不生成，各端手写）
   const yangShi = join(WEI_XIN_MU, 'app.wxss');
-  if (existsSync(yangShi)) xie(join(daoMu, 'app.' + duan.yangShi), readFileSync(yangShi, 'utf-8'));
+  if (existsSync(yangShi)) {
+    const yuan = readFileSync(yangShi, 'utf-8');
+    // 微信端是「自定义 tabBar」：页面占满整屏，得自己给 tabBar 让出 100rpx（见 app.wxss 里的注释）；
+    // 支付宝/抖音用的是原生 tabBar，webview 高度本就已经让开，再减就多出一条空白，所以补一段还原规则。
+    // 这段由脚本生成，保证三端样式真源仍是同一份 app.wxss
+    xie(join(daoMu, 'app.' + duan.yangShi), duan.shengCheng ? yuan + YUAN_SHENG_TABBAR : yuan);
+  }
 }
 
 // 图片等二进制资源：必须按字节复制（走文本写入会把 PNG 写坏）
@@ -160,6 +181,45 @@ for (const duan of DUAN) {
 
 // ③ 支付宝 / 抖音视图与全局样式
 for (const duan of DUAN) if (duan.shengCheng) shengChengShiTu(duan);
+
+// ③.5 构建标识：对微信端工程的全部文本内容做摘要，三端写同一份。
+// 用途很实际——开发者工具/手机上的旧包很容易被缓存骗过去（改完看不到变化），
+// 「我的 → 关于 → 版本」显示的就是这个号，对不上就是没编译到最新。
+// 摘要只跟内容有关、与时间无关，所以 --jiancha 也能校验；自身除外，否则每次都要变
+function zhaiYao() {
+  const gen = join(GEN, 'xcx', 'miniprogram');
+  const pian = [];
+  const zou = (mu, qian) => {
+    if (!existsSync(mu)) return;
+    for (const ming of readdirSync(mu).sort()) {
+      const p = join(mu, ming);
+      const rel = qian + ming;
+      if (statSync(p).isDirectory()) {
+        zou(p, rel + '/');
+        continue;
+      }
+      if (rel === 'lib/common/banBen.js') continue;
+      if (BU_BIN.includes(ming.slice(ming.lastIndexOf('.')).toLowerCase())) continue;
+      pian.push(rel, readFileSync(p, 'utf-8'));
+    }
+  };
+  zou(join(gen, 'lib'), 'lib/');
+  zou(join(gen, 'pages'), 'pages/');
+  for (const ming of ['app.json', 'app.js', 'app.wxss']) {
+    const p = join(gen, ming);
+    if (existsSync(p)) pian.push(ming, readFileSync(p, 'utf-8'));
+  }
+  return createHash('sha1').update(pian.join('\n')).digest('hex').slice(0, 8);
+}
+const banBenHao = zhaiYao();
+for (const duan of DUAN) {
+  xie(
+    join(GEN, 'xcx', duan.ke, 'lib', 'common', 'banBen.js'),
+    '// 【自动生成】构建标识：改完代码重跑 scripts/tongbu-xcx.mjs 后这个号会变\n' +
+      '// 手机上「我的 → 关于 → 版本」显示的就是它，用来确认跑的是不是最新一版\n' +
+      `export const BAN_BEN = '${banBenHao}';\n`
+  );
+}
 
 // ④ 安全检查：生成的 lib/core 里不该出现对「已排除模块」的引用
 const wenTi = [];

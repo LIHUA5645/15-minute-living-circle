@@ -184,6 +184,11 @@ export function chuangJianAiZhongJi({ quAiPeiZhi } = {}) {
           /* curl 也失败：保留第一级结果 */
         }
       }
+      // 上游非 2xx 时留一笔日志：服务商故障（5xx）/ 配置错（401/404）在 fuwu.log 里一眼可见，
+      // 不用再去猜 500 到底是谁抛的（status 是上游原码、会原样透传给端上）
+      if (status >= 400) {
+        console.log(`[airelay] 上游 ${status} ${url}\n  ${String(txt).slice(0, 300)}`);
+      }
       xieJson(res, status, txt);
     } catch (e) {
       xieJson(res, 502, JSON.stringify({ ok: false, xinxi: 'AI 中转失败：' + e.message }));
@@ -281,6 +286,60 @@ export function chuangJianShuiYuZhongJian({ yuZhiMuLu, huanCunMuLu, huoShuiYu, y
       xieJson(res, 200, JSON.stringify({ duoBianXing, geShu: duoBianXing.length, laiYuan: 'overpass' }));
     } catch (e) {
       xieJson(res, 200, JSON.stringify({ duoBianXing: [], geShu: 0, laiYuan: 'kong', cuo: true, xinxi: e.message }));
+    }
+  };
+}
+
+/**
+ * 周边地点接口：GET /zhoubian?lng=&lat=[&banJingMi=2500][&qiangZhi=1]
+ * 返回 { lie: [{ming, lng, lat, juMi}], geShu, laiYuan: 'huancun'|'overpass', cuo? }
+ * 与水域同一条思路：① 小程序只连一个域名，Overpass 不必进白名单；② 结果按 0.01 度网格落盘 30 天，
+ * 同一片区域再点开「切换」面板直接读文件；③ 取不到就返回空列表，界面只显示「当前位置」，不影响定位与体检
+ */
+export function chuangJianZhouBianZhongJian({ huanCunMuLu, huoZhouBian, youXiaoQiMs = 30 * 24 * 3600 * 1000 } = {}) {
+  return async function zhouBian(req, res) {
+    if (yuJianKuaYu(req, res)) return;
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const lng = Number(u.searchParams.get('lng'));
+      const lat = Number(u.searchParams.get('lat'));
+      const banJingMi = Number(u.searchParams.get('banJingMi')) || 2500;
+      const qiangZhi = u.searchParams.get('qiangZhi') === '1';
+      if (!Number.isFinite(lng) || !Number.isFinite(lat))
+        return xieJson(res, 400, JSON.stringify({ cuo: true, xinxi: '缺少 lng / lat' }));
+
+      // ① 本地缓存（按网格键落盘，30 天有效）
+      const [a, b] = wangGe(lng, lat);
+      const cun = join(huanCunMuLu, `zhoubian_${a}_${b}.json`);
+      if (!qiangZhi && existsSync(cun)) {
+        try {
+          if (Date.now() - statSync(cun).mtimeMs < youXiaoQiMs) {
+            const j = JSON.parse(readFileSync(cun, 'utf-8'));
+            const lie = j.lie || [];
+            return xieJson(res, 200, JSON.stringify({ lie, geShu: lie.length, laiYuan: 'huancun' }));
+          }
+        } catch {
+          /* 缓存文件坏了就当没有，走联网重取 */
+        }
+      }
+
+      // ② 联网取（Overpass 多节点容灾）。这一层不是体检的必需品：
+      // 拿不到就如实返回空列表，界面少一排推荐而已
+      if (typeof huoZhouBian !== 'function')
+        return xieJson(res, 200, JSON.stringify({ lie: [], geShu: 0, laiYuan: 'kong', cuo: true }));
+      const r = await huoZhouBian({ lng, lat }, banJingMi);
+      const lie = (r && r.lie) || [];
+      if (!lie.length)
+        return xieJson(res, 200, JSON.stringify({ lie: [], geShu: 0, laiYuan: 'kong', cuo: true }));
+      try {
+        mkdirSync(huanCunMuLu, { recursive: true });
+        writeFileSync(cun, JSON.stringify({ lng, lat, banJingMi, lie }));
+      } catch {
+        /* 落盘失败不影响本次返回 */
+      }
+      xieJson(res, 200, JSON.stringify({ lie, geShu: lie.length, laiYuan: 'overpass' }));
+    } catch (e) {
+      xieJson(res, 200, JSON.stringify({ lie: [], geShu: 0, laiYuan: 'kong', cuo: true, xinxi: e.message }));
     }
   };
 }

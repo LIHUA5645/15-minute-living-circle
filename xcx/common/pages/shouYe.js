@@ -60,7 +60,8 @@ export function chuangJianShouYe() {
       const t = duTai();
       const nong = {
         youZhongXin: !!t.zhongXin,
-        diMing: t.diMing || '尚未选择体检中心',
+        // 旧摘要里可能存着「定位中…」（定位中途被打断的残留），恢复时归位
+        diMing: t.diMing === '定位中…' ? '位置已就绪' : t.diMing || '尚未选择体检中心',
         zhongXinWen: t.zhongXin ? `${t.zhongXin.lng.toFixed(5)}, ${t.zhongXin.lat.toFixed(5)}` : '',
         muBiao: t.mubiaoMiao,
         muBiaoLie: MU_BIAO.map(x => ({ ...x, on: x.miao === t.mubiaoMiao })),
@@ -93,7 +94,8 @@ export function chuangJianShouYe() {
           const zx = gcjDaoWgs(g); // 定位给的是 GCJ-02，引擎要 WGS-84
           if (!zx) throw new Error('定位结果不可用');
           const g2 = wgsDaoGcj(zx); // 回显用 GCJ-02
-          sheZhongXin(zx, '定位中…');
+          // 中间态只写中心点、不动 diMing（同 ditu.dingWei：'定位中…' 一旦持久化，打断后永久卡住）
+          sheZhongXin(zx);
           this.setData({ youZhongXin: true, diMing: '定位中…', zhongXinWen: `${g2.lng.toFixed(5)}, ${g2.lat.toFixed(5)}` });
           return chuangJianBmapXcx()
             .reverseGeocode(zx)
@@ -185,7 +187,7 @@ export function chuangJianShouYe() {
           this.setData({ running: false, jinDu: 100, jieDuanWen: '完成', youBaoGao: true });
           this.huiFuTai();
           plat.toast({ title: `体检完成：${r.total} 分`, icon: 'none' });
-          plat.navigateTo('/pages/baogao/baogao');
+          plat.quYe('/pages/baogao/baogao');
         })
         .catch(e => {
           plat.hideLoading();
@@ -208,7 +210,7 @@ export function chuangJianShouYe() {
         plat.toast({ title: '本机还没有完整报告，请先跑一轮体检' });
         return;
       }
-      plat.navigateTo('/pages/baogao/baogao');
+      plat.quYe('/pages/baogao/baogao');
     },
 
     kanDiTu() {
@@ -216,11 +218,11 @@ export function chuangJianShouYe() {
         plat.toast({ title: '本机还没有完整报告，请先跑一轮体检' });
         return;
       }
-      plat.navigateTo('/pages/ditu/ditu');
+      plat.quYe('/pages/ditu/ditu');
     },
 
     quWoDe() {
-      plat.navigateTo('/pages/wo/wo');
+      plat.quYe('/pages/wo/wo');
     },
 
     // 分享：带中心点，别人打开就是同一片社区

@@ -1,7 +1,7 @@
 <!-- 我的：账号态 → 共享标记 → 服务端地址 → 坐标自检 → 关于 -->
-<view class="ye">
+<view class="ye wo-ye">
   <!-- 账号 -->
-  <view class="ka">
+  <view class="ka hui-yuan">
     <view class="yong-hu">
       <view class="tou-xiang {{yongHu ? '' : 'hui'}}">{{touZiMu}}</view>
       <view style="flex: 1; min-width: 0">
@@ -11,11 +11,11 @@
     </view>
     <view class="an-hang">
       <block a:if="{{yongHu}}">
-        <button class="an ci" onTap="laMangQu">刷新我的标记</button>
-        <button class="an ci" onTap="tuiChu">退出登录</button>
+        <button class="an ci ling" onTap="laMangQu">刷新我的标记</button>
+        <button class="an ci ling" onTap="tuiChu">退出登录</button>
       </block>
       <block a:else>
-        <button class="an zhu2" onTap="quDengLu">去登录 / 注册</button>
+        <button class="an zhu2 ling" onTap="quDengLu">去登录 / 注册</button>
       </block>
     </view>
   </view>
@@ -37,8 +37,8 @@
     <view class="qu-biao">服务端地址</view>
     <input class="input" data-k="fuWuDiZhi" onInput="sheRu" value="{{fuWuDiZhi}}" placeholder="http://127.0.0.1:8787" />
     <view class="an-hang">
-      <button class="an ci" onTap="baoCunFuWu">保存</button>
-      <button class="an ci" onTap="qingHuanCun">清空缓存（{{huanCunTiao}} 条）</button>
+      <button class="an ci ling" onTap="baoCunFuWu">保存</button>
+      <button class="an ci ling" onTap="qingHuanCun">清空缓存（{{huanCunTiao}} 条）</button>
     </view>
     <view class="ka-fu">账号、AI 诊断、水域数据需要服务端：本地先跑 npm run fuwu；体检本身可用直连百度，不依赖它</view>
   </view>
@@ -48,7 +48,7 @@
     <view class="qu-biao">坐标系自检</view>
     <view class="ka-fu">各端定位返回的坐标系约定不同，这里把原始值与转换结果都摆出来，真机核对一次即可</view>
     <view class="an-hang">
-      <button class="an ci" onTap="ceDingWei">测一次定位</button>
+      <button class="an ci ling" onTap="ceDingWei">测一次定位</button>
     </view>
     <view class="mq-hang" a:if="{{dingWeiYuanShi}}">{{dingWeiYuanShi}}</view>
     <view class="mq-hang" a:if="{{dingWeiZhuanHuan}}">{{dingWeiZhuanHuan}}</view>

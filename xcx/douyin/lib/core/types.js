@@ -28,9 +28,12 @@
 // {
 //   zhongXin, canshu, total, dengji,
 //   dengshiquan: { ceng: [{miao, polygon:[...]}], shuiDuan:[{miao, duan:[[...]]}],
+//                  tongJi: { mianJi:{miao: m²}, zuiYuan:{miao: m}, raoXing, yangBenShu },
 //                  yangBenDian:[...], luXian:[...], geshe:[], shuiYu:{qiYong,geShu,yanMaGe,duanShu} },
 //   fenleiPingfen: [{fenlei, score, C,A,D,B, shuliang}],
-//   mangquList: [{id, level, polygon, areaM2, quekou, zhongxin, jianyi, yujiFugaiRenkou}],
+//   mangquList: [{id, geShu, level, polygon, areaM2, quekou, zhongxin, jianyi, yujiFugaiRenkou}],
+//   mangquTongJi: { juZhen, buMi, geShuZong, mangQuGe, mangQuMianJiM2, mangQuDianWeiBi,
+//                   chaoShiGe:{caiShiChang,yaoDian,xiaoXue}, fenleiQueKou:{...} },
 //   warnings: [],
 //   xinxi: { qingQiuShu, haoShiMs, miDu }
 // }

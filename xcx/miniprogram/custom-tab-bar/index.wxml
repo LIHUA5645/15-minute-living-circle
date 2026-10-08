@@ -1,0 +1,14 @@
+<!-- 自定义 tabBar：原生 tabBar 只能吃图片图标，而项目规则要求「语义图标一律 .ic-* CSS 自绘、不引图片资源」，
+     所以微信端用这个组件画底部栏（图标全部来自 app.wxss 的 .ic-*） -->
+<view class="tab">
+  <view
+    class="tab-an {{xuanZhong === index ? 'on' : ''}}"
+    wx:for="{{lie}}"
+    wx:key="url"
+    data-i="{{index}}"
+    bindtap="dian"
+  >
+    <view class="ic {{item.ic}}"></view>
+    <view class="tab-wen">{{item.ming}}</view>
+  </view>
+</view>

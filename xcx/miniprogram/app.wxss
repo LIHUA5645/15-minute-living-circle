@@ -34,7 +34,8 @@ page {
 }
 
 .ye {
-  padding: 28rpx 28rpx 80rpx;
+  /* 底部留出 tabBar 的高度，免得最后一张卡被压在 Tab 下面（原本 80rpx 只够躲开胶囊按钮） */
+  padding: 28rpx 28rpx calc(120rpx + env(safe-area-inset-bottom));
 }
 
 /* ── 卡片 ── */
@@ -138,10 +139,12 @@ page {
   flex: 1;
   min-width: 0;
 }
-/* 一行三个按钮时收紧内边距与字号，避免文字被切（如「步行路线/导航/设为中心」） */
+/* 一行三个按钮时收紧内边距与字号，避免文字被切（如「步行路线/导航/设为中心」、
+   「开始体检/用当前位置/在地图上选点」）；再禁掉换行 —— 宁可窄一点也不要两行字把按钮撑变形 */
 .an.xiao {
   padding: 0 10rpx;
   font-size: 25rpx;
+  white-space: nowrap;
 }
 
 /* ── 胶囊选择 ── */
@@ -152,13 +155,21 @@ page {
 }
 .pai-an {
   flex: 1;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
   padding: 16rpx 0;
   border-radius: 16rpx;
   background: #eef2f6;
   color: #475467;
   font-size: 26rpx;
   border: 1rpx solid transparent;
+}
+.pai-an .pai-tu {
+  flex: 0 0 auto;
+  width: 28rpx;
+  height: 28rpx;
 }
 .pai-an.on {
   background: #e9f7ef;
@@ -211,6 +222,10 @@ page {
 }
 
 /* ═══════ 地图首页 ═══════ */
+/* 注意：地图页容器**必须保持满屏 100vh**——里面是原生 <map> 组件，
+   一旦把容器高度算成 0 / 无效值（calc + env 在某些基础库上会这样），
+   原生组件会让整页空白（标题栏还在、内容全无）。
+   给 tabBar 让位的活交给下面的底部抽屉做偏移，不动容器高度 */
 .ye-map {
   position: relative;
   width: 100vw;
@@ -221,7 +236,7 @@ page {
   height: 100vh;
 }
 
-/* 顶部定位条 */
+/* 顶部定位条：白卡 + 极淡描边（地图上边缘更利落），投影比原来更柔更远，不压地图 */
 .ding-tiao {
   position: absolute;
   left: 24rpx;
@@ -231,9 +246,10 @@ page {
   align-items: center;
   justify-content: space-between;
   background: rgba(255, 255, 255, 0.97);
-  border-radius: 22rpx;
+  border: 1rpx solid rgba(16, 24, 40, 0.04);
+  border-radius: 24rpx;
   padding: 18rpx 20rpx;
-  box-shadow: 0 10rpx 30rpx rgba(16, 24, 40, 0.14);
+  box-shadow: 0 12rpx 32rpx rgba(16, 24, 40, 0.1);
 }
 .ding-zuo {
   display: flex;
@@ -242,11 +258,13 @@ page {
   flex: 1;
   min-width: 0;
 }
+/* 定位针底盘：浅绿渐变 + 一点绿光晕（原来是一块死色，看着像贴纸） */
 .ding-yuan {
   width: 64rpx;
   height: 64rpx;
   border-radius: 32rpx;
-  background: #e9f7ef;
+  background: linear-gradient(135deg, #e8f9ef 0%, #d2f0e0 100%);
+  box-shadow: 0 4rpx 12rpx rgba(18, 161, 80, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -270,12 +288,16 @@ page {
   color: #98a2b3;
   margin-top: 2rpx;
 }
+/* 「切换」：原来只有浅绿底，看着像标签；补描边 + 字重 + 小投影，才像能点的按钮 */
 .ding-an {
   font-size: 24rpx;
+  font-weight: 600;
   color: #0b7a3b;
   padding: 10rpx 22rpx;
   background: #e9f7ef;
+  border: 1rpx solid #b7e4cc;
   border-radius: 999rpx;
+  box-shadow: 0 4rpx 12rpx rgba(18, 161, 80, 0.14);
   flex: 0 0 auto;
 }
 
@@ -304,31 +326,122 @@ page {
   border-bottom: none;
 }
 
-/* 图层胶囊 */
-.tuceng {
+/* 定位周边推荐（「切换」面板顶部）：地名胶囊横滑一行。
+   两行字 —— 地名（主）+ 距离（次），当前所在的项高亮：定位坐标对用户没意义，地名才有 */
+.zhou-pan {
+  padding: 18rpx 0 16rpx;
+  border-bottom: 1rpx solid #f2f5f8;
+}
+.zhou-biao {
+  padding: 0 28rpx 12rpx;
+  font-size: 22rpx;
+  color: #98a2b3;
+}
+.zhou-lie {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 28rpx;
+  white-space: nowrap;
+}
+.zhou-an {
+  display: inline-block;
+  margin-right: 12rpx;
+  padding: 12rpx 22rpx;
+  border-radius: 16rpx;
+  background: #f4f6f8;
+  border: 1rpx solid transparent;
+  max-width: 340rpx;
+}
+.zhou-an.on {
+  background: #e9f7ef;
+  border-color: #b7e4cc;
+}
+.zhou-ming {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #344054;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zhou-an.on .zhou-ming {
+  color: #0b7a3b;
+}
+.zhou-fu {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 20rpx;
+  color: #98a2b3;
+}
+
+/* 图层胶囊（.tuceng / .tuceng-an）已并入顶部地图条（见下面的 .gong-*）——
+   两层壳一起删掉，不留两套并行的胶囊样式：那正是"样式一旦分叉就各自走样"的来源 */
+
+/* 设施六类细分面板：与顶部地图条同一套语言，但小一号 —— 「全部」+ 六类正好排一行。
+   每类左侧是类别色线条图标（与地图散点同色），选中时描边也换成类别色（行内 style 给） */
+.she-pan {
   position: absolute;
   left: 24rpx;
   right: 24rpx;
-  top: 162rpx;
-  white-space: nowrap;
+  top: 212rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  z-index: 4;
 }
-.tuceng-an {
-  display: inline-block;
-  margin-right: 14rpx;
-  background: rgba(255, 255, 255, 0.96);
+.she-an {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 16rpx 8rpx 10rpx;
   border-radius: 999rpx;
-  padding: 14rpx 26rpx;
-  font-size: 24rpx;
-  color: #475467;
-  box-shadow: 0 8rpx 20rpx rgba(16, 24, 40, 0.12);
+  font-size: 22rpx;
+  color: #667085;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid rgba(16, 24, 40, 0.05);
+  box-shadow: 0 6rpx 16rpx rgba(16, 24, 40, 0.1);
+  transition: 0.15s;
 }
-.tuceng-an.on {
-  background: #12a150;
-  color: #ffffff;
-  font-weight: 500;
+.she-an.on {
+  color: #101828;
+  font-weight: 600;
+}
+/* 类别图标：与地图标记同一批 lucide 图标，但用「去圆底的线条版」（/images/sheshi-xian-<类别>.png）——
+   面板是白底，去掉那圈彩色圆底之后图标就是干净的一笔，不再被包着显糊；
+   未选中 62% 透明、选中满色 —— 哪类开着一眼能看出来，又不至于淡到看不清形状 */
+.she-tubiao {
+  flex: 0 0 auto;
+  width: 34rpx;
+  height: 34rpx;
+  margin-right: 6rpx;
+  opacity: 0.62;
+}
+.she-an.on .she-tubiao {
+  opacity: 1;
+}
+.she-ming {
+  line-height: 1.2;
+}
+/* 「全部」没有类别图标，选中态走主题绿 */
+.she-an.quan {
+  padding: 8rpx 16rpx;
+}
+.she-an.quan.on {
+  color: #0b7a3b;
+  background: #e9f7ef;
+  border-color: #b7e4cc;
+}
+/* 未体检时面板底部的说明行：独占一整行（flex: 0 0 100%），小字淡灰，不抢胶囊的注意力 */
+.she-shuo {
+  flex: 0 0 100%;
+  margin-top: 2rpx;
+  padding: 0 4rpx;
+  font-size: 20rpx;
+  line-height: 1.4;
+  color: #8a93a3;
 }
 
-/* 右侧常驻浮动入口（AI 助手 / 重新定位 / 我的）：不点开「切换」面板也够得着 */
+/* 右侧常驻浮动入口（AI 助手 / 重新定位 / 回到定位点并放大 / 我的）：不点开「切换」面板也够得着 */
 .fu-an {
   position: absolute;
   right: 24rpx;
@@ -349,12 +462,354 @@ page {
   box-shadow: 0 8rpx 22rpx rgba(16, 24, 40, 0.16);
 }
 
-/* 底部区：信息卡 + 主卡 */
+/* ── 顶部地图条：底图设置（路况 / 卫星 / 3D）+ 数据图层（等时圈 / 设施 / 盲区 / 我的标记）──
+   观感照网页端 .map-gongJu：一整条白色胶囊托底（.gong-nei）、里面排分段按钮。
+   网页端它浮在地图左上角，小程序左上角是定位条，所以紧接定位条下面排一行
+   （定位条底边 = top 24 + 内容 64 + 内边距 36 = 124rpx，这里取 136rpx，留 12rpx 缝）。
+   纯图标后七项合计约 390rpx，一行富余；外层保留横滑容器是给以后加项留的余地 */
+.gong-tiao {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  top: 136rpx;
+  white-space: nowrap;
+  z-index: 4;
+}
+.gong-nei {
+  display: inline-flex;
+  align-items: center;
+  gap: 2rpx;
+  padding: 6rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8rpx 22rpx rgba(16, 24, 40, 0.16);
+}
+.gong-an {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 10rpx 14rpx;
+  border-radius: 14rpx;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: #3c4657;
+  transition: 0.15s;
+}
+/* 纯图标的四项（等时圈 / 设施 / 盲区 / 我的标记）：没有文字撑场面，图标放大一档、
+   内边距放宽 —— 点按热区到 34pt 左右，太小的按钮在地图上根本点不准 */
+.gong-an.tu {
+  padding: 14rpx 16rpx;
+}
+.gong-an.tu .ic {
+  transform: scale(1.25);
+}
+/* 选中态：暮色（黄昏）渐变 —— 绿、蓝两版都被否了，换成日落那套暖色。
+   取舍：暖色和白色（图标 + 文字）的对比先天偏弱，纯夕阳金会让白图标糊掉，
+   所以两端都压深到「暮橙 → 砖红」，既保住黄昏味、白图标也清楚（对比度约 3.9 / 6.5） */
+.gong-an.on {
+  color: #ffffff;
+  background: linear-gradient(135deg, #c9552b 0%, #8f2f16 100%);
+  box-shadow: 0 6rpx 16rpx rgba(143, 47, 22, 0.26);
+}
+/* 两组之间的竖分隔线 */
+.gong-fen {
+  width: 1rpx;
+  height: 30rpx;
+  margin: 0 8rpx;
+  background: #e4e9ee;
+}
+/* 「设施」：右下角一枚小三角表示点得开（纯图标没有文字位了，三角叠在角上），展开时翻上来 */
+.gong-an.zhan {
+  position: relative;
+}
+.gong-an.zhan::after {
+  content: '';
+  position: absolute;
+  right: 4rpx;
+  bottom: 4rpx;
+  width: 0;
+  height: 0;
+  border-left: 5rpx solid transparent;
+  border-right: 5rpx solid transparent;
+  border-top: 6rpx solid currentColor;
+  opacity: 0.55;
+  transition: 0.15s;
+}
+.gong-an.zhan.kai::after {
+  transform: rotate(180deg);
+}
+/* 按下反馈：浅底沿用全局那条「整体变淡」，但选中态是实色底，变淡会显脏 —— 改成压深底色 */
+.gong-an.on.an-an-on {
+  opacity: 1;
+  background: #8f2f16;
+  box-shadow: none;
+}
+
+/* ── 搜索：输入行 + 结果列表 ──
+   平时那条最右只是个放大镜；点它整条换成输入行（不用时只占一个图标的位置）。
+   结果浮在输入行下面，点一条就当目的地弹卡片（与网页端「点结果条目」同一套用法） */
+.sou-hang {
+  display: inline-flex;
+  align-items: center;
+  gap: 12rpx;
+  /* 输入行要占满整条：屏幕 750rpx、条左右各留 24rpx → 可用 702rpx。
+     写成 width:100% 会落在 inline-flex 的 .gong-nei 里变成"跟着内容缩"，框就只剩一点点宽 */
+  width: 702rpx;
+  box-sizing: border-box;
+  padding: 10rpx 12rpx 10rpx 18rpx;
+}
+.sou-tu {
+  flex: 0 0 auto;
+  color: #667085; /* 输入行里的放大镜加深一档：淡灰在白底上几乎看不见 */
+}
+.sou-shu {
+  flex: 1;
+  min-width: 0; /* flex 子项不写 min-width:0 会把右边的「取消」顶出容器（README 第 10 节第 6 条） */
+  height: 72rpx; /* 小程序的常规输入行高度：原来 46rpx 太矮，手指点着别扭 */
+  font-size: 28rpx;
+  color: #101828;
+}
+.sou-zhan {
+  color: #98a2b3;
+}
+.sou-qu {
+  flex: 0 0 auto;
+  padding: 12rpx 16rpx; /* 取消按钮也是点击热区，别做成小字 */
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #2f86f7;
+}
+.sou-lie {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  top: 240rpx; /* 搜索态的条更高（输入行 72 + 内边距 20 ≈ 92），列表跟着下移 */
+  max-height: 620rpx;
+  overflow-y: auto;
+  padding: 6rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8rpx 24rpx rgba(16, 24, 40, 0.18);
+  z-index: 4;
+}
+.sou-tiao {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 14rpx;
+}
+.sou-tiao + .sou-tiao {
+  border-top: 1rpx solid #f2f5f8;
+}
+.sou-tiao .ic {
+  flex: 0 0 auto;
+  color: #98a2b3;
+}
+.sou-zi {
+  flex: 1;
+  min-width: 0;
+}
+.sou-ming {
+  font-size: 26rpx;
+  color: #101828;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sou-fu {
+  margin-top: 2rpx;
+  font-size: 21rpx;
+  color: #98a2b3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sou-kong {
+  padding: 26rpx 16rpx;
+  font-size: 23rpx;
+  color: #98a2b3;
+  text-align: center;
+}
+/* 分类快捷（照网页端 SOU_LEI）：一排彩点胶囊，点一下直接搜这类 */
+.sou-kuai-hang {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  padding: 14rpx 12rpx 8rpx;
+}
+.sou-kuai {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #344054;
+  background: #f4f6fa;
+}
+.sou-kuai-dian {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 7rpx;
+}
+/* 历史记录的标题行 + 清空 */
+.sou-biao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 16rpx 6rpx;
+  font-size: 23rpx;
+  color: #98a2b3;
+}
+.sou-qing {
+  font-weight: 600;
+  color: #2f86f7;
+}
+
+/* ── AI 半屏浮层（地图页）：从底部升起，地图留一半可见 ──
+   这一版把它做成「浮在地图上的圆角卡片」，而不是贴着屏幕底边的一块板子：
+   左右各留 16rpx、四角都圆、整体投影，底边再留 12rpx 缝（缝里露的就是地图）——
+   浮层四周都能看到地图，才有"接"在地图上而不是把屏幕切成两半的观感。
+   常驻渲染只切 .kai，所以升起/落下都有过渡 */
+/* 遮罩：从上往下渐深。地图上半部分保持透亮，视线顺着地图滑进浮层；
+   原来整屏盖一层 34% 灰，是"割裂感"最大的来源 */
+.ai-fu-zhe {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(16, 24, 40, 0.02) 0%,
+    rgba(16, 24, 40, 0.1) 30%,
+    rgba(16, 24, 40, 0.3) 65%,
+    rgba(16, 24, 40, 0.44) 100%
+  );
+  z-index: 33;
+  animation: ai-fu-ru 0.26s ease both;
+}
+@keyframes ai-fu-ru {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.ai-fu {
+  position: fixed;
+  left: 16rpx;
+  right: 16rpx;
+  bottom: calc(100rpx + env(safe-area-inset-bottom) + 12rpx);
+  height: 58vh;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 34rpx;
+  /* overflow 一处解决两件事：头部的圆角交给父级裁切（子元素不用各写一份），
+     消息区滚动也不会越出圆角 */
+  overflow: hidden;
+  box-shadow: 0 20rpx 56rpx rgba(16, 24, 40, 0.28);
+  z-index: 34;
+  transform: translateY(115%);
+  transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.ai-fu.kai {
+  transform: translateY(0);
+}
+/* 顶部把手：尺寸与底部主卡的 .di-ba 一致（72×8rpx 圆条），一眼就是"半屏抽屉"的语言 */
+.ai-fu-ba {
+  flex: 0 0 auto;
+  width: 72rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: #e4e9ee;
+  margin: 16rpx auto 2rpx;
+}
+.ai-fu-tou {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 28rpx 22rpx;
+  background: #ffffff;
+}
+.ai-fu-tou-wen {
+  flex: 1;
+  min-width: 0;
+}
+.ai-fu-tou-wen .ka-fu {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 接入状态：小绿点 + 浅绿胶囊，比一行灰字更像"在线"（绿点用伪元素画，视图里不必多写一层） */
+.ai-fu-zhuang {
+  display: inline-block;
+  position: relative;
+  margin-top: 10rpx;
+  padding: 4rpx 16rpx 4rpx 26rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: #0d8a44;
+  background: #e9f9f0;
+}
+.ai-fu-zhuang::before {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 50%;
+  width: 8rpx;
+  height: 8rpx;
+  margin-top: -4rpx;
+  border-radius: 4rpx;
+  background: #12a150;
+  box-shadow: 0 0 0 4rpx rgba(18, 161, 80, 0.14);
+}
+/* min-height: 0 别省：flex 子项默认 min-height:auto，消息一多会把浮层撑破（与聊天页同一个坑） */
+.ai-fu-lie {
+  flex: 1;
+  min-height: 0;
+  padding: 20rpx 24rpx 8rpx;
+  box-sizing: border-box;
+  /* 消息区垫浅灰，白气泡才浮得起来；浮层本身是白底（头部 + 输入条） */
+  background: #f4f6f5;
+}
+.ai-fu-tie {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.ai-fu-kong {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #98a2b3;
+}
+.ai-fu-shu {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  height: 112rpx;
+  box-sizing: border-box;
+  padding: 0 24rpx;
+  background: #ffffff;
+  border-top: 1rpx solid #f2f5f8;
+}
+
+/* 底部区：信息卡 + 主卡。
+   上移 tabBar 那一段（100rpx + 安全区），免得被压住；容器本身仍是满屏，不影响内部原生 map */
 .di-qu {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
 }
 
 /* 主卡（底部抽屉） */
@@ -363,6 +818,26 @@ page {
   border-radius: 32rpx 32rpx 0 0;
   padding: 18rpx 32rpx 48rpx;
   box-shadow: 0 -12rpx 36rpx rgba(16, 24, 40, 0.16);
+}
+/* 当前位置天气：主卡右上角（用户圈出的那块空白），图标随现象变（.ic-tq-*）+ 文字；
+   图标底色淡金 —— 晴天橙太阳、雨天灰云都能衬出来，不抢标题的注意力 */
+.tian-qi {
+  position: absolute;
+  top: 20rpx;
+  right: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  max-width: 240rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #3c4657;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.tian-qi .ic {
+  color: #f5a623;
+  flex: 0 0 auto;
 }
 /* 抽屉顶部的把手 */
 .di-ba {
@@ -414,16 +889,16 @@ page {
   font-size: 24rpx;
   color: #98a2b3;
 }
-.di-jiao {
-  margin-top: 20rpx;
-  font-size: 20rpx;
-  color: #b0b8c4;
-  text-align: center;
-}
 
-/* 点地图命中的信息卡（浮在抽屉上方） */
+/* 点地图命中的信息卡：**覆盖**在主卡上方而不是把它推高 ——
+   两卡同屏太占屏幕（用户反馈）；盖住主卡，关掉卡片主卡自然回来。
+   定位锚在 .di-qu（它本身 absolute），宽度留 20rpx 边距与主卡圆角对齐 */
 .ka-di {
-  margin: 0 20rpx 16rpx;
+  position: absolute;
+  left: 20rpx;
+  right: 20rpx;
+  bottom: 0;
+  z-index: 5;
   background: #ffffff;
   border-radius: 24rpx;
   padding: 24rpx 26rpx;
@@ -767,6 +1242,671 @@ page {
   background: currentColor;
   transform: translate(-50%, -50%);
 }
+/* 回到定位点并放大：准星 + 四条内刻线（与 .ic-zhun「发起一次定位」在形状上区分开） */
+.ic-hui {
+  width: 30rpx;
+  height: 30rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 50%;
+  /* 四条刻线用背景渐变画，不引图片、不塞字符（同本段开头的图标规则） */
+  background:
+    linear-gradient(currentColor, currentColor) 50% 4rpx / 3rpx 5rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 50% 21rpx / 3rpx 5rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 4rpx 50% / 5rpx 3rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 21rpx 50% / 5rpx 3rpx no-repeat;
+}
+.ic-hui::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+/* 路况：照网页端 lucide「Route」的几何复刻 —— 左下圆 (6,19) + 右上圆 (18,5) + 中间 S 形连线
+   （网页端工具条用的就是 <Route/>：circle cx6 cy19 r3 / path「M9 19h8.5 a3.5 圆角 0-7 h-11
+   a3.5 圆角 0-7 H15」/ circle cx18 cy5 r3 —— 注意这条 path 是「三横两竖」，
+   26rpx 里按 24 单位等比折算 ≈1.08rpx/单位，圆取 7rpx（含 2rpx 描边），连线用五段背景渐变拼） */
+.ic-lu {
+  width: 26rpx;
+  height: 26rpx;
+  background:
+    /* ① 下横：从左下圆向右 */
+    linear-gradient(currentColor, currentColor) 9rpx 20rpx / 10rpx 2rpx no-repeat,
+    /* ② 右竖：向上折（lucide 的 3.5 圆角，26rpx 下换成直角，肉眼无差） */
+    linear-gradient(currentColor, currentColor) 18rpx 13rpx / 2rpx 8rpx no-repeat,
+    /* ③ 中横：向左折回 */
+    linear-gradient(currentColor, currentColor) 7rpx 12rpx / 12rpx 2rpx no-repeat,
+    /* ④ 左竖：再向上折 */
+    linear-gradient(currentColor, currentColor) 6rpx 5rpx / 2rpx 8rpx no-repeat,
+    /* ⑤ 上横：向右，接到右上圆的左缘 */
+    linear-gradient(currentColor, currentColor) 7rpx 4rpx / 9rpx 2rpx no-repeat;
+}
+.ic-lu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 6rpx;
+  height: 6rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+}
+.ic-lu::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 6rpx;
+  height: 6rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+}
+/* 卫星：照网页端 lucide「Satellite」—— 45° 方体 + 左下轨道弧（弧用「只描两边」的圆环画出来） */
+.ic-wx {
+  width: 26rpx;
+  height: 26rpx;
+}
+.ic-wx::before {
+  content: '';
+  position: absolute;
+  left: 7rpx;
+  top: 6rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 3rpx;
+  transform: rotate(45deg);
+}
+.ic-wx::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 11rpx;
+  height: 11rpx;
+  border: 2rpx solid currentColor;
+  border-color: transparent transparent currentColor currentColor;
+  border-radius: 50%;
+}
+/* 3D：照网页端 lucide「Axis3d」—— 一根 L 形轴（左下圆角）+ 从轴角向右上的 45° 斜虚线
+   （lucide：M4 4v15a1 1 0 0 0 1 1h15 是 L 形轴；M4.293 19.707 6 18 与 m9 15 1.5-1.5
+   是同一斜线上断开的两小段，用 border-dashed 画成虚线最省事） */
+.ic-3d {
+  width: 26rpx;
+  height: 26rpx;
+}
+.ic-3d::before {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  top: 4rpx;
+  width: 18rpx;
+  height: 17rpx;
+  border-left: 2rpx solid currentColor;
+  border-bottom: 2rpx solid currentColor;
+  border-bottom-left-radius: 3rpx;
+}
+.ic-3d::after {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  bottom: 5rpx;
+  width: 13rpx;
+  height: 0;
+  border-top: 2rpx dashed currentColor;
+  transform: rotate(-45deg);
+  transform-origin: left center;
+}
+/* 设施（六类的总开关）：照 lucide「Shapes」—— 上三角 + 左下方块 + 右下圆，
+   正好对应「六类各有各的形状」这个意思（网页端六类各一个 lucide 图标，这里是它们的集合）。
+   网页端没有这一项（它只有六类各自的开关），所以按语义挑的图标 */
+.ic-she {
+  width: 26rpx;
+  height: 26rpx;
+  /* 左下小方块：四条边线用背景渐变拼（radial-gradient 那版描边圆在渲染里没出来，
+     所以圆改用伪元素、方块改用背景四边线 —— 全部用已经验证可靠的画法） */
+  background:
+    linear-gradient(currentColor, currentColor) 3rpx 15rpx / 2rpx 8rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 9rpx 15rpx / 2rpx 8rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 3rpx 15rpx / 8rpx 2rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 3rpx 21rpx / 8rpx 2rpx no-repeat;
+}
+.ic-she::before {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 3rpx;
+  width: 8rpx;
+  height: 8rpx;
+  border-left: 2rpx solid currentColor;
+  border-top: 2rpx solid currentColor;
+  border-top-left-radius: 2rpx;
+  transform: rotate(45deg);
+}
+.ic-she::after {
+  content: '';
+  position: absolute;
+  left: 15rpx;
+  bottom: 4rpx;
+  width: 9rpx;
+  height: 9rpx;
+  border-radius: 50%;
+  background: currentColor; /* 实心圆点：伪元素 + border 圆环在渲染里两次都没出来，实心最可靠，小尺寸下观感一致 */
+}
+/* 盲区：照 lucide「TriangleAlert」—— 三角外框（两条斜边 + 底边）+ 中间感叹号（竖条 + 点）。
+   斜线绕底部转 30°：顶端在中间相交成顶点、底脚分到两角，三角才宽扁（太瘦就像字母 A） */
+.ic-mq {
+  width: 26rpx;
+  height: 26rpx;
+  background:
+    /* 感叹号：竖条 + 点 */
+    linear-gradient(currentColor, currentColor) 12rpx 10rpx / 2rpx 6rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 12rpx 19rpx / 2rpx 2rpx no-repeat,
+    /* 三角的底边 */
+    linear-gradient(currentColor, currentColor) 3rpx 21rpx / 20rpx 2rpx no-repeat;
+}
+.ic-mq::before,
+.ic-mq::after {
+  content: '';
+  position: absolute;
+  top: 5rpx;
+  width: 2rpx;
+  height: 15rpx;
+  background: currentColor;
+  border-radius: 1rpx;
+  transform-origin: bottom center;
+}
+.ic-mq::before {
+  left: 4rpx;
+  transform: rotate(30deg);
+}
+.ic-mq::after {
+  right: 4rpx;
+  transform: rotate(-30deg);
+}
+/* 我的标记：照 lucide「Flag」—— 旗杆 + 旗面（地图上「标记」最常用的就是旗标）。
+   注意旗面不封左边（它贴着旗杆），所以只描上 / 右 / 下三边 */
+.ic-biao {
+  width: 26rpx;
+  height: 26rpx;
+}
+.ic-biao::before {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  top: 2rpx;
+  width: 2rpx;
+  height: 22rpx;
+  background: currentColor;
+  border-radius: 1rpx;
+}
+.ic-biao::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  top: 3rpx;
+  width: 13rpx;
+  height: 10rpx;
+  border: 2rpx solid currentColor;
+  border-left: none;
+  border-radius: 0 3rpx 3rpx 0;
+}
+/* 搜索：照 lucide「Search」—— 圆环 + 右下伸出的柄（circle cx11 cy11 r8 / path m21 21-4.34-4.34）。
+   页面里搜索平时只占这一个图标的位置，点它整条才换成输入行 */
+.ic-sou {
+  /* 放大镜 = 32rpx 圆环（3rpx 线）+ 从圆边伸出的柄。
+     之前 20rpx 圆环配 2rpx 线再加淡灰，真机上小到几乎看不见 —— 图标本身就是要"看得见" */
+  width: 32rpx;
+  height: 32rpx;
+  box-sizing: border-box;
+  border: 3rpx solid currentColor;
+  border-radius: 50%;
+}
+.ic-sou::after {
+  content: '';
+  position: absolute;
+  left: 22rpx;
+  top: 22rpx;
+  width: 12rpx;
+  height: 3rpx;
+  border-radius: 1.5rpx;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+/* 历史（时钟）：照 lucide「Clock」—— 圆环 + 竖针（12 点 → 圆心）+ 分针（圆心 → 右下）
+   （circle cx12 cy12 r10 / path M12 6v6l4 2） */
+.ic-zhong {
+  width: 28rpx;
+  height: 28rpx;
+  box-sizing: border-box;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+}
+.ic-zhong::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7rpx;
+  width: 2rpx;
+  height: 8rpx;
+  margin-left: -1rpx;
+  background: currentColor;
+  border-radius: 1rpx;
+}
+.ic-zhong::after {
+  content: '';
+  position: absolute;
+  left: 13rpx;
+  top: 13rpx;
+  width: 6rpx;
+  height: 2rpx;
+  background: currentColor;
+  border-radius: 1rpx;
+  transform: rotate(26deg);
+  transform-origin: left center;
+}
+/* ── 搜索分类快捷的七个图标（照网页端 SOU_LEI 同一批 lucide 的几何复刻）──
+   颜色一律 currentColor（胶囊里按类别色给），这些形状都做了取舍：lucide 的圆角与曲线
+   在 28rpx 下用直线近似，抓住「一眼认出是哪类」的主要特征 */
+/* 美食：照 lucide「Utensils」—— 左叉（U 形齿）+ 中缝 + 右刀（竖刃） */
+.ic-ms {
+  width: 28rpx;
+  height: 28rpx;
+  background: linear-gradient(currentColor, currentColor) 13rpx 2rpx / 2rpx 24rpx no-repeat;
+}
+.ic-ms::before {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  top: 2rpx;
+  width: 8rpx;
+  height: 9rpx;
+  border-left: 2rpx solid currentColor;
+  border-right: 2rpx solid currentColor;
+  border-bottom: 2rpx solid currentColor;
+  border-bottom-left-radius: 3rpx;
+  border-bottom-right-radius: 3rpx;
+}
+.ic-ms::after {
+  content: '';
+  position: absolute;
+  right: 4rpx;
+  top: 2rpx;
+  width: 2rpx;
+  height: 24rpx;
+  background: currentColor;
+}
+/* 酒店：照 lucide「Hotel」—— 一栋楼（圆角矩形）+ 底部的拱门 + 一个窗点 */
+.ic-jd {
+  width: 28rpx;
+  height: 28rpx;
+  box-sizing: border-box;
+  border: 2rpx solid currentColor;
+  border-radius: 3rpx;
+}
+.ic-jd::before {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  bottom: 0;
+  width: 8rpx;
+  height: 7rpx;
+  border-left: 2rpx solid currentColor;
+  border-right: 2rpx solid currentColor;
+  border-top: 2rpx solid currentColor;
+  border-top-left-radius: 4rpx;
+  border-top-right-radius: 4rpx;
+}
+.ic-jd::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7rpx;
+  width: 4rpx;
+  height: 4rpx;
+  margin-left: -2rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+/* 景点（纪念碑）：照 lucide「Landmark」—— 顶帽 + 三根柱 + 底线。lucide 的帽子是空心梯形，
+   28rpx 下用实心三角代替，柱与底用三块竖线 + 一块横线 */
+.ic-jn {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 4rpx 13rpx / 2rpx 10rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 13rpx 13rpx / 2rpx 10rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 22rpx 13rpx / 2rpx 10rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 3rpx 25rpx / 22rpx 2rpx no-repeat;
+}
+.ic-jn::before {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  top: 3rpx;
+  border-left: 9rpx solid transparent;
+  border-right: 9rpx solid transparent;
+  border-bottom: 8rpx solid currentColor;
+}
+/* 充电：照 lucide「Zap」—— 闪电。闭合折线没法用 border 描边，拼块又总会断开，
+   干脆用 clip-path 一块裁出：六个顶点直接取自 Zap 的 path（(15.9,4)→(5.5,14)→(9.5,14)
+   →(8,20)→(18.5,10)→(14.5,10)），除以 24 转成百分比 —— 形状与原版一致 */
+.ic-cd {
+  width: 28rpx;
+  height: 28rpx;
+}
+.ic-cd::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  clip-path: polygon(66% 17%, 23% 58%, 40% 58%, 33% 83%, 77% 42%, 60% 42%);
+}
+/* 加油：照 lucide「Fuel」—— 油泵机身（框 + 中间液位横线）+ 底座 + 右侧软管（横出 + 竖下） */
+.ic-jy {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 2rpx 25rpx / 15rpx 2rpx no-repeat;
+}
+.ic-jy::before {
+  content: '';
+  position: absolute;
+  left: 3rpx;
+  top: 2rpx;
+  width: 13rpx;
+  height: 21rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 2rpx;
+}
+.ic-jy::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  top: 11rpx;
+  width: 22rpx;
+  height: 15rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 20rpx 0 / 2rpx 8rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 12rpx 0 / 10rpx 2rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 0 0 / 10rpx 2rpx no-repeat;
+}
+/* 休闲（树）：照 lucide「Trees」—— 两棵树。lucide 的树冠是圆角五边形，28rpx 下用实心三角近似，
+   树干各一根竖线 */
+.ic-xs {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 6rpx 15rpx / 2rpx 11rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 20rpx 17rpx / 2rpx 9rpx no-repeat;
+}
+.ic-xs::before {
+  content: '';
+  position: absolute;
+  left: 2rpx;
+  top: 3rpx;
+  border-left: 7rpx solid transparent;
+  border-right: 7rpx solid transparent;
+  border-bottom: 12rpx solid currentColor;
+}
+.ic-xs::after {
+  content: '';
+  position: absolute;
+  right: 1rpx;
+  top: 9rpx;
+  border-left: 6rpx solid transparent;
+  border-right: 6rpx solid transparent;
+  border-bottom: 9rpx solid currentColor;
+}
+/* 商场：照 lucide「ShoppingBag」—— 袋身（圆角矩形）+ 提手（∩ 形，画在袋内顶部） */
+.ic-sc {
+  width: 28rpx;
+  height: 28rpx;
+  box-sizing: border-box;
+  border: 2rpx solid currentColor;
+  border-radius: 4rpx;
+}
+.ic-sc::after {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 4rpx;
+  width: 10rpx;
+  height: 6rpx;
+  border-left: 2rpx solid currentColor;
+  border-right: 2rpx solid currentColor;
+  border-top: 2rpx solid currentColor;
+  border-top-left-radius: 5rpx;
+  border-top-right-radius: 5rpx;
+}
+/* ── 天气图标（主卡右上角）：现象文字映射到五档形状，颜色走 currentColor ──
+   云 = 实心（底矩形 + 两只圆鼓包），雨/雪 = 小云 + 下方雨丝/雪点，都做了直线化取舍 */
+/* 晴：太阳（中心圆 + 上下左右四道光线） */
+.ic-tq-qing {
+  width: 28rpx;
+  height: 28rpx;
+}
+.ic-tq-qing::before {
+  content: '';
+  position: absolute;
+  left: 8rpx;
+  top: 8rpx;
+  width: 12rpx;
+  height: 12rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+.ic-tq-qing::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 13rpx 0 / 2rpx 5rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 13rpx 23rpx / 2rpx 5rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 0 13rpx / 5rpx 2rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 23rpx 13rpx / 5rpx 2rpx no-repeat;
+}
+/* 多云 / 阴：云（底矩形 + 左大右小两只圆鼓包） */
+.ic-tq-yun {
+  width: 28rpx;
+  height: 28rpx;
+  background: linear-gradient(currentColor, currentColor) 4rpx 14rpx / 20rpx 8rpx no-repeat;
+}
+.ic-tq-yun::before {
+  content: '';
+  position: absolute;
+  left: 4rpx;
+  top: 6rpx;
+  width: 12rpx;
+  height: 12rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+.ic-tq-yun::after {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 4rpx;
+  width: 9rpx;
+  height: 9rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+/* 雨（含雷阵雨/阵雨）：小云 + 三条雨丝 */
+.ic-tq-yu {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 5rpx 11rpx / 18rpx 6rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 8rpx 20rpx / 2rpx 6rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 14rpx 20rpx / 2rpx 6rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 20rpx 20rpx / 2rpx 6rpx no-repeat;
+}
+.ic-tq-yu::before {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  top: 3rpx;
+  width: 10rpx;
+  height: 10rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+.ic-tq-yu::after {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 1rpx;
+  width: 8rpx;
+  height: 8rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+/* 雪：小云 + 三粒雪点（点比雨丝短，且高度错半格） */
+.ic-tq-xue {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 5rpx 11rpx / 18rpx 6rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 8rpx 21rpx / 3rpx 3rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 14rpx 22rpx / 3rpx 3rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 20rpx 21rpx / 3rpx 3rpx no-repeat;
+}
+.ic-tq-xue::before {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  top: 3rpx;
+  width: 10rpx;
+  height: 10rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+.ic-tq-xue::after {
+  content: '';
+  position: absolute;
+  left: 12rpx;
+  top: 1rpx;
+  width: 8rpx;
+  height: 8rpx;
+  background: currentColor;
+  border-radius: 50%;
+}
+/* 雾 / 霾 / 沙尘：三条横线（中间一条短半格，做出层次） */
+.ic-tq-wu {
+  width: 28rpx;
+  height: 28rpx;
+  background:
+    linear-gradient(currentColor, currentColor) 3rpx 8rpx / 22rpx 2rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 6rpx 14rpx / 16rpx 2rpx no-repeat,
+    linear-gradient(currentColor, currentColor) 3rpx 20rpx / 22rpx 2rpx no-repeat;
+}
+/* 水印式按钮：报告页底部的「在地图上看覆盖」这类辅助动作 —— 小字、淡灰、无底无边，
+   像一行注脚而不是按钮；padding 撑出足够的点击区（ accessibility 不吃亏） */
+.shui-yin-an {
+  margin: 0 auto;
+  padding: 16rpx 40rpx;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+  color: #b8c0cc;
+  line-height: 1.5;
+}
+.shui-yin-an::after {
+  border: none;
+}
+/* 站内导航：摘要行升级成「信息 + 动作」的两端对齐条；导航中蓝点会沿路线走（MapContext.moveAlong） */
+.dao-hang-hang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+.dao-hang-kai,
+.dao-hang-ting {
+  flex: 0 0 auto;
+  color: #2f86f7;
+  font-weight: 600;
+  padding: 6rpx 12rpx;
+}
+.dao-hang-ting {
+  color: #e5484d;
+}
+/* 六维评分雷达 canvas：占满卡片宽，高度给足让网格与标签呼吸 */
+.lei-da {
+  display: block;
+  width: 100%;
+  height: 460rpx;
+  margin-bottom: 8rpx;
+}
+/* 进入聊天的状态总结卡：报告要点 + 天气（每次进入新鲜生成、不入库）。
+   助手页与 AI 浮层共用；浅蓝底细描边，与 AI 气泡区分开 */
+.lt-zhao {
+  margin: 4rpx 0 16rpx;
+  padding: 16rpx 20rpx;
+  background: #f0f6ff;
+  border: 1rpx solid #d6e5fb;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: #3c4657;
+}
+/* ── 「我的」页专属视觉：只作用于 .wo-ye 之下，不影响其它页面 ──
+   顶部品牌绿幕压底、账号卡上浮、按钮统一成淡绿胶囊、卡片轻投影 */
+.wo-ye {
+  background: linear-gradient(180deg, #0c8a5f 0, #0c8a5f 200rpx, #f2f5f8 200rpx);
+  min-height: 100vh;
+  padding-bottom: 40rpx;
+  box-sizing: border-box;
+}
+/* 账号卡压在绿幕上：稍大圆角、更明显的投影，形成第一视觉焦点 */
+.wo-ye .hui-yuan {
+  border-radius: 28rpx;
+  box-shadow: 0 16rpx 40rpx rgba(12, 138, 95, 0.28);
+}
+/* 账号卡里的登录按钮：淡绿底绿字胶囊，去掉突兀的大绿块观感 */
+.wo-ye .hui-yuan .an.zhu2 {
+  background: #e7f6ee;
+  color: #0b7a3b;
+  border: none;
+  border-radius: 999rpx;
+  font-weight: 600;
+}
+/* 其余卡片：轻投影 + 呼吸感内边距 */
+.wo-ye .ka {
+  border-radius: 24rpx;
+  box-shadow: 0 6rpx 24rpx rgba(16, 24, 40, 0.05);
+  padding: 26rpx;
+}
+/* 次要按钮统一淡绿胶囊（保存/清空缓存/测一次定位/删除…） */
+.wo-ye .an.ci {
+  background: #eef6f1;
+  color: #0b7a3b;
+  border: none;
+  border-radius: 999rpx;
+  font-weight: 500;
+}
+.wo-ye .an.ci::after {
+  border: none;
+}
+/* 输入框：白底内嵌圆角，与卡片贴合成一体 */
+.wo-ye .input {
+  background: #f7f9fb;
+  border-radius: 14rpx;
+  padding: 18rpx 22rpx;
+  font-size: 26rpx;
+  color: #1f2a37;
+}
 /* 地图：折页 */
 .ic-tu {
   width: 30rpx;
@@ -830,6 +1970,82 @@ page {
   border-radius: 13rpx 13rpx 0 0;
   transform: translateX(-50%);
 }
+/* 文件：一张带折角的纸 */
+.ic-wenjian {
+  width: 24rpx;
+  height: 28rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 4rpx;
+  border-top-right-radius: 9rpx;
+}
+.ic-wenjian::after {
+  content: '';
+  position: absolute;
+  right: -3rpx;
+  top: -3rpx;
+  width: 9rpx;
+  height: 9rpx;
+  border-left: 3rpx solid currentColor;
+  border-bottom: 3rpx solid currentColor;
+  border-bottom-left-radius: 4rpx;
+}
+/* 历史：三条横线（与 .ic-can 同一套 repeating-linear-gradient 画法） */
+.ic-lie {
+  width: 26rpx;
+  height: 24rpx;
+  background: repeating-linear-gradient(
+    to bottom,
+    currentColor 0,
+    currentColor 3rpx,
+    transparent 3rpx,
+    transparent 10.5rpx
+  );
+  border-radius: 2rpx;
+}
+/* 新对话：加号 */
+.ic-jia {
+  width: 26rpx;
+  height: 26rpx;
+}
+.ic-jia::before,
+.ic-jia::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: currentColor;
+  border-radius: 2rpx;
+}
+.ic-jia::before {
+  width: 24rpx;
+  height: 3rpx;
+  transform: translate(-50%, -50%);
+}
+.ic-jia::after {
+  width: 3rpx;
+  height: 24rpx;
+  transform: translate(-50%, -50%);
+}
+/* 关闭 / 收起：两条交叉线 */
+.ic-cha {
+  width: 30rpx;
+  height: 30rpx;
+}
+.ic-cha::before,
+.ic-cha::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26rpx;
+  height: 3rpx;
+  background: currentColor;
+  border-radius: 2rpx;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.ic-cha::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
 /* 提示：圆圈 + 感叹号（元素里写一个 ! 即可） */
 .ic-jing {
   width: 30rpx;
@@ -838,8 +2054,47 @@ page {
   border-radius: 50%;
   font-size: 20rpx;
   font-weight: 700;
-  line-height: 23rpx;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-style: normal;
+}
+/* 生活圈：同心环（等时圈的意象） */
+.ic-huan {
+  width: 30rpx;
+  height: 30rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 50%;
+}
+.ic-huan::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12rpx;
+  height: 12rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+/* 助手：对话气泡（尾巴用边框三角画） */
+.ic-qipao {
+  width: 30rpx;
+  height: 24rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 9rpx;
+}
+.ic-qipao::after {
+  content: '';
+  position: absolute;
+  left: 6rpx;
+  bottom: -8rpx;
+  width: 0;
+  height: 0;
+  border-left: 7rpx solid transparent;
+  border-right: 7rpx solid transparent;
+  border-top: 8rpx solid currentColor;
 }
 /* 方向箭头：默认朝下，.shang 朝上，.you 朝右 */
 .chev {
@@ -861,32 +2116,15 @@ page {
   border-right: none;
 }
 
-/* 抽屉底部信息行：左侧参数开关，右侧「我的」入口 */
-.di-jiao-hang {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 24rpx;
-  padding-top: 22rpx;
-  border-top: 1rpx solid #f2f5f8;
-}
-.di-lian {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  font-size: 26rpx;
-  color: #344054;
-}
-.di-lian .chev {
-  color: #98a2b3;
-}
-
 /* ═══════ AI 助手（聊天页） ═══════ */
 .lt-ye {
   display: flex;
   flex-direction: column;
   height: 100vh;
   box-sizing: border-box;
+  /* 底部一次让出两段：tabBar（100rpx + 安全区）+ 固定输入条（112rpx）。
+     这样 flex 里排在最后的「提示条 / 导航确认卡」正好停在输入条之上 */
+  padding-bottom: calc(112rpx + 100rpx + env(safe-area-inset-bottom));
   background: #f4f6f5;
 }
 .lt-tou {
@@ -904,17 +2142,70 @@ page {
   flex: 1;
   min-width: 0;
 }
-.lt-an {
-  font-size: 24rpx;
-  color: #0b7a3b;
-  background: #e9f7ef;
-  border-radius: 999rpx;
-  padding: 10rpx 22rpx;
+/* 顶部名称区：flex 撑开，接入状态一行放不下就省略（模型名可能很长），
+   别让它折成两行把顶栏撑高 */
+.lt-tou-wen {
+  flex: 1;
+  min-width: 0;
+}
+.lt-tou-zi .ka-fu {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 顶部动作组：历史 / 新对话并排，同一行、同一间距，视觉上是一组 */
+.lt-zu {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+/* 胶囊动作按钮：图标 + 文字。描边款（次要）与实心款（主要）共用同一副骨架，
+   只换配色——所以两个按钮高度、圆角、内边距完全对齐 */
+.an-an {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 60rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  font-size: 25rpx;
+  font-weight: 500;
+  letter-spacing: 0.5rpx;
+  color: #344054;
+  background: #ffffff;
+  border: 1rpx solid #e4e7ec;
+  box-sizing: border-box;
+}
+/* 主要动作：近黑实心。刻意不用高饱和渐变 + 重投影——那正是「廉价感」的来源，
+   也免得跟 AI 徽章、用户气泡抢视觉 */
+.an-an.zhu {
+  color: #ffffff;
+  background: #101828;
+  border-color: #101828;
+  font-weight: 600;
+  box-shadow: 0 4rpx 12rpx rgba(16, 24, 40, 0.16);
+}
+/* 按下反馈（hover-class） */
+.an-an-on {
+  opacity: 0.82;
 }
 .lt-qu {
   flex: 1;
+  /* min-height: 0 必须留着：flex 子项默认 min-height:auto，消息一多 .lt-qu 会被内容撑高，
+     整个 .lt-ye 随之超过 100vh 往下溢出，最后几条消息和提示条就正好钻到悬浮输入条底下被压住。
+     有了它滚动容器才会老老实实收缩到可用高度、内部自己滚 */
+  min-height: 0;
   padding: 24rpx 24rpx 8rpx;
+  box-sizing: border-box;
+}
+/* 贴底：消息不满一屏时从输入框那头往上排（像微信），超过一屏就正常滚动。
+   百分比高度基准是 scroll-view 的可视高度；万一算不出来也只会退回「从顶部排」，不会出错 */
+.lt-tie {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 100%;
   box-sizing: border-box;
 }
 
@@ -976,6 +2267,8 @@ page {
   font-size: 27rpx;
   line-height: 1.7;
   word-break: break-all;
+  /* AI 回复与「连不上服务」的分步指引里带换行，得让它换行显示 */
+  white-space: pre-wrap;
 }
 .lt-qi.ai {
   background: #ffffff;
@@ -983,11 +2276,14 @@ page {
   border-top-left-radius: 6rpx;
   box-shadow: 0 6rpx 18rpx rgba(16, 24, 40, 0.05);
 }
+/* 用户消息：靛蓝紫（AI 主题色）。
+   绿太"工具感"、纯黑太沉，靛蓝紫在灰绿底上最透气，也和 AI 徽章的冷色部分呼应；
+   白字对比约 5.3:1，达 WCAG AA */
 .lt-qi.wo {
-  background: #12a150;
+  background: #5b5ce2;
   color: #ffffff;
   border-top-right-radius: 6rpx;
-  box-shadow: 0 8rpx 20rpx rgba(18, 161, 80, 0.22);
+  box-shadow: 0 6rpx 16rpx rgba(91, 92, 226, 0.26);
 }
 .lt-qi.cuo {
   background: #fff6f6;
@@ -996,6 +2292,45 @@ page {
   border-top-left-radius: 6rpx;
   font-size: 25rpx;
 }
+/* 气泡里的行动按钮（如「去地图页跑一轮体检」）：实心靛蓝紫胶囊 + 尾部小箭头。
+   浅底那版在浅红气泡里太"没气力"（像一句被框起来的灰字），这里改成实心主色：
+   一眼就是"点我"，也把「下一步该干嘛」摆在最前面。
+   ⚠️ 这里必须用 display: inline-block —— 之前写的 inline-flex，**微信端不支持该值**，
+   元素会退化成块级、把整条气泡铺满（看着就是一大块占位）。inline-block 的宽度才会跟文字走。
+   尾部小箭头用 ::after 的两条边框 45° 拼（项目里图标一律 CSS 自绘，不塞 "→" 字符：
+   不挑字体、三端字形一致），颜色继承 currentColor（跟着文字白）。 */
+.lt-an-nei {
+  display: inline-block;
+  margin-top: 14rpx;
+  padding: 12rpx 24rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #ffffff;
+  background: linear-gradient(135deg, #7b7cf7 0%, #5b5ce2 100%);
+  box-shadow: 0 8rpx 18rpx rgba(91, 92, 226, 0.3);
+}
+.lt-an-nei::after {
+  content: '';
+  display: inline-block;
+  width: 10rpx;
+  height: 10rpx;
+  margin: 0 2rpx 2rpx 10rpx;
+  border-top: 3rpx solid currentColor;
+  border-right: 3rpx solid currentColor;
+  transform: rotate(45deg);
+  vertical-align: middle;
+  opacity: 0.92;
+}
+/* 按下反馈：实心按钮不能沿用全局那条「整体变淡」（看着像禁用），改成微缩 + 底色压深 */
+.lt-an-nei.an-an-on {
+  opacity: 1;
+  transform: scale(0.96);
+  background: linear-gradient(135deg, #6a6bee 0%, #4b4cd0 100%);
+  box-shadow: 0 4rpx 10rpx rgba(91, 92, 226, 0.24);
+}
+
 /* 思考中：三点跳动 */
 .lt-dian {
   display: flex;
@@ -1071,17 +2406,459 @@ page {
   border-radius: 999rpx;
 }
 
+/* ── 历史对话侧栏（从左侧滑出）──
+   抽屉**常驻渲染**、只切换 .kai 类：这样滑入和滑出都有过渡。
+   若改成 wx:if，元素一出现就已经在终点位置，等于没有展开动画。
+   底边留出 tabBar 那一段，免得和底部栏叠在一起 */
+.hh-zhe {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(16, 24, 40, 0.4);
+  z-index: 30;
+}
+.hh-ce {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  width: 580rpx;
+  max-width: 82vw;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-top-right-radius: 26rpx;
+  border-bottom-right-radius: 26rpx;
+  box-shadow: 6rpx 0 30rpx rgba(16, 24, 40, 0.16);
+  z-index: 31;
+  transform: translateX(-102%);
+  transition: transform 0.26s ease;
+}
+.hh-ce.kai {
+  transform: translateX(0);
+}
+.hh-tou {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30rpx 28rpx 18rpx;
+  border-bottom: 1rpx solid #f2f5f8;
+}
+.hh-ming {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #101828;
+}
+/* 收起：圆形图标按钮，中性灰底（图标颜色走 currentColor，见 .ic-cha） */
+.hh-guan {
+  flex: 0 0 auto;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 28rpx;
+  background: #f2f4f7;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* min-height: 0 与聊天区同理：flex 子项默认 min-height:auto，会话一多会被撑高、底部按钮被挤出去 */
+.hh-lie {
+  flex: 1;
+  min-height: 0;
+  padding: 14rpx 18rpx;
+  box-sizing: border-box;
+}
+.hh-xiang {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  margin-bottom: 10rpx;
+}
+.hh-xiang.on {
+  background: #f2f4f7;
+}
+.hh-xiang-nei {
+  flex: 1;
+  min-width: 0;
+}
+.hh-xiang-ming {
+  font-size: 27rpx;
+  color: #101828;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hh-xiang.on .hh-xiang-ming {
+  color: #101828;
+  font-weight: 600;
+}
+.hh-xiang-fu {
+  font-size: 22rpx;
+  color: #98a2b3;
+  margin-top: 6rpx;
+}
+.hh-shan {
+  flex: 0 0 auto;
+  font-size: 22rpx;
+  color: #98a2b3;
+  border: 1rpx solid #e9eef3;
+  border-radius: 999rpx;
+  padding: 6rpx 18rpx;
+}
+/* 删除是破坏性操作：按下去转红，给个明确预警（hover-class） */
+.hh-shan-on {
+  color: #b42318;
+  border-color: #ffd9d9;
+  background: #fff6f6;
+}
+.hh-kong {
+  padding: 40rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #98a2b3;
+}
+/* 与顶部「新对话」同一配方（近黑实心 + 轻投影），两处观感一致 */
+.hh-xin {
+  flex: 0 0 auto;
+  margin: 14rpx 24rpx 24rpx;
+  padding: 22rpx 0;
+  text-align: center;
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #ffffff;
+  background: #101828;
+  box-shadow: 0 6rpx 16rpx rgba(16, 24, 40, 0.18);
+  border-radius: 999rpx;
+}
+/* 输入条左侧的「＋」添加附件：与输入框等高、中性配色 */
+.lt-jia {
+  flex: 0 0 auto;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 38rpx;
+  background: #f7f9fb;
+  border: 1rpx solid #e9eef3;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 语音 / 键盘切换钮：与「＋」同款圆钮，位置在输入条最左（微信同款） */
+.lt-qie {
+  flex: 0 0 auto;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 38rpx;
+  background: #f7f9fb;
+  border: 1rpx solid #e9eef3;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 「按住 说话」：占满输入框那一整条（语音模式下输入框整个被它替换） */
+.lt-shuo {
+  flex: 1;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f9fb;
+  border: 1rpx solid #e9eef3;
+  border-radius: 999rpx;
+  font-size: 27rpx;
+  color: #344054;
+  letter-spacing: 1rpx;
+}
+.lt-shuo.on {
+  background: #5b5ce2;
+  border-color: #5b5ce2;
+  color: #ffffff;
+}
+/* 发送：纸飞机（上下两片机翼从同一点张开；下翼压暗一点做出折纸的层次感）。
+   纯 currentColor，所以禁用态会跟着按钮文字一起变灰 */
+.ic-fei {
+  width: 26rpx;
+  height: 26rpx;
+}
+.ic-fei::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3rpx;
+  width: 0;
+  height: 0;
+  border-top: 13rpx solid transparent;
+  border-bottom: 2rpx solid transparent;
+  border-left: 25rpx solid currentColor;
+  transform-origin: 0 50%;
+  transform: rotate(-16deg);
+}
+.ic-fei::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7rpx;
+  width: 0;
+  height: 0;
+  border-top: 2rpx solid transparent;
+  border-bottom: 13rpx solid transparent;
+  border-left: 25rpx solid currentColor;
+  transform-origin: 0 50%;
+  transform: rotate(16deg);
+  opacity: 0.72; /* 下翼稍浅：一眼看出是"折起来的纸"，而不是一个实心箭头 */
+}
+
+/* 键盘图标：圆角方框 + 底部一横 */
+.ic-jianpan {
+  width: 30rpx;
+  height: 24rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 5rpx;
+}
+.ic-jianpan::after {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  right: 5rpx;
+  bottom: 4rpx;
+  height: 3rpx;
+  background: currentColor;
+  border-radius: 2rpx;
+}
+
+/* 录音浮层（按住说话时出现）：居中的深色圆角卡，上滑取消时转红 */
+.lu-ceng {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  width: 340rpx;
+  padding: 34rpx 24rpx 26rpx;
+  border-radius: 24rpx;
+  background: rgba(16, 24, 40, 0.86);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 40;
+}
+.lu-ceng.quXiao {
+  background: rgba(180, 35, 24, 0.92);
+}
+/* 声波柱：纯动画模拟（小程序拿不到录音音量），但「在录 / 要取消」一眼可辨 */
+.lu-bo {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 48rpx;
+}
+.lu-bo-i {
+  width: 8rpx;
+  height: 16rpx;
+  border-radius: 4rpx;
+  background: #ffffff;
+  animation: lu-bo 0.9s ease-in-out infinite;
+}
+@keyframes lu-bo {
+  0%,
+  100% {
+    height: 14rpx;
+    opacity: 0.75;
+  }
+  50% {
+    height: 44rpx;
+    opacity: 1;
+  }
+}
+.lu-ceng-wen {
+  margin-top: 20rpx;
+  font-size: 24rpx;
+  opacity: 0.92;
+}
+.lu-ceng-miao {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  opacity: 0.7;
+}
+
+/* 语音输入按钮：与「＋」同款；录音中换成靛蓝紫（与用户气泡同色，一眼看出在录） */
+.lt-mai {
+  flex: 0 0 auto;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 38rpx;
+  background: #f7f9fb;
+  border: 1rpx solid #e9eef3;
+  color: #475467;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lt-mai.on {
+  background: #5b5ce2;
+  border-color: #5b5ce2;
+  color: #ffffff;
+}
+/* 麦克风：胶囊 + 底座弧 */
+.ic-mai {
+  width: 26rpx;
+  height: 30rpx;
+}
+.ic-mai::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 12rpx;
+  height: 18rpx;
+  border: 3rpx solid currentColor;
+  border-radius: 7rpx;
+  transform: translateX(-50%);
+}
+.ic-mai::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 20rpx;
+  height: 11rpx;
+  border: 3rpx solid currentColor;
+  border-top: none;
+  border-radius: 0 0 11rpx 11rpx;
+  transform: translateX(-50%);
+}
+
+/* 待发送的附件条（在输入条之上） */
+.fu-yu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin: 0 24rpx 12rpx;
+  padding: 16rpx;
+  background: #ffffff;
+  border: 1rpx solid #eef1f4;
+  border-radius: 18rpx;
+}
+.fu-yu-an {
+  position: relative;
+  border-radius: 14rpx;
+  overflow: hidden;
+}
+.fu-yu-tu {
+  width: 132rpx;
+  height: 132rpx;
+  display: block;
+  border-radius: 14rpx;
+  background: #f2f4f7;
+}
+.fu-yu-wen {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  max-width: 360rpx;
+  /* 右侧留出 ✕ 的位子（它是绝对定位的角标），否则会压住文件名最后几个字 */
+  padding: 16rpx 46rpx 16rpx 20rpx;
+  background: #f7f9fb;
+  border: 1rpx solid #e9eef3;
+  border-radius: 14rpx;
+  color: #475467;
+}
+.fu-yu-ming {
+  max-width: 230rpx;
+  font-size: 23rpx;
+  color: #344054;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fu-yu-shan {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 0 0 0 14rpx;
+  background: rgba(16, 24, 40, 0.55);
+  color: #ffffff;
+  font-size: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 消息气泡里的附件 */
+.fu-lie {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-bottom: 10rpx;
+}
+.fu-tu {
+  width: 320rpx;
+  display: block;
+  border-radius: 14rpx;
+}
+.fu-wen {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  /* 默认给「浅色气泡」（AI / 错误）用；用户气泡是深色，下面单独覆盖 */
+  background: #f4f6f8;
+  color: #475467;
+}
+.lt-qi.wo .fu-wen {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+.fu-wen-nei {
+  min-width: 0;
+}
+.fu-wen-ming {
+  max-width: 300rpx;
+  font-size: 24rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fu-wen-dx {
+  font-size: 20rpx;
+  opacity: 0.75;
+  margin-top: 4rpx;
+}
+
 /* 输入条 */
 .lt-shu {
+  /* 输入条**固定**在「TabBar 之上」：用 fixed 而不是靠 flex 高度算——
+     只要靠父容器高度，遇到机型/基础库差异就会被内容挤走（表现就是「输入框不知道跑哪去了」）。
+     高度写死 112rpx，与上面 .lt-ye 让出的第二段对齐 */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(100rpx + env(safe-area-inset-bottom));
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom));
+  height: 112rpx;
+  box-sizing: border-box;
+  padding: 0 24rpx;
   background: #ffffff;
   border-top: 1rpx solid #f2f5f8;
 }
 .lt-shu-in {
   flex: 1;
+  /* min-width: 0 必须留着：flex 子项默认 min-width:auto，输入框（含占位文字）不肯收缩，
+     和「＋ / 麦克风 / 切换钮 / 发送」挤在同一行时会把整条输入栏顶出屏幕
+     （表现：底部冒出横向滚动、右侧按钮被切） */
+  min-width: 0;
   height: 76rpx;
   background: #f7f9fb;
   border: 1rpx solid #e9eef3;
@@ -1091,19 +2868,25 @@ page {
   color: #101828;
 }
 .lt-fa {
-  width: 132rpx;
+  /* 加图标后从「一行文字」改成 flex 居中（宽度相应放宽一点，文字不挤） */
+  width: 154rpx;
   height: 76rpx;
-  line-height: 76rpx;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
   border-radius: 999rpx;
-  background: #12a150;
+  /* 发送与顶部「新对话」同一套中性配色：近黑实心 + 轻投影，不用高饱和绿 */
+  background: #101828;
   color: #ffffff;
   font-size: 27rpx;
-  box-shadow: 0 8rpx 20rpx rgba(18, 161, 80, 0.24);
+  font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(16, 24, 40, 0.16);
   flex: 0 0 auto;
 }
 .lt-fa.jin {
-  background: #cbd5dd;
+  background: #e4e7ec;
+  color: #98a2b3;
   box-shadow: none;
 }
 
@@ -1191,4 +2974,217 @@ page {
   color: #b0b8c4;
   line-height: 1.7;
   padding-bottom: 40rpx;
+}
+
+/* ───────── 「生活圈」页：结论卡 / 等时圈卡（档位 · 视图 · 指标 · 图例 · 分类缺口） ───────── */
+
+/* ① 结论一句话 */
+.jl-ka {
+  margin: 20rpx 24rpx 0;
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 26rpx 28rpx 6rpx;
+  box-shadow: 0 6rpx 18rpx rgba(16, 24, 40, 0.06);
+}
+.jl-zi {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #101828;
+  line-height: 1.5;
+}
+.jl-fu {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: #475467;
+  line-height: 1.5;
+}
+.jl-shu {
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid #f2f5f8;
+  display: flex;
+  justify-content: space-between;
+  font-size: 21rpx;
+  color: #98a2b3;
+}
+
+/* ② 等时圈卡：标题 + 时长档位胶囊 */
+.deng-ti {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #101828;
+}
+.dang-pai {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.dang-an {
+  min-width: 68rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 14rpx;
+  background: #f2f5f8;
+  color: #667085;
+  font-size: 24rpx;
+  text-align: center;
+}
+.dang-an.on {
+  background: #12a150;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 视图切换（交互地图 / 矢量示意图） */
+.mo-pai {
+  display: flex;
+  flex: 0 0 auto;
+  background: #f2f5f8;
+  border-radius: 14rpx;
+  padding: 5rpx;
+}
+.mo-an {
+  padding: 8rpx 22rpx;
+  border-radius: 11rpx;
+  font-size: 24rpx;
+  color: #667085;
+  white-space: nowrap;
+}
+/* 数据源说明：跟在视图切换右侧，字号压小并允许收缩，免得把胶囊挤换行 */
+.mo-yuan {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 20rpx;
+  color: #98a2b3;
+  line-height: 1.4;
+}
+.mo-an.on {
+  background: #ffffff;
+  color: #2f9bff;
+  font-weight: 600;
+  box-shadow: 0 2rpx 8rpx rgba(16, 24, 40, 0.08);
+}
+
+/* 地图 / 示意图画布 */
+.tu-kuang {
+  margin-top: 16rpx;
+  border-radius: 18rpx;
+  overflow: hidden;
+  background: #f7fafc;
+  border: 1rpx solid #eef2f6;
+}
+.tu-ti {
+  width: 100%;
+  height: 400rpx;
+  display: block;
+}
+.shi-yi {
+  width: 598rpx;
+  height: 400rpx;
+}
+
+/* 四个主指标 */
+.zhi-hang {
+  display: flex;
+  margin-top: 22rpx;
+}
+.zhi {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+.zhi-zhi {
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.zhi-dan {
+  font-size: 20rpx;
+  font-weight: 400;
+  margin-left: 2rpx;
+}
+.zhi-ming {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #667085;
+}
+.zhi-fu {
+  margin-top: 2rpx;
+  font-size: 19rpx;
+  color: #b0b8c4;
+}
+
+/* 图例 */
+.tu-li {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.tu-li-kuai {
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 5rpx;
+  flex: 0 0 auto;
+}
+.tu-li-wen {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #667085;
+}
+
+/* 三个盲区指标（浅灰底一排） */
+.zhi-b-hang {
+  display: flex;
+  margin-top: 24rpx;
+  background: #f7fafc;
+  border-radius: 16rpx;
+  padding: 22rpx 0;
+}
+.zhi-b {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+/* 分类缺口 */
+.que-tou {
+  margin-top: 28rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #101828;
+  border-left: 8rpx solid #12a150;
+  padding-left: 16rpx;
+}
+.que-hang {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+.que-ming {
+  width: 110rpx;
+  flex: 0 0 auto;
+  font-size: 24rpx;
+  color: #344054;
+}
+.que-tiao {
+  flex: 1;
+  min-width: 0;
+  height: 16rpx;
+  border-radius: 999rpx;
+  background: #eef2f6;
+  overflow: hidden;
+}
+.que-tiao-nei {
+  height: 100%;
+  border-radius: 999rpx;
+}
+.que-bi {
+  width: 82rpx;
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 24rpx;
+  font-weight: 600;
 }

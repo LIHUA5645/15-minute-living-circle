@@ -1,0 +1,35 @@
+/* 自定义 tabBar 外观：白底 + 细上边线 + 图标在上文字在下（图标一律 .ic-* CSS 自绘） */
+/* 高度固定 100rpx（+ 安全区）：与各 tab 页给底部让出的高度是同一个数，
+   页面的输入条 / 底部抽屉才能刚好贴在 TabBar 之上，不叠不漏 */
+.tab {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  height: calc(100rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #ffffff;
+  border-top: 1rpx solid #f2f5f8;
+  z-index: 99;
+}
+.tab-an {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+  height: 100rpx;
+  color: #8a94a6;
+}
+.tab-an.on {
+  color: #12a150;
+  font-weight: 600;
+}
+.tab-wen {
+  font-size: 20rpx;
+  line-height: 1.2;
+}

@@ -27,3 +27,5 @@ snap*.yaml
 fuwuqi/fuwu.log
 fuwuqi/fuwu.log.err
 fuwuqi/shuju/
+tests/.tmp-*/
+scripts/.sheshi-tubiao-linshi/
