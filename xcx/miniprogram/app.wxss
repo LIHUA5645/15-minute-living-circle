@@ -382,18 +382,18 @@ page {
    每类左侧是类别色线条图标（与地图散点同色），选中时描边也换成类别色（行内 style 给） */
 .she-pan {
   position: absolute;
-  left: 24rpx;
-  right: 24rpx;
-  top: 212rpx;
+  left: 16rpx;
+  right: 16rpx;
+  top: 222rpx; /* 跟随工具条（150 + 高约 58），留约 14rpx 呼吸 */
   display: flex;
   flex-wrap: wrap;
-  gap: 8rpx;
+  gap: 4rpx;
   z-index: 4;
 }
 .she-an {
   display: flex;
   align-items: center;
-  padding: 8rpx 16rpx 8rpx 10rpx;
+  padding: 6rpx 12rpx 6rpx 9rpx;
   border-radius: 999rpx;
   font-size: 22rpx;
   color: #667085;
@@ -445,7 +445,7 @@ page {
 .fu-an {
   position: absolute;
   right: 24rpx;
-  top: 250rpx;
+  top: 290rpx; /* 压在六类胶囊行之下（胶囊行 222 + 高约 44 = 266），不再挡住「交通/休闲」 */
   display: flex;
   flex-direction: column;
   gap: 16rpx;
@@ -471,15 +471,15 @@ page {
   position: absolute;
   left: 24rpx;
   right: 24rpx;
-  top: 136rpx;
+  top: 150rpx; /* 与顶部定位条拉开，不再贴着 */
   white-space: nowrap;
   z-index: 4;
 }
 .gong-nei {
   display: inline-flex;
   align-items: center;
-  gap: 2rpx;
-  padding: 6rpx;
+  gap: 0;
+  padding: 5rpx;
   border-radius: 18rpx;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 8rpx 22rpx rgba(16, 24, 40, 0.16);
@@ -487,10 +487,10 @@ page {
 .gong-an {
   display: inline-flex;
   align-items: center;
-  gap: 6rpx;
-  padding: 10rpx 14rpx;
+  gap: 4rpx;
+  padding: 8rpx 12rpx;
   border-radius: 14rpx;
-  font-size: 23rpx;
+  font-size: 22rpx;
   font-weight: 600;
   color: #3c4657;
   transition: 0.15s;
@@ -498,7 +498,7 @@ page {
 /* 纯图标的四项（等时圈 / 设施 / 盲区 / 我的标记）：没有文字撑场面，图标放大一档、
    内边距放宽 —— 点按热区到 34pt 左右，太小的按钮在地图上根本点不准 */
 .gong-an.tu {
-  padding: 14rpx 16rpx;
+  padding: 12rpx 14rpx;
 }
 .gong-an.tu .ic {
   transform: scale(1.25);
