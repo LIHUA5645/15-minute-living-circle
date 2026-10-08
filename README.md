@@ -1,5 +1,12 @@
 # 15 分钟便民生活圈 · 智能体检与规划助手
 
+![CI](https://github.com/LIHUA5645/15-minute-living-circle/actions/workflows/ci.yml/badge.svg)
+![版本](https://img.shields.io/badge/%E7%89%88%E6%9C%AC-V1.0-0c8a5f?style=flat)
+![测试](https://img.shields.io/badge/%E8%87%AA%E6%A3%80-28%2F28%20%E9%80%9A%E8%BF%87-12b76a?style=flat)
+![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Web%20%C2%B7%20Electron%20%C2%B7%20%E5%BE%AE%E4%BF%A1%20%C2%B7%20%E6%94%AF%E4%BB%98%E5%AE%9D%20%C2%B7%20%E6%8A%96%E9%9F%B3-2f86f7?style=flat)
+![地图](https://img.shields.io/badge/%E5%9C%B0%E5%9B%BE-%E7%99%BE%E5%BA%A6%E5%9C%B0%E5%9B%BE%E5%BC%80%E6%94%BE%E5%B9%B3%E5%8F%B0-231916?logo=baidu&style=flat)
+![最近提交](https://img.shields.io/github/last-commit/LIHUA5645/15-minute-living-circle/master?label=%E6%9C%80%E8%BF%91%E6%8F%90%E4%BA%A4&style=flat)
+
 > 开源 AI 工具赛道参赛作品 · 作者：肖沐樑（QQ：3387432690） · 许可证：MIT
 
 基于百度地图开放能力，输入社区中心点坐标，系统自动计算**真实步行路网**下的 15 分钟等时圈，
